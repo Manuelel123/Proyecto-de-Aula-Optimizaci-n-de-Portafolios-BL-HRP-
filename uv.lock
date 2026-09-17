@@ -527,12 +527,14 @@ name = "optimizacion-portafolios"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "pandas" },
     { name = "streamlit" },
     { name = "yfinance" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "pandas", specifier = ">=2.0.0" },
     { name = "streamlit", specifier = ">=1.64.0" },
     { name = "yfinance", specifier = ">=1.7.0" },
 ]
