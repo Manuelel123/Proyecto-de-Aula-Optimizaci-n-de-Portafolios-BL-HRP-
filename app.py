@@ -16,6 +16,20 @@ INDICES = {
     "TÉCNOLOGICO": "XLK",
     "ENERGÍA": "XLE",
 }
+CRIPTOMONEDAS = {
+    "Bitcoin (BTC-USD)": "BTC-USD",
+    "Ethereum (ETH-USD)": "ETH-USD",
+    "Tether (USDT-USD)": "USDT-USD",
+    "BNB (BNB-USD)": "BNB-USD",
+    "XRP (XRP-USD)": "XRP-USD",
+}
+COMMODITIES = {
+    "Oro (GC=F)": "GC=F",
+    "Plata (SI=F)": "SI=F",
+    "Petróleo WTI (CL=F)": "CL=F",
+    "Gas natural (NG=F)": "NG=F",
+    "Cobre (HG=F)": "HG=F",
+}
 
 
 def fecha_hace_dos_anios(fecha: date) -> date:
@@ -56,16 +70,42 @@ def mostrar_seguimiento(
     clave: str,
     fecha_inicio: date,
     fecha_actual: date,
+    catalogo_activos: dict[str, str],
+    catalogo_indices: dict[str, str],
     activos_predeterminados: list[str],
+    permitir_filtro_tipo: bool = False,
 ) -> None:
     st.subheader(titulo)
     st.caption(descripcion)
 
+    catalogo = {**catalogo_activos, **catalogo_indices}
+    if permitir_filtro_tipo:
+        tipo_instrumento = st.radio(
+            "Filtrar instrumentos por tipo",
+            ["Todos", "Activos", "Índices"],
+            horizontal=True,
+            key=f"{clave}_tipo_instrumento",
+        )
+        if tipo_instrumento == "Activos":
+            opciones = list(catalogo_activos)
+        elif tipo_instrumento == "Índices":
+            opciones = list(catalogo_indices)
+        else:
+            opciones = list(catalogo)
+        valores_predeterminados = (
+            activos_predeterminados if tipo_instrumento == "Todos" else opciones[:2]
+        )
+        clave_instrumentos = f"{clave}_instrumentos_{tipo_instrumento.lower()}"
+    else:
+        opciones = list(catalogo)
+        valores_predeterminados = activos_predeterminados
+        clave_instrumentos = f"{clave}_instrumentos"
+
     instrumentos = st.multiselect(
-        "Activos e índices",
-        options=[*ACTIVOS, *INDICES],
-        default=activos_predeterminados,
-        key=f"{clave}_instrumentos",
+        "Instrumentos disponibles",
+        options=opciones,
+        default=valores_predeterminados,
+        key=clave_instrumentos,
     )
     tickers_personalizados = st.text_input(
         "Otros tickers",
@@ -89,7 +129,7 @@ def mostrar_seguimiento(
             key=f"{clave}_fecha_final",
         )
 
-    tickers = [ACTIVOS.get(item, INDICES.get(item, item)) for item in instrumentos]
+    tickers = [catalogo.get(item, item) for item in instrumentos]
     tickers.extend(
         ticker.strip().upper()
         for ticker in tickers_personalizados.split(",")
@@ -233,7 +273,10 @@ with tab_black_litterman:
         "black_litterman",
         fecha_inicio,
         fecha_actual,
+        ACTIVOS,
+        INDICES,
         list(ACTIVOS)[:2],
+        permitir_filtro_tipo=True,
     )
 
 with tab_hrp:
@@ -243,5 +286,7 @@ with tab_hrp:
         "hrp",
         fecha_inicio,
         fecha_actual,
-        list(ACTIVOS)[:2],
+        CRIPTOMONEDAS,
+        COMMODITIES,
+        [*CRIPTOMONEDAS, *COMMODITIES],
     )
