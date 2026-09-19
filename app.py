@@ -50,18 +50,71 @@ def calcular_estadisticas(precios: pd.DataFrame) -> pd.DataFrame:
     return estadisticas
 
 
-st.set_page_config(page_title="Monitor de activos", page_icon="📈", layout="wide")
+st.set_page_config(
+    page_title="Dashboard de portafolios",
+    page_icon="📊",
+    layout="wide",
+)
 fecha_actual = date.today()
 fecha_inicio = fecha_hace_dos_anios(fecha_actual)
 
-with st.sidebar:
-    st.header("Módulos")
-    modulo = st.radio(
-        "Selecciona una sección",
-        ["Monitoreo", "Optimización BL & HRP"],
-    )
+if "pagina" not in st.session_state:
+    st.session_state.pagina = "Dashboard"
 
-if modulo == "Optimización BL & HRP":
+with st.sidebar:
+    st.header("Navegación")
+    if st.button("⌂  Dashboard", use_container_width=True):
+        st.session_state.pagina = "Dashboard"
+        st.rerun()
+    modulo = st.radio(
+        "Ir directamente a",
+        ["Monitoreo", "Optimización BL & HRP"],
+        index=None,
+    )
+    if modulo:
+        st.session_state.pagina = modulo
+
+pagina = st.session_state.pagina
+
+if pagina == "Dashboard":
+    st.title("Dashboard de optimización de portafolios")
+    st.caption("Selecciona el módulo con el que quieres trabajar")
+
+    st.divider()
+    col_monitoreo, col_optimizacion = st.columns(2, gap="large")
+
+    with col_monitoreo:
+        st.subheader("📈 Monitoreo de activos")
+        st.write(
+            "Consulta precios, retornos históricos y estadísticas de riesgo "
+            "para activos e índices."
+        )
+        if st.button("Abrir monitoreo", type="primary", use_container_width=True):
+            st.session_state.pagina = "Monitoreo"
+            st.rerun()
+
+    with col_optimizacion:
+        st.subheader("⚖️ Optimización BL & HRP")
+        st.write(
+            "Construye portafolios usando los modelos Black-Litterman y "
+            "Paridad por Riesgo Jerárquico."
+        )
+        if st.button(
+            "Abrir optimización",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state.pagina = "Optimización BL & HRP"
+            st.rerun()
+
+    st.divider()
+    st.subheader("Resumen")
+    metrica_activos, metrica_modelos = st.columns(2)
+    metrica_activos.metric("Activos disponibles", len(ACTIVOS) + len(INDICES))
+    metrica_modelos.metric("Modelos de optimización", 2)
+    st.stop()
+
+if pagina == "Optimización BL & HRP":
     st.title("Optimización de portafolios")
     st.info("Este módulo se incorporará aquí próximamente.")
     st.stop()
