@@ -50,6 +50,106 @@ def calcular_estadisticas(precios: pd.DataFrame) -> pd.DataFrame:
     return estadisticas
 
 
+def mostrar_seguimiento(
+    titulo: str,
+    descripcion: str,
+    clave: str,
+    fecha_inicio: date,
+    fecha_actual: date,
+    activos_predeterminados: list[str],
+) -> None:
+    st.subheader(titulo)
+    st.caption(descripcion)
+
+    instrumentos = st.multiselect(
+        "Activos e índices",
+        options=[*ACTIVOS, *INDICES],
+        default=activos_predeterminados,
+        key=f"{clave}_instrumentos",
+    )
+    tickers_personalizados = st.text_input(
+        "Otros tickers",
+        placeholder="Ejemplo: AMZN, ^VIX",
+        help="Sepáralos por comas usando los símbolos de Yahoo Finance.",
+        key=f"{clave}_tickers_personalizados",
+    )
+    col_fecha_inicio, col_fecha_final = st.columns(2)
+    with col_fecha_inicio:
+        fecha_inicio_seleccionada = st.date_input(
+            "Fecha inicial",
+            value=fecha_inicio,
+            max_value=fecha_actual,
+            key=f"{clave}_fecha_inicio",
+        )
+    with col_fecha_final:
+        st.date_input(
+            "Fecha final",
+            value=fecha_actual,
+            disabled=True,
+            key=f"{clave}_fecha_final",
+        )
+
+    tickers = [ACTIVOS.get(item, INDICES.get(item, item)) for item in instrumentos]
+    tickers.extend(
+        ticker.strip().upper()
+        for ticker in tickers_personalizados.split(",")
+        if ticker.strip()
+    )
+    tickers = list(dict.fromkeys(tickers))
+
+    if not tickers:
+        st.warning("Selecciona al menos un activo o índice para continuar.")
+        return
+
+    with st.spinner("Descargando precios..."):
+        precios = descargar_precios(
+            tuple(tickers), fecha_inicio_seleccionada, fecha_actual
+        )
+
+    if precios.empty:
+        st.error("No se encontraron precios para el periodo seleccionado.")
+        return
+
+    estadisticas = calcular_estadisticas(precios)
+    estadisticas.index.name = "Ticker"
+
+    tab_precios, tab_retorno, tab_estadisticas = st.tabs(
+        ["Precios", "Retornos históricos", "Estadísticas clave"]
+    )
+
+    with tab_precios:
+        st.subheader("Evolución de los precios")
+        st.line_chart(precios, y_label="Precio de cierre", x_label="Fecha")
+        st.dataframe(precios, width="stretch")
+
+    with tab_retorno:
+        retornos = precios.pct_change(fill_method=None).dropna(how="all")
+        st.subheader("Retornos diarios")
+        st.line_chart(retornos, y_label="Retorno", x_label="Fecha")
+        st.dataframe(retornos, width="stretch")
+
+    with tab_estadisticas:
+        st.subheader("Resumen de rendimiento y riesgo")
+        st.dataframe(
+            estadisticas.style.format(
+                {
+                    "Último precio": "{:.2f}",
+                    "Retorno total": "{:.2%}",
+                    "Retorno anualizado": "{:.2%}",
+                    "Volatilidad anualizada": "{:.2%}",
+                    "Máxima caída": "{:.2%}",
+                }
+            ),
+            width="stretch",
+        )
+
+    st.caption("La volatilidad y los retornos anualizados usan 252 días de mercado.")
+    st.caption(
+        f"Periodo: {precios.index.min().date()} a {precios.index.max().date()} | "
+        f"Filas: {len(precios):,}"
+    )
+
+
 st.set_page_config(
     page_title="Dashboard de portafolios",
     page_icon="📊",
@@ -120,83 +220,28 @@ if pagina == "Optimización BL & HRP":
     st.stop()
 
 st.title("Monitoreo de activos e índices")
-st.caption("Precios diarios, retornos históricos y estadísticas de riesgo")
+st.caption("Selecciona los activos de cada modelo y consulta sus precios, retornos y riesgos")
 
-with st.sidebar:
-    st.divider()
-    st.header("Configuración del monitoreo")
-    instrumentos = st.multiselect(
-        "Activos e índices",
-        options=[*ACTIVOS, *INDICES],
-        default=list(ACTIVOS)[:2],
-    )
-    tickers_personalizados = st.text_input(
-        "Otros tickers",
-        placeholder="Ejemplo: AMZN, ^VIX",
-        help="Sepáralos por comas usando los símbolos de Yahoo Finance.",
-    )
-    fecha_inicio = st.date_input(
-        "Fecha inicial",
-        value=fecha_inicio,
-        max_value=fecha_actual,
-    )
-    st.date_input("Fecha final", value=fecha_actual, disabled=True)
-
-tickers = [ACTIVOS.get(item, INDICES.get(item, item)) for item in instrumentos]
-tickers.extend(
-    ticker.strip().upper()
-    for ticker in tickers_personalizados.split(",")
-    if ticker.strip()
-)
-tickers = list(dict.fromkeys(tickers))
-
-if not tickers:
-    st.warning("Selecciona al menos un activo.")
-    st.stop()
-
-with st.spinner("Descargando precios..."):
-    precios = descargar_precios(tuple(tickers), fecha_inicio, fecha_actual)
-
-if precios.empty:
-    st.error("No se encontraron precios para el periodo seleccionado.")
-    st.stop()
-
-estadisticas = calcular_estadisticas(precios)
-estadisticas.index.name = "Ticker"
-
-tab_precios, tab_retorno, tab_estadisticas = st.tabs(
-    ["Precios", "Retornos históricos", "Estadísticas clave"]
+tab_black_litterman, tab_hrp = st.tabs(
+    ["Activos para Black-Litterman", "Activos de seguimiento HRP"]
 )
 
-with tab_precios:
-    st.subheader("Evolución de los precios")
-    st.line_chart(precios, y_label="Precio de cierre", x_label="Fecha")
-    st.dataframe(precios, width="stretch")
-
-with tab_retorno:
-    retornos = precios.pct_change(fill_method=None).dropna(how="all")
-    st.subheader("Retornos diarios")
-    st.line_chart(retornos, y_label="Retorno", x_label="Fecha")
-    st.dataframe(retornos, width="stretch")
-
-with tab_estadisticas:
-    st.subheader("Resumen de rendimiento y riesgo")
-    st.dataframe(
-        estadisticas.style.format(
-            {
-                "Último precio": "{:.2f}",
-                "Retorno total": "{:.2%}",
-                "Retorno anualizado": "{:.2%}",
-                "Volatilidad anualizada": "{:.2%}",
-                "Máxima caída": "{:.2%}",
-            }
-        ),
-        width="stretch",
+with tab_black_litterman:
+    mostrar_seguimiento(
+        "Activos e índices para Black-Litterman",
+        "Define el universo de activos e índices que utilizará el modelo Black-Litterman.",
+        "black_litterman",
+        fecha_inicio,
+        fecha_actual,
+        list(ACTIVOS)[:2],
     )
 
-st.caption("La volatilidad y los retornos anualizados usan 252 días de mercado.")
-
-st.caption(
-    f"Periodo: {precios.index.min().date()} a {precios.index.max().date()} | "
-    f"Filas: {len(precios):,}"
-)
+with tab_hrp:
+    mostrar_seguimiento(
+        "Activos de seguimiento para HRP",
+        "Selecciona los activos que se seguirán para construir el portafolio HRP.",
+        "hrp",
+        fecha_inicio,
+        fecha_actual,
+        list(ACTIVOS)[:2],
+    )
