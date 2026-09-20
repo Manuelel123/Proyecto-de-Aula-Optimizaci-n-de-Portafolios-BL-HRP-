@@ -1,6 +1,10 @@
 import streamlit as st
 import yfinance as yf
+import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.cluster.hierarchy import linkage
+from scipy.spatial.distance import squareform
 from datetime import date, timedelta
 
 
@@ -62,6 +66,72 @@ def calcular_estadisticas(precios: pd.DataFrame) -> pd.DataFrame:
     estadisticas["Volatilidad anualizada"] = retornos.std() * (252**0.5)
     estadisticas["Máxima caída"] = (precios.ffill() / precios.ffill().cummax() - 1).min()
     return estadisticas
+
+
+def portafolio_varianza_inversa(covarianza: pd.DataFrame) -> np.ndarray:
+    varianzas = np.diag(covarianza)
+    pesos = 1 / varianzas
+    return pesos / pesos.sum()
+
+
+def varianza_cluster(covarianza: pd.DataFrame, activos: list[str]) -> float:
+    covarianza_cluster = covarianza.loc[activos, activos]
+    pesos = portafolio_varianza_inversa(covarianza_cluster).reshape(-1, 1)
+    varianza = pesos.T @ covarianza_cluster.to_numpy() @ pesos
+    return varianza.item()
+
+
+def orden_cuasi_diagonal(enlace: np.ndarray) -> list[int]:
+    enlace = enlace.astype(int)
+    orden = pd.Series([enlace[-1, 0], enlace[-1, 1]])
+    numero_activos = int(enlace[-1, 3])
+
+    while orden.max() >= numero_activos:
+        orden.index = range(0, orden.shape[0] * 2, 2)
+        clusters = orden[orden >= numero_activos]
+        posiciones = clusters.index
+        indices_enlace = clusters.values - numero_activos
+        orden[posiciones] = enlace[indices_enlace, 0]
+        nuevos = pd.Series(enlace[indices_enlace, 1], index=posiciones + 1)
+        orden = pd.concat([orden, nuevos]).sort_index()
+        orden.index = range(orden.shape[0])
+
+    return orden.tolist()
+
+
+def calcular_hrp(retornos: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
+    covarianza = retornos.cov()
+    correlacion = retornos.corr()
+    distancia = np.sqrt((1 - correlacion) / 2)
+    enlace = linkage(squareform(distancia.to_numpy(), checks=False), method="single")
+    orden = correlacion.index[orden_cuasi_diagonal(enlace)].tolist()
+
+    pesos = pd.Series(1.0, index=orden)
+    clusters = [orden]
+    while clusters:
+        clusters = [
+            mitad
+            for cluster in clusters
+            for mitad in (cluster[: len(cluster) // 2], cluster[len(cluster) // 2 :])
+            if len(cluster) > 1
+        ]
+        for posicion in range(0, len(clusters), 2):
+            cluster_izquierdo = clusters[posicion]
+            cluster_derecho = clusters[posicion + 1]
+            varianza_izquierda = varianza_cluster(covarianza, cluster_izquierdo)
+            varianza_derecha = varianza_cluster(covarianza, cluster_derecho)
+            peso_izquierdo = 1 - varianza_izquierda / (
+                varianza_izquierda + varianza_derecha
+            )
+            pesos[cluster_izquierdo] *= peso_izquierdo
+            pesos[cluster_derecho] *= 1 - peso_izquierdo
+
+    return pesos.sort_values(ascending=False), correlacion.loc[orden, orden]
+
+
+def calcular_volatilidad_mensual(retornos: pd.DataFrame) -> pd.DataFrame:
+    volatilidad_mensual = retornos.resample("ME").std() * np.sqrt(21)
+    return volatilidad_mensual.dropna(how="all")
 
 
 def mostrar_seguimiento(
@@ -256,7 +326,151 @@ if pagina == "Dashboard":
 
 if pagina == "Optimización BL & HRP":
     st.title("Optimización de portafolios")
-    st.info("Este módulo se incorporará aquí próximamente.")
+    st.caption("Paridad por Riesgo Jerárquico con datos históricos de Yahoo Finance")
+
+    opciones_hrp = {**CRIPTOMONEDAS, **COMMODITIES}
+    activos_hrp = st.multiselect(
+        "Activos del portafolio HRP",
+        options=list(opciones_hrp),
+        default=list(opciones_hrp),
+        key="optimizacion_hrp_activos",
+    )
+    fecha_inicio_hrp = st.date_input(
+        "Fecha inicial",
+        value=fecha_inicio,
+        max_value=fecha_actual,
+        key="optimizacion_hrp_fecha_inicio",
+    )
+
+    if len(activos_hrp) < 2:
+        st.warning("Selecciona al menos dos activos para calcular HRP.")
+        st.stop()
+
+    tickers_hrp = [opciones_hrp[activo] for activo in activos_hrp]
+    nombres_hrp = {ticker: nombre for nombre, ticker in opciones_hrp.items()}
+    with st.spinner("Descargando datos y calculando el portafolio HRP..."):
+        precios_hrp = descargar_precios(
+            tuple(tickers_hrp), fecha_inicio_hrp, fecha_actual
+        ).dropna(how="all")
+        retornos_hrp = precios_hrp.pct_change(fill_method=None).dropna(how="all")
+        retornos_hrp = retornos_hrp.dropna(axis="columns", how="all").dropna()
+
+    tickers_sin_datos = [
+        ticker for ticker in tickers_hrp if ticker not in retornos_hrp.columns
+    ]
+    if tickers_sin_datos:
+        nombres_sin_datos = [nombres_hrp[ticker] for ticker in tickers_sin_datos]
+        st.warning(
+            "Yahoo Finance no devolvió datos para: "
+            + ", ".join(nombres_sin_datos)
+            + ". Se excluirán del cálculo."
+        )
+
+    if retornos_hrp.shape[1] < 2:
+        st.error("No hay datos suficientes para calcular HRP con los activos elegidos.")
+        st.stop()
+
+    pesos_hrp, correlacion_ordenada = calcular_hrp(retornos_hrp)
+    tabla_pesos = pd.DataFrame(
+        {
+            "Activo": [nombres_hrp[ticker] for ticker in pesos_hrp.index],
+            "Ticker": pesos_hrp.index,
+            "Peso": pesos_hrp.values,
+        }
+    )
+
+    st.subheader("Distribución del portafolio")
+    st.bar_chart(tabla_pesos.set_index("Activo")["Peso"], y_label="Peso")
+    st.dataframe(
+        tabla_pesos.style.format({"Peso": "{:.2%}"}),
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption(f"Suma de pesos: {pesos_hrp.sum():.2%} | Observaciones: {len(retornos_hrp):,}")
+
+    precios_validos = precios_hrp[retornos_hrp.columns].ffill().dropna()
+    precios_mostrados = precios_validos.rename(columns=nombres_hrp)
+    precios_unitarios = precios_validos / precios_validos.iloc[0]
+    precios_unitarios = precios_unitarios.rename(columns=nombres_hrp)
+
+    tab_precios, tab_unitarios, tab_correlacion, tab_retorno, tab_volatilidad = st.tabs(
+        [
+            "Precios por activo",
+            "Evolución unitaria",
+            "Correlación cuasi-diagonal",
+            "Retornos históricos",
+            "Volatilidad mensual",
+        ]
+    )
+    with tab_precios:
+        activo_precio = st.selectbox(
+            "Selecciona un activo para ver su precio",
+            options=list(precios_mostrados.columns),
+            key="hrp_activo_precio",
+        )
+        st.line_chart(
+            precios_mostrados[activo_precio],
+            y_label="Precio de cierre",
+            x_label="Fecha",
+        )
+        st.caption(
+            "Precio de cierre ajustado descargado desde Yahoo Finance."
+        )
+    with tab_unitarios:
+        st.line_chart(
+            precios_unitarios,
+            y_label="Valor unitario (inicio = 1.0)",
+            x_label="Fecha",
+        )
+        st.caption(
+            "Cada activo se normaliza a 1.0 en la primera fecha disponible para comparar su evolución."
+        )
+    with tab_correlacion:
+        st.dataframe(
+            correlacion_ordenada.style.background_gradient(
+                cmap="RdYlGn", vmin=-1, vmax=1
+            ).format("{:.2f}"),
+            width="stretch",
+        )
+    with tab_retorno:
+        st.line_chart(retornos_hrp, y_label="Retorno diario", x_label="Fecha")
+    with tab_volatilidad:
+        volatilidad_mensual = calcular_volatilidad_mensual(retornos_hrp)
+        valores_por_activo = {
+            ticker: (volatilidad_mensual[ticker].dropna() * 100).to_numpy()
+            for ticker in volatilidad_mensual.columns
+        }
+        todos_los_valores = np.concatenate(list(valores_por_activo.values()))
+        bins = np.histogram_bin_edges(todos_los_valores, bins=8)
+        columnas_graficos = st.columns(2)
+        for posicion, (ticker, valores) in enumerate(valores_por_activo.items()):
+            fig, ax = plt.subplots(figsize=(7, 4))
+            ax.hist(
+                valores,
+                bins=bins,
+                color="#2f6f8f",
+                edgecolor="white",
+            )
+            volatilidad_actual = valores[-1]
+            ax.axvline(
+                volatilidad_actual,
+                color="#c75146",
+                linestyle="--",
+                linewidth=2,
+                label=f"Actual: {volatilidad_actual:.2f}%",
+            )
+            ax.set_title(nombres_hrp[ticker])
+            ax.set_xlabel("Volatilidad mensual (%)")
+            ax.set_ylabel("Frecuencia (meses)")
+            ax.grid(axis="y", alpha=0.25)
+            ax.legend()
+            columnas_graficos[posicion % 2].pyplot(fig)
+            plt.close(fig)
+        st.caption(
+            "Cada observación representa la volatilidad realizada de un mes, "
+            "calculada como la desviación estándar de los retornos diarios del mes "
+            "por √21."
+        )
     st.stop()
 
 st.title("Monitoreo de activos e índices")
