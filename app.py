@@ -36,11 +36,11 @@ COMMODITIES = {
 }
 
 
-def fecha_hace_dos_anios(fecha: date) -> date:
+def fecha_hace_un_anio(fecha: date) -> date:
     try:
-        return fecha.replace(year=fecha.year - 2)
+        return fecha.replace(year=fecha.year - 1)
     except ValueError:
-        return fecha.replace(year=fecha.year - 2, day=28)
+        return fecha.replace(year=fecha.year - 1, day=28)
 
 
 @st.cache_data(ttl=3600)
@@ -266,7 +266,7 @@ st.set_page_config(
     layout="wide",
 )
 fecha_actual = date.today()
-fecha_inicio = fecha_hace_dos_anios(fecha_actual)
+fecha_inicio = fecha_hace_un_anio(fecha_actual)
 
 if "pagina" not in st.session_state:
     st.session_state.pagina = "Dashboard"
