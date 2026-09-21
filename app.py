@@ -6,6 +6,12 @@ import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 from datetime import date, timedelta
+from optimizacion_portafolios.arima import (
+    analizar_arima,
+    backtest_arima,
+    descargar_precios_yahoo,
+    pronosticar_precios,
+)
 
 
 ACTIVOS = {
@@ -23,7 +29,6 @@ INDICES = {
 CRIPTOMONEDAS = {
     "Bitcoin (BTC-USD)": "BTC-USD",
     "Ethereum (ETH-USD)": "ETH-USD",
-    "Tether (USDT-USD)": "USDT-USD",
     "BNB (BNB-USD)": "BNB-USD",
     "XRP (XRP-USD)": "XRP-USD",
 }
@@ -55,6 +60,11 @@ def descargar_precios(activos: list[str], fecha_inicio: date, fecha_fin: date):
     )["Close"]
     precios.index.name = "Fecha"
     return precios
+
+
+@st.cache_data(ttl=3600)
+def descargar_serie_arima(ticker: str, fecha_inicio: date, fecha_fin: date) -> pd.Series:
+    return descargar_precios_yahoo(ticker, fecha_inicio, fecha_fin)
 
 
 def calcular_estadisticas(precios: pd.DataFrame) -> pd.DataFrame:
@@ -278,7 +288,7 @@ with st.sidebar:
         st.rerun()
     modulo = st.radio(
         "Ir directamente a",
-        ["Monitoreo", "Optimización BL & HRP"],
+        ["Monitoreo", "Optimización BL & HRP", "Precios de venta de opciones"],
         index=None,
     )
     if modulo:
@@ -322,6 +332,118 @@ if pagina == "Dashboard":
     metrica_activos, metrica_modelos = st.columns(2)
     metrica_activos.metric("Activos disponibles", len(ACTIVOS) + len(INDICES))
     metrica_modelos.metric("Modelos de optimización", 2)
+    st.stop()
+
+if pagina == "Precios de venta de opciones":
+    st.title("Precios de venta de opciones")
+    st.caption("Modelo ARIMA basado en el flujo Box-Jenkins del archivo entregado.")
+
+    ticker = st.selectbox(
+        "Subyacente",
+        options=list(ACTIVOS.values()),
+        format_func=lambda valor: next(
+            nombre for nombre, simbolo in ACTIVOS.items() if simbolo == valor
+        ),
+        key="arima_ticker",
+    )
+    col_fecha, col_horizonte = st.columns(2)
+    with col_fecha:
+        fecha_inicio_arima = st.date_input(
+            "Fecha inicial",
+            value=fecha_actual - timedelta(days=730),
+            max_value=fecha_actual,
+            key="arima_fecha_inicio",
+        )
+    with col_horizonte:
+        horizonte = st.number_input(
+            "Días hábiles a pronosticar",
+            min_value=1,
+            max_value=100,
+            value=10,
+            step=1,
+            key="arima_horizonte",
+        )
+
+    try:
+        with st.spinner("Descargando precios y ejecutando Box-Jenkins..."):
+            precios_arima = descargar_serie_arima(
+                ticker, fecha_inicio_arima, fecha_actual
+            )
+            resultado_arima = analizar_arima(ticker, precios_arima)
+            pronostico_arima = pronosticar_precios(resultado_arima, int(horizonte))
+    except ValueError as error:
+        st.error(str(error))
+        st.stop()
+
+    st.subheader(f"Resultado seleccionado: {resultado_arima.modelo_seleccionado}")
+    metrica_precio, metrica_retorno, metrica_observaciones = st.columns(3)
+    metrica_precio.metric("Último precio", f"${precios_arima.iloc[-1]:,.2f}")
+    metrica_retorno.metric(
+        "Retorno logarítmico medio",
+        f"{resultado_arima.retornos_log.mean():.4%}",
+    )
+    metrica_observaciones.metric("Observaciones", f"{len(precios_arima):,}")
+
+    tab_modelos, tab_diagnostico, tab_pronostico, tab_validacion = st.tabs(
+        ["Comparación de modelos", "Identificación", "Pronóstico", "Validación"]
+    )
+    with tab_modelos:
+        st.dataframe(
+            resultado_arima.comparacion_modelos.style.format(
+                {"aic": "{:.2f}", "bic": "{:.2f}", "hqic": "{:.2f}", "sse": "{:.6f}"}
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption("El modelo seleccionado es el de menor AIC, siguiendo la etapa de validación del script original.")
+    with tab_diagnostico:
+        st.line_chart(
+            resultado_arima.retornos_log,
+            y_label="Retorno logarítmico",
+            x_label="Fecha",
+        )
+        col_acf, col_pacf = st.columns(2)
+        with col_acf:
+            st.subheader("ACF")
+            st.bar_chart(resultado_arima.acf.set_index("rezago"), y_label="ACF")
+        with col_pacf:
+            st.subheader("PACF")
+            st.bar_chart(resultado_arima.pacf.set_index("rezago"), y_label="PACF")
+        st.subheader("Ljung-Box")
+        st.dataframe(resultado_arima.ljung_box, hide_index=True, width="stretch")
+    with tab_pronostico:
+        historico = precios_arima.tail(120).rename("Precio real")
+        futuro = pronostico_arima["precio_pronosticado"].rename("Precio pronosticado")
+        st.line_chart(pd.concat([historico, futuro]), y_label="Precio", x_label="Fecha")
+        st.dataframe(
+            pronostico_arima.style.format(
+                {
+                    "retorno_log_pronosticado": "{:.4%}",
+                    "precio_pronosticado": "${:,.2f}",
+                }
+            ),
+            width="stretch",
+        )
+    with tab_validacion:
+        try:
+            backtest = backtest_arima(precios_arima, n_test=10)
+            st.line_chart(
+                backtest[["precio_real", "precio_pronosticado"]],
+                y_label="Precio",
+                x_label="Fecha",
+            )
+            st.dataframe(
+                backtest.style.format(
+                    {
+                        "precio_real": "${:,.2f}",
+                        "precio_pronosticado": "${:,.2f}",
+                        "error_porcentual": "{:.2f}%",
+                    }
+                ),
+                width="stretch",
+            )
+        except ValueError as error:
+            st.warning(str(error))
     st.stop()
 
 if pagina == "Optimización BL & HRP":
