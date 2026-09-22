@@ -205,7 +205,26 @@ def generar_tearsheet_quantstats(
             download_filename="reporte_quantstats_hrp.html",
         )
         archivo_reporte.seek(0)
-        return archivo_reporte.read()
+        reporte = archivo_reporte.read().decode("utf-8")
+        estilos_responsive = """
+        <style>
+        @media screen and (max-width: 1000px) {
+            body { margin: 16px !important; }
+            .container { max-width: 100% !important; }
+            #left, #right {
+                float: none !important;
+                width: 100% !important;
+                margin: 0 !important;
+            }
+            #left { margin-top: 0 !important; }
+            img, svg { max-width: 100% !important; height: auto !important; }
+            table { display: block; overflow-x: auto; }
+        }
+        </style>
+        """
+        return reporte.replace("</head>", f"{estilos_responsive}</head>").encode(
+            "utf-8"
+        )
 
 
 def calcular_contribuciones_hrp(
