@@ -596,18 +596,48 @@ if pagina == "Optimización BL & HRP":
         "Criptomonedas y commodities": {**CRIPTOMONEDAS, **COMMODITIES},
         "Portafolio de la imagen": PORTAFOLIO_IMAGEN,
     }
+    catalogo_personalizado = {
+        **ACTIVOS,
+        **INDICES,
+        **CRIPTOMONEDAS,
+        **COMMODITIES,
+    }
     nombre_universo = st.selectbox(
         "Portafolio para optimizar",
-        options=list(universos_hrp),
+        options=[*universos_hrp, "Portafolio personalizado"],
         key="optimizacion_hrp_universo",
     )
-    opciones_hrp = universos_hrp[nombre_universo]
-    activos_hrp = st.multiselect(
-        "Activos del portafolio HRP",
-        options=list(opciones_hrp),
-        default=list(opciones_hrp),
-        key=f"optimizacion_hrp_activos_{nombre_universo}",
-    )
+    if nombre_universo == "Portafolio personalizado":
+        activos_personalizados = st.multiselect(
+            "Activos del portafolio HRP",
+            options=list(catalogo_personalizado),
+            key="optimizacion_hrp_activos_personalizado",
+        )
+        tickers_personalizados = st.text_input(
+            "Otros tickers del portafolio",
+            placeholder="Ejemplo: AMZN, NVDA, ^VIX",
+            help="Escribe símbolos de Yahoo Finance separados por comas.",
+            key="optimizacion_hrp_tickers_personalizado",
+        )
+        opciones_hrp = {
+            nombre: catalogo_personalizado[nombre]
+            for nombre in activos_personalizados
+        }
+        for ticker in (
+            ticker.strip().upper()
+            for ticker in tickers_personalizados.split(",")
+            if ticker.strip()
+        ):
+            opciones_hrp.setdefault(ticker, ticker)
+        activos_hrp = list(opciones_hrp)
+    else:
+        opciones_hrp = universos_hrp[nombre_universo]
+        activos_hrp = st.multiselect(
+            "Activos del portafolio HRP",
+            options=list(opciones_hrp),
+            default=list(opciones_hrp),
+            key=f"optimizacion_hrp_activos_{nombre_universo}",
+        )
     nombre_benchmark = st.selectbox(
         "Benchmark para el tearsheet de QuantStats",
         options=list(BENCHMARKS),
