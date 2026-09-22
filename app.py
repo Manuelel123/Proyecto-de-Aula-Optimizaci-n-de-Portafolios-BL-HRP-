@@ -3,9 +3,12 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import quantstats as qs
+import streamlit.components.v1 as components
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 from datetime import date, timedelta
+from tempfile import NamedTemporaryFile
 from optimizacion_portafolios.arima import (
     analizar_arima,
     backtest_arima,
@@ -38,6 +41,39 @@ COMMODITIES = {
     "Petróleo WTI (CL=F)": "CL=F",
     "Gas natural (NG=F)": "NG=F",
     "Cobre (HG=F)": "HG=F",
+}
+PORTAFOLIO_IMAGEN = {
+    "MSFT": "MSFT",
+    "GLD": "GLD",
+    "AAPL": "AAPL",
+    "LULU": "LULU",
+    "DOGEUSD": "DOGE-USD",
+    "AVGO": "AVGO",
+    "BABA": "BABA",
+    "HOOD": "HOOD",
+    "V": "V",
+    "COIN": "COIN",
+    "BRENT": "BZ=F",
+    "AXP": "AXP",
+    "AMD": "AMD",
+    "TKO": "TKO",
+    "GILD": "GILD",
+    "BAC": "BAC",
+    "XLU": "XLU",
+    "XLV": "XLV",
+    "JNJ": "JNJ",
+    "LLY": "LLY",
+    "ELV": "ELV",
+    "HIMS": "HIMS",
+}
+BENCHMARKS = {
+    "S&P 500 (SPY)": "SPY",
+    "Nasdaq 100 (QQQ)": "QQQ",
+    "Dow Jones (DIA)": "DIA",
+    "Russell 2000 (IWM)": "IWM",
+    "Mercado global (VT)": "VT",
+    "Índice S&P 500 (^GSPC)": "^GSPC",
+    "Bitcoin (BTC-USD)": "BTC-USD",
 }
 
 
@@ -142,6 +178,52 @@ def calcular_hrp(retornos: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
 def calcular_volatilidad_mensual(retornos: pd.DataFrame) -> pd.DataFrame:
     volatilidad_mensual = retornos.resample("ME").std() * np.sqrt(21)
     return volatilidad_mensual.dropna(how="all")
+
+
+def calcular_metricas_quantstats(retornos_portafolio: pd.Series) -> pd.DataFrame:
+    metricas = {
+        "Retorno anual compuesto": qs.stats.cagr(retornos_portafolio),
+        "Volatilidad anualizada": qs.stats.volatility(retornos_portafolio),
+        "Ratio de Sharpe": qs.stats.sharpe(retornos_portafolio),
+        "Ratio de Sortino": qs.stats.sortino(retornos_portafolio),
+        "Máxima caída": qs.stats.max_drawdown(retornos_portafolio),
+        "Ratio de Calmar": qs.stats.calmar(retornos_portafolio),
+        "Porcentaje de días positivos": qs.stats.win_rate(retornos_portafolio),
+    }
+    return pd.DataFrame.from_dict(metricas, orient="index", columns=["Valor"])
+
+
+def generar_tearsheet_quantstats(
+    retornos_portafolio: pd.Series, benchmark: pd.Series
+) -> bytes:
+    with NamedTemporaryFile(suffix=".html") as archivo_reporte:
+        qs.reports.html(
+            retornos_portafolio,
+            benchmark=benchmark,
+            output=archivo_reporte.name,
+            title="Strategy Tearsheet - Portafolio HRP",
+            download_filename="reporte_quantstats_hrp.html",
+        )
+        archivo_reporte.seek(0)
+        return archivo_reporte.read()
+
+
+def calcular_contribuciones_hrp(
+    retornos: pd.DataFrame, pesos: pd.Series
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    contribuciones_diarias = retornos.mul(pesos, axis="columns")
+    resumen = pd.DataFrame(index=pesos.index)
+    resumen["Peso HRP"] = pesos
+    resumen["Retorno anualizado"] = retornos.mean() * 252
+    resumen["Volatilidad anualizada"] = retornos.std() * np.sqrt(252)
+    resumen["Contribución anualizada"] = contribuciones_diarias.mean() * 252
+    retorno_total = resumen["Contribución anualizada"].sum()
+    resumen["Participación del retorno"] = (
+        resumen["Contribución anualizada"] / retorno_total
+        if retorno_total != 0
+        else 0
+    )
+    return contribuciones_diarias, resumen
 
 
 def mostrar_seguimiento(
@@ -383,6 +465,11 @@ if pagina == "Precios de venta de opciones":
         f"{resultado_arima.retornos_log.mean():.4%}",
     )
     metrica_observaciones.metric("Observaciones", f"{len(precios_arima):,}")
+    if not bool(resultado_arima.comparacion_modelos.iloc[0]["residuos_blancos"]):
+        st.warning(
+            "El modelo seleccionado minimiza el error de validación, pero sus residuos "
+            "no son compatibles con ruido blanco según Ljung-Box."
+        )
 
     tab_modelos, tab_diagnostico, tab_pronostico, tab_validacion = st.tabs(
         ["Comparación de modelos", "Identificación", "Pronóstico", "Validación"]
@@ -390,12 +477,24 @@ if pagina == "Precios de venta de opciones":
     with tab_modelos:
         st.dataframe(
             resultado_arima.comparacion_modelos.style.format(
-                {"aic": "{:.2f}", "bic": "{:.2f}", "hqic": "{:.2f}", "sse": "{:.6f}"}
+                {
+                    "aic": "{:.2f}",
+                    "bic": "{:.2f}",
+                    "hqic": "{:.2f}",
+                    "sse": "{:.6f}",
+                    "p_valor_ljung_box_min": "{:.4f}",
+                    "rmse_validacion_retorno": "{:.6f}",
+                    "rmse_validacion_precio": "{:.2f}",
+                }
             ),
             hide_index=True,
             width="stretch",
         )
-        st.caption("El modelo seleccionado es el de menor AIC, siguiendo la etapa de validación del script original.")
+        st.caption(
+            "Se selecciona el menor RMSE de precio en la validación temporal. "
+            "Ljung-Box identifica si los residuos son ruido blanco y se usa como "
+            "desempate; el AIC se usa como segundo desempate."
+        )
     with tab_diagnostico:
         st.line_chart(
             resultado_arima.retornos_log,
@@ -427,11 +526,54 @@ if pagina == "Precios de venta de opciones":
     with tab_validacion:
         try:
             backtest = backtest_arima(precios_arima, n_test=10)
-            st.line_chart(
-                backtest[["precio_real", "precio_pronosticado"]],
-                y_label="Precio",
-                x_label="Fecha",
+            dias_historicos = min(60, len(precios_arima) - len(backtest))
+            inicio_prueba = backtest.index[0]
+            historico_validacion = precios_arima.loc[
+                precios_arima.index < inicio_prueba
+            ].tail(dias_historicos)
+            pronostico_grafico = backtest["precio_pronosticado"].copy()
+            pronostico_grafico.index = backtest.index
+
+            figura, eje = plt.subplots(figsize=(12, 5))
+            eje.plot(
+                historico_validacion.index,
+                historico_validacion.to_numpy(),
+                color="#53606b",
+                linewidth=1.8,
+                label="Histórico de entrenamiento",
             )
+            eje.plot(
+                backtest.index,
+                backtest["precio_real"],
+                color="#1769aa",
+                marker="o",
+                linewidth=2.2,
+                label="Precio real",
+            )
+            eje.plot(
+                pronostico_grafico.index,
+                pronostico_grafico,
+                color="#d95f02",
+                marker="x",
+                linestyle="--",
+                linewidth=2.2,
+                label="Pronóstico ARIMA",
+            )
+            eje.axvline(
+                inicio_prueba,
+                color="#555555",
+                linestyle=":",
+                linewidth=1.5,
+                label="Inicio de la prueba",
+            )
+            eje.set_title("Validación fuera de muestra: precio real frente a pronóstico")
+            eje.set_xlabel("Fecha")
+            eje.set_ylabel("Precio")
+            eje.grid(axis="y", alpha=0.25)
+            eje.legend()
+            figura.autofmt_xdate()
+            st.pyplot(figura)
+            plt.close(figura)
             st.dataframe(
                 backtest.style.format(
                     {
@@ -450,13 +592,29 @@ if pagina == "Optimización BL & HRP":
     st.title("Optimización de portafolios")
     st.caption("Paridad por Riesgo Jerárquico con datos históricos de Yahoo Finance")
 
-    opciones_hrp = {**CRIPTOMONEDAS, **COMMODITIES}
+    universos_hrp = {
+        "Criptomonedas y commodities": {**CRIPTOMONEDAS, **COMMODITIES},
+        "Portafolio de la imagen": PORTAFOLIO_IMAGEN,
+    }
+    nombre_universo = st.selectbox(
+        "Portafolio para optimizar",
+        options=list(universos_hrp),
+        key="optimizacion_hrp_universo",
+    )
+    opciones_hrp = universos_hrp[nombre_universo]
     activos_hrp = st.multiselect(
         "Activos del portafolio HRP",
         options=list(opciones_hrp),
         default=list(opciones_hrp),
-        key="optimizacion_hrp_activos",
+        key=f"optimizacion_hrp_activos_{nombre_universo}",
     )
+    nombre_benchmark = st.selectbox(
+        "Benchmark para el tearsheet de QuantStats",
+        options=list(BENCHMARKS),
+        index=0,
+        key="optimizacion_hrp_benchmark",
+    )
+    ticker_benchmark = BENCHMARKS[nombre_benchmark]
     fecha_inicio_hrp = st.date_input(
         "Fecha inicial",
         value=fecha_inicio,
@@ -493,6 +651,33 @@ if pagina == "Optimización BL & HRP":
         st.stop()
 
     pesos_hrp, correlacion_ordenada = calcular_hrp(retornos_hrp)
+    retornos_portafolio_hrp = retornos_hrp.dot(pesos_hrp).rename("Portafolio HRP")
+    with st.spinner(f"Descargando benchmark {ticker_benchmark} para el tearsheet..."):
+        precios_benchmark = descargar_precios(
+            (ticker_benchmark,), fecha_inicio_hrp, fecha_actual
+        )
+    if precios_benchmark.empty:
+        st.error(
+            f"Yahoo Finance no devolvió datos para el benchmark {ticker_benchmark}."
+        )
+        st.stop()
+    if isinstance(precios_benchmark, pd.Series):
+        serie_benchmark = precios_benchmark
+    else:
+        if ticker_benchmark not in precios_benchmark.columns:
+            st.error(
+                f"No se encontró la serie de cierre del benchmark {ticker_benchmark}."
+            )
+            st.stop()
+        serie_benchmark = precios_benchmark[ticker_benchmark]
+    retornos_benchmark = serie_benchmark.pct_change(fill_method=None).rename(
+        ticker_benchmark
+    )
+    datos_quantstats = pd.concat(
+        [retornos_portafolio_hrp, retornos_benchmark], axis=1
+    ).dropna()
+    retornos_portafolio_hrp = datos_quantstats["Portafolio HRP"]
+    retornos_benchmark = datos_quantstats[ticker_benchmark]
     tabla_pesos = pd.DataFrame(
         {
             "Activo": [nombres_hrp[ticker] for ticker in pesos_hrp.index],
@@ -515,13 +700,14 @@ if pagina == "Optimización BL & HRP":
     precios_unitarios = precios_validos / precios_validos.iloc[0]
     precios_unitarios = precios_unitarios.rename(columns=nombres_hrp)
 
-    tab_precios, tab_unitarios, tab_correlacion, tab_retorno, tab_volatilidad = st.tabs(
+    tab_precios, tab_unitarios, tab_correlacion, tab_retorno, tab_volatilidad, tab_quantstats = st.tabs(
         [
             "Precios por activo",
             "Evolución unitaria",
             "Correlación cuasi-diagonal",
             "Retornos históricos",
             "Volatilidad mensual",
+            "Análisis QuantStats",
         ]
     )
     with tab_precios:
@@ -556,6 +742,66 @@ if pagina == "Optimización BL & HRP":
         )
     with tab_retorno:
         st.line_chart(retornos_hrp, y_label="Retorno diario", x_label="Fecha")
+        st.line_chart(
+            retornos_portafolio_hrp,
+            y_label="Retorno diario del portafolio",
+            x_label="Fecha",
+        )
+    with tab_quantstats:
+        st.subheader("Tearsheet oficial de QuantStats")
+        st.caption(
+            f"El reporte compara el portafolio HRP contra {nombre_benchmark} usando exactamente la salida "
+            "generada por QuantStats."
+        )
+        contribuciones_hrp, resumen_contribuciones = calcular_contribuciones_hrp(
+            retornos_hrp, pesos_hrp
+        )
+        st.markdown(
+            "El retorno diario del portafolio se calcula como la suma de los retornos "
+            "de cada activo multiplicados por su peso HRP:"
+        )
+        st.latex(
+            r"R_{p,t} = \sum_i w_i R_{i,t}"
+            r"\quad\text{y}\quad"
+            r"C_{i,t} = w_i R_{i,t}"
+        )
+        st.caption(
+            "Los pesos HRP son fijos durante el periodo analizado. Por eso QuantStats "
+            "recibe la serie resultante de sumar las contribuciones diarias de todos los activos."
+        )
+
+        st.subheader("Contribución de cada activo")
+        tabla_contribuciones = resumen_contribuciones.rename(
+            index=nombres_hrp
+        ).rename_axis("Activo")
+        tabla_contribuciones_mostrada = tabla_contribuciones.copy()
+        for columna in [
+            "Peso HRP",
+            "Retorno anualizado",
+            "Volatilidad anualizada",
+            "Contribución anualizada",
+            "Participación del retorno",
+        ]:
+            tabla_contribuciones_mostrada[columna] = tabla_contribuciones_mostrada[
+                columna
+            ].map(lambda valor: f"{valor:.2%}")
+        st.dataframe(tabla_contribuciones_mostrada, width="stretch")
+        st.bar_chart(
+            tabla_contribuciones["Contribución anualizada"],
+            y_label="Contribución anualizada",
+        )
+
+        reporte_quantstats = generar_tearsheet_quantstats(
+            retornos_portafolio_hrp, retornos_benchmark
+        )
+        components.html(reporte_quantstats, height=1800, scrolling=True)
+        st.download_button(
+            "Descargar tearsheet completo de QuantStats",
+            data=reporte_quantstats,
+            file_name="reporte_quantstats_hrp.html",
+            mime="text/html",
+            key="descargar_reporte_quantstats_hrp",
+        )
     with tab_volatilidad:
         volatilidad_mensual = calcular_volatilidad_mensual(retornos_hrp)
         valores_por_activo = {
