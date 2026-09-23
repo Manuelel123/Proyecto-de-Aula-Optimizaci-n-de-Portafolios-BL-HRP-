@@ -376,6 +376,8 @@ if pagina == "Precios de venta de opciones":
         st.stop()
 
     st.subheader(f"Resultado seleccionado: {resultado_arima.modelo_seleccionado}")
+    for advertencia in resultado_arima.advertencias:
+        st.warning(advertencia)
     metrica_precio, metrica_retorno, metrica_observaciones = st.columns(3)
     metrica_precio.metric("Último precio", f"${precios_arima.iloc[-1]:,.2f}")
     metrica_retorno.metric(
@@ -390,12 +392,21 @@ if pagina == "Precios de venta de opciones":
     with tab_modelos:
         st.dataframe(
             resultado_arima.comparacion_modelos.style.format(
-                {"aic": "{:.2f}", "bic": "{:.2f}", "hqic": "{:.2f}", "sse": "{:.6f}"}
+                {
+                    "aic": "{:.2f}",
+                    "bic": "{:.2f}",
+                    "hqic": "{:.2f}",
+                    "sse": "{:.6f}",
+                    "p_valor_ljung_box_min": "{:.4f}",
+                    "rmse_rolling_retorno": "{:.6f}",
+                    "rmse_validacion_retorno": "{:.6f}",
+                    "rmse_validacion_precio": "{:.4f}",
+                }
             ),
             hide_index=True,
             width="stretch",
         )
-        st.caption("El modelo seleccionado es el de menor AIC, siguiendo la etapa de validación del script original.")
+        st.caption("Se priorizan residuos blancos por Ljung-Box y luego parsimonia por AIC.")
     with tab_diagnostico:
         st.line_chart(
             resultado_arima.retornos_log,
@@ -413,13 +424,25 @@ if pagina == "Precios de venta de opciones":
         st.dataframe(resultado_arima.ljung_box, hide_index=True, width="stretch")
     with tab_pronostico:
         historico = precios_arima.tail(120).rename("Precio real")
-        futuro = pronostico_arima["precio_pronosticado"].rename("Precio pronosticado")
-        st.line_chart(pd.concat([historico, futuro]), y_label="Precio", x_label="Fecha")
+        futuro = pronostico_arima[
+            ["precio_pronosticado", "precio_ic_inferior", "precio_ic_superior"]
+        ].rename(
+            columns={
+                "precio_pronosticado": "Precio pronosticado",
+                "precio_ic_inferior": "Intervalo inferior",
+                "precio_ic_superior": "Intervalo superior",
+            }
+        )
+        st.line_chart(
+            pd.concat([historico, futuro]), y_label="Precio", x_label="Fecha"
+        )
         st.dataframe(
             pronostico_arima.style.format(
                 {
                     "retorno_log_pronosticado": "{:.4%}",
                     "precio_pronosticado": "${:,.2f}",
+                    "precio_ic_inferior": "${:,.2f}",
+                    "precio_ic_superior": "${:,.2f}",
                 }
             ),
             width="stretch",
@@ -437,6 +460,8 @@ if pagina == "Precios de venta de opciones":
                     {
                         "precio_real": "${:,.2f}",
                         "precio_pronosticado": "${:,.2f}",
+                        "precio_ic_inferior": "${:,.2f}",
+                        "precio_ic_superior": "${:,.2f}",
                         "error_porcentual": "{:.2f}%",
                     }
                 ),
