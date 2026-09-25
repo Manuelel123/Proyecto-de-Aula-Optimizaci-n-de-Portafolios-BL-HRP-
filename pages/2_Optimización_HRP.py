@@ -1,10 +1,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import quantstats as qs
 import streamlit as st
 import streamlit.components.v1 as components
 
 from optimizacion_portafolios.ui import (
+    ACTIVOS_HRP,
     BENCHMARKS,
     COMMODITIES,
     CRIPTOMONEDAS,
@@ -26,6 +28,7 @@ st.title("Optimización de portafolios")
 st.caption("Paridad por Riesgo Jerárquico con datos históricos de Yahoo Finance")
 
 universos_hrp = {
+    "Selección directa de activos": ACTIVOS_HRP,
     "Criptomonedas y commodities": {**CRIPTOMONEDAS, **COMMODITIES},
     "Portafolio de la imagen": PORTAFOLIO_IMAGEN,
     "Portafolio Colombia": PORTAFOLIO_COLOMBIA,
@@ -42,13 +45,29 @@ activos_hrp = st.multiselect(
     default=list(opciones_hrp),
     key=f"optimizacion_hrp_activos_{nombre_universo}",
 )
+tickers_personalizados = st.text_input(
+    "Agregar otros activos",
+    placeholder="Ejemplo: AMZN, NVDA, ^VIX",
+    help="Escribe tickers de Yahoo Finance separados por comas.",
+    key="optimizacion_hrp_tickers_personalizados",
+)
 nombre_benchmark = st.selectbox(
     "Benchmark para el tearsheet de QuantStats",
     options=list(BENCHMARKS),
     index=0,
     key="optimizacion_hrp_benchmark",
 )
-ticker_benchmark = BENCHMARKS[nombre_benchmark]
+ticker_benchmark_personalizado = st.text_input(
+    "Benchmark personalizado (opcional)",
+    placeholder="Ejemplo: ^COLCAP, SPY o QQQ",
+    help="Si lo escribes, reemplazará el benchmark seleccionado arriba.",
+    key="optimizacion_hrp_benchmark_personalizado",
+).strip().upper()
+if ticker_benchmark_personalizado:
+    ticker_benchmark = ticker_benchmark_personalizado
+    nombre_benchmark = f"Benchmark personalizado ({ticker_benchmark})"
+else:
+    ticker_benchmark = BENCHMARKS[nombre_benchmark]
 fecha_inicio_hrp = st.date_input(
     "Fecha inicial",
     value=fecha_inicio,
@@ -56,12 +75,19 @@ fecha_inicio_hrp = st.date_input(
     key="optimizacion_hrp_fecha_inicio",
 )
 
-if len(activos_hrp) < 2:
+tickers_hrp = [opciones_hrp[activo] for activo in activos_hrp]
+nombres_hrp = {ticker: nombre for nombre, ticker in opciones_hrp.items()}
+for ticker in tickers_personalizados.split(","):
+    ticker = ticker.strip().upper()
+    if ticker:
+        tickers_hrp.append(ticker)
+        nombres_hrp.setdefault(ticker, ticker)
+tickers_hrp = list(dict.fromkeys(tickers_hrp))
+
+if len(tickers_hrp) < 2:
     st.warning("Selecciona al menos dos activos para calcular HRP.")
     st.stop()
 
-tickers_hrp = [opciones_hrp[activo] for activo in activos_hrp]
-nombres_hrp = {ticker: nombre for nombre, ticker in opciones_hrp.items()}
 with st.spinner("Descargando datos y calculando el portafolio HRP..."):
     precios_hrp = descargar_precios(
         tuple(tickers_hrp), fecha_inicio_hrp, fecha_actual
@@ -211,17 +237,63 @@ with tab_quantstats:
         ),
         width="stretch",
     )
+    tab_graficos_qs, tab_reporte_qs = st.tabs(
+        ["Gráficos QuantStats", "Tearsheet completo"]
+    )
+    with tab_graficos_qs:
+        graficos_quantstats = [
+            (
+                "Rendimiento acumulado",
+                qs.plots.returns(
+                    retornos_portafolio_hrp,
+                    benchmark=retornos_benchmark,
+                    figsize=(10, 5),
+                    show=False,
+                ),
+            ),
+            (
+                "Caída acumulada",
+                qs.plots.drawdown(
+                    retornos_portafolio_hrp,
+                    figsize=(10, 4),
+                    show=False,
+                ),
+            ),
+            (
+                "Sharpe móvil",
+                qs.plots.rolling_sharpe(
+                    retornos_portafolio_hrp,
+                    benchmark=retornos_benchmark,
+                    figsize=(10, 3.5),
+                    show=False,
+                ),
+            ),
+            (
+                "Rendimientos mensuales",
+                qs.plots.monthly_heatmap(
+                    retornos_portafolio_hrp,
+                    benchmark=retornos_benchmark,
+                    figsize=(10, 5),
+                    show=False,
+                ),
+            ),
+        ]
+        for titulo_grafico, figura_quantstats in graficos_quantstats:
+            st.subheader(titulo_grafico)
+            st.pyplot(figura_quantstats, clear_figure=True, width="stretch")
+            plt.close(figura_quantstats)
     reporte_quantstats = generar_tearsheet_quantstats(
         retornos_portafolio_hrp, retornos_benchmark
     )
-    components.html(reporte_quantstats, height=1800, scrolling=True)
-    st.download_button(
-        "Descargar tearsheet completo de QuantStats",
-        data=reporte_quantstats,
-        file_name="reporte_quantstats_hrp.html",
-        mime="text/html",
-        key="descargar_reporte_quantstats_hrp",
-    )
+    with tab_reporte_qs:
+        components.html(reporte_quantstats, height=1800, scrolling=True)
+        st.download_button(
+            "Descargar tearsheet completo de QuantStats",
+            data=reporte_quantstats,
+            file_name="reporte_quantstats_hrp.html",
+            mime="text/html",
+            key="descargar_reporte_quantstats_hrp",
+        )
 with tab_volatilidad:
     volatilidad_mensual = calcular_volatilidad_mensual(retornos_hrp)
     valores_por_activo = {

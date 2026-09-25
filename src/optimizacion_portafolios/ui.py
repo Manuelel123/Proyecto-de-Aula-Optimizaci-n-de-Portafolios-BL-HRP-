@@ -88,6 +88,14 @@ PORTAFOLIO_COLOMBIA = {
         "PFCORFICOL",
     )
 }
+ACTIVOS_HRP = {
+    **ACTIVOS,
+    **INDICES,
+    **CRIPTOMONEDAS,
+    **COMMODITIES,
+    **PORTAFOLIO_IMAGEN,
+    **PORTAFOLIO_COLOMBIA,
+}
 BENCHMARKS = {
     "S&P 500 (SPY)": "SPY",
     "Nasdaq 100 (QQQ)": "QQQ",
