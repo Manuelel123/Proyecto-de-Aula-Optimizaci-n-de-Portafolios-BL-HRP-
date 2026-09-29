@@ -11,6 +11,7 @@ dependencies = [
     "matplotlib>=3.9.0",
     "numpy>=2.0.0",
     "pandas>=2.0.0",
+    "pyportfolioopt>=1.5.6",
     "quantstats>=0.0.77",
     "scipy>=1.14.0",
     "statsmodels>=0.14.4",

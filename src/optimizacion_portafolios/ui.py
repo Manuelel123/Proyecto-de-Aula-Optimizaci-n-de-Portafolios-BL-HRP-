@@ -7,6 +7,7 @@ import pandas as pd
 import quantstats as qs
 import streamlit as st
 import yfinance as yf
+from pypfopt import expected_returns
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 
@@ -121,7 +122,7 @@ def descargar_precios(activos: tuple[str, ...], fecha_inicio: date, fecha_fin: d
         start=fecha_inicio,
         end=fecha_fin + timedelta(days=1),
         interval="1d",
-        auto_adjust=False,
+        auto_adjust=True,
         progress=False,
     )["Close"]
     precios.index.name = "Fecha"
@@ -142,6 +143,29 @@ def calcular_estadisticas(precios: pd.DataFrame) -> pd.DataFrame:
     estadisticas["Volatilidad anualizada"] = retornos.std() * (252**0.5)
     estadisticas["Máxima caída"] = (precios.ffill() / precios.ffill().cummax() - 1).min()
     return estadisticas
+
+
+def calcular_retornos_esperados(precios: pd.DataFrame) -> pd.DataFrame:
+    precios = precios.dropna(axis="columns", how="all")
+    retorno_historico = expected_returns.mean_historical_return(
+        precios,
+        returns_data=False,
+        compounding=True,
+        frequency=252,
+    )
+    retorno_ema = expected_returns.ema_historical_return(
+        precios,
+        returns_data=False,
+        compounding=True,
+        span=500,
+        frequency=252,
+    )
+    return pd.DataFrame(
+        {
+            "Retorno histórico esperado": retorno_historico,
+            "Retorno esperado EMA": retorno_ema,
+        }
+    )
 
 
 def portafolio_varianza_inversa(covarianza: pd.DataFrame) -> np.ndarray:
@@ -326,23 +350,93 @@ def mostrar_seguimiento(
         return
     with st.spinner("Descargando precios..."):
         precios = descargar_precios(tuple(tickers), fecha_inicio_seleccionada, fecha_actual)
-    if precios.empty:
+    precios = precios.dropna(axis="columns", how="all")
+    if precios.empty or precios.shape[1] == 0:
         st.error("No se encontraron precios para el periodo seleccionado.")
         return
     estadisticas = calcular_estadisticas(precios)
     estadisticas.index.name = "Ticker"
-    tab_precios, tab_retorno, tab_estadisticas = st.tabs(
-        ["Precios", "Retornos históricos", "Estadísticas clave"]
+    retornos = precios.pct_change(fill_method=None).dropna(how="all")
+    retornos_esperados = calcular_retornos_esperados(precios)
+    volatilidad_mensual = calcular_volatilidad_mensual(retornos)
+    volatilidad_actual = retornos.tail(21).std() * np.sqrt(21)
+    tab_precios, tab_retorno, tab_esperados, tab_volatilidad, tab_estadisticas = st.tabs(
+        [
+            "Precios",
+            "Retornos históricos",
+            "Retornos esperados",
+            "Volatilidad",
+            "Estadísticas clave",
+        ]
     )
     with tab_precios:
         st.subheader("Evolución de los precios")
         st.line_chart(precios, y_label="Precio de cierre", x_label="Fecha")
         st.dataframe(precios, width="stretch")
     with tab_retorno:
-        retornos = precios.pct_change(fill_method=None).dropna(how="all")
         st.subheader("Retornos diarios")
         st.line_chart(retornos, y_label="Retorno", x_label="Fecha")
         st.dataframe(retornos, width="stretch")
+    with tab_esperados:
+        st.subheader("Retornos esperados anualizados")
+        retornos_esperados.index.name = "Ticker"
+        st.dataframe(
+            retornos_esperados.style.format("{:.2%}"),
+            width="stretch",
+        )
+        st.caption(
+            "Estimaciones geométricas anualizadas con precios ajustados y frecuencia "
+            "de 252 días. EMA usa span de 500 días."
+        )
+    with tab_volatilidad:
+        st.subheader("Distribución de volatilidad mensual")
+        tabla_volatilidad = volatilidad_actual.rename(
+            "Volatilidad mensual actual"
+        ).to_frame()
+        tabla_volatilidad.index.name = "Ticker"
+        st.dataframe(
+            tabla_volatilidad.style.format("{:.2%}"),
+            width="stretch",
+        )
+        activos_con_volatilidad = [
+            ticker
+            for ticker in volatilidad_mensual.columns
+            if volatilidad_mensual[ticker].notna().any()
+        ]
+        if activos_con_volatilidad:
+            ticker = st.selectbox(
+                "Activo para el histograma",
+                options=activos_con_volatilidad,
+                key=f"{clave}_activo_histograma_volatilidad",
+            )
+            valores_volatilidad = volatilidad_mensual[ticker].dropna()
+            valor_actual = volatilidad_actual.get(ticker, np.nan)
+            figura, eje = plt.subplots()
+            eje.hist(
+                valores_volatilidad * 100,
+                bins="auto",
+                color="#287D6B",
+                edgecolor="white",
+            )
+            if pd.notna(valor_actual):
+                eje.axvline(
+                    valor_actual * 100,
+                    color="#D26045",
+                    linestyle="--",
+                    label=f"Actual: {valor_actual:.2%}",
+                )
+                eje.legend()
+            eje.set_xlabel("Volatilidad mensual (%)")
+            eje.set_ylabel("Número de meses")
+            eje.set_title(f"Histograma de volatilidad: {ticker}")
+            st.pyplot(figura)
+            plt.close(figura)
+            st.metric(
+                "Volatilidad mensual actual (últimos 21 días)",
+                f"{valor_actual:.2%}" if pd.notna(valor_actual) else "N/D",
+            )
+        else:
+            st.info("No hay suficientes datos para calcular volatilidad mensual.")
     with tab_estadisticas:
         st.subheader("Resumen de rendimiento y riesgo")
         st.dataframe(
@@ -357,7 +451,10 @@ def mostrar_seguimiento(
             ),
             width="stretch",
         )
-    st.caption("La volatilidad y los retornos anualizados usan 252 días de mercado.")
+    st.caption(
+        "Los retornos esperados usan 252 días de mercado; la volatilidad mensual "
+        "usa la desviación diaria del periodo multiplicada por √21."
+    )
     st.caption(
         f"Periodo: {precios.index.min().date()} a {precios.index.max().date()} | "
         f"Filas: {len(precios):,}"
