@@ -1,5 +1,6 @@
 from datetime import date, timedelta
-from tempfile import NamedTemporaryFile
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,9 +8,8 @@ import pandas as pd
 import quantstats as qs
 import streamlit as st
 import yfinance as yf
-from pypfopt import expected_returns
-from scipy.cluster.hierarchy import linkage
-from scipy.spatial.distance import squareform
+from pypfopt import HRPOpt, expected_returns
+from scipy.cluster.hierarchy import to_tree
 
 from optimizacion_portafolios.arima import descargar_precios_yahoo
 
@@ -168,60 +168,14 @@ def calcular_retornos_esperados(precios: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def portafolio_varianza_inversa(covarianza: pd.DataFrame) -> np.ndarray:
-    varianzas = np.diag(covarianza)
-    pesos = 1 / varianzas
-    return pesos / pesos.sum()
-
-
-def varianza_cluster(covarianza: pd.DataFrame, activos: list[str]) -> float:
-    covarianza_cluster = covarianza.loc[activos, activos]
-    pesos = portafolio_varianza_inversa(covarianza_cluster).reshape(-1, 1)
-    varianza = pesos.T @ covarianza_cluster.to_numpy() @ pesos
-    return varianza.item()
-
-
-def orden_cuasi_diagonal(enlace: np.ndarray) -> list[int]:
-    enlace = enlace.astype(int)
-    orden = pd.Series([enlace[-1, 0], enlace[-1, 1]])
-    numero_activos = int(enlace[-1, 3])
-    while orden.max() >= numero_activos:
-        orden.index = range(0, orden.shape[0] * 2, 2)
-        clusters = orden[orden >= numero_activos]
-        posiciones = clusters.index
-        indices_enlace = clusters.values - numero_activos
-        orden[posiciones] = enlace[indices_enlace, 0]
-        nuevos = pd.Series(enlace[indices_enlace, 1], index=posiciones + 1)
-        orden = pd.concat([orden, nuevos]).sort_index()
-        orden.index = range(orden.shape[0])
-    return orden.tolist()
-
-
 def calcular_hrp(retornos: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
-    covarianza = retornos.cov()
+    optimizador = HRPOpt(returns=retornos)
+    pesos = pd.Series(
+        optimizador.optimize(linkage_method="single"),
+        dtype=float,
+    )
     correlacion = retornos.corr()
-    distancia = np.sqrt((1 - correlacion) / 2)
-    enlace = linkage(squareform(distancia.to_numpy(), checks=False), method="single")
-    orden = correlacion.index[orden_cuasi_diagonal(enlace)].tolist()
-    pesos = pd.Series(1.0, index=orden)
-    clusters = [orden]
-    while clusters:
-        clusters = [
-            mitad
-            for cluster in clusters
-            for mitad in (cluster[: len(cluster) // 2], cluster[len(cluster) // 2 :])
-            if len(cluster) > 1
-        ]
-        for posicion in range(0, len(clusters), 2):
-            cluster_izquierdo = clusters[posicion]
-            cluster_derecho = clusters[posicion + 1]
-            varianza_izquierda = varianza_cluster(covarianza, cluster_izquierdo)
-            varianza_derecha = varianza_cluster(covarianza, cluster_derecho)
-            peso_izquierdo = 1 - varianza_izquierda / (
-                varianza_izquierda + varianza_derecha
-            )
-            pesos[cluster_izquierdo] *= peso_izquierdo
-            pesos[cluster_derecho] *= 1 - peso_izquierdo
+    orden = retornos.columns[to_tree(optimizador.clusters).pre_order()].tolist()
     return pesos.sort_values(ascending=False), correlacion.loc[orden, orden]
 
 
@@ -246,16 +200,16 @@ def calcular_metricas_quantstats(retornos_portafolio: pd.Series) -> pd.DataFrame
 def generar_tearsheet_quantstats(
     retornos_portafolio: pd.Series, benchmark: pd.Series
 ) -> bytes:
-    with NamedTemporaryFile(suffix=".html") as archivo_reporte:
+    with TemporaryDirectory() as directorio_temporal:
+        archivo_reporte = Path(directorio_temporal) / "reporte.html"
         qs.reports.html(
             retornos_portafolio,
             benchmark=benchmark,
-            output=archivo_reporte.name,
+            output=str(archivo_reporte),
             title="Strategy Tearsheet - Portafolio HRP",
             download_filename="reporte_quantstats_hrp.html",
         )
-        archivo_reporte.seek(0)
-        return archivo_reporte.read()
+        return archivo_reporte.read_bytes()
 
 
 def calcular_contribuciones_hrp(
