@@ -26,7 +26,7 @@ st.caption(
 universos = {
     "Activos principales": ACTIVOS,
     "Criptomonedas y commodities": {**CRIPTOMONEDAS, **COMMODITIES},
-    "Portafolio de la imagen": PORTAFOLIO_IMAGEN,
+    "portafolio actual: 1": PORTAFOLIO_IMAGEN,
     "Portafolio Colombia": PORTAFOLIO_COLOMBIA,
     "Selección directa de activos": ACTIVOS_HRP,
 }
@@ -35,14 +35,19 @@ with st.form("form_black_litterman"):
     nombre_universo = st.selectbox(
         "Universo de activos",
         options=list(universos),
-        key="bl_universo",
+        index=list(universos).index("portafolio actual: 1"),
+        key="bl_universo_actual_1",
     )
     opciones_activos = universos[nombre_universo]
     activos_seleccionados = st.multiselect(
         "Activos del portafolio",
         options=list(opciones_activos),
-        default=list(opciones_activos)[:4],
-        key=f"bl_activos_{nombre_universo}",
+        default=(
+            list(opciones_activos)
+            if nombre_universo == "portafolio actual: 1"
+            else list(opciones_activos)[:4]
+        ),
+        key="bl_activos_actual_1",
     )
     tickers_personalizados = st.text_input(
         "Agregar otros tickers",

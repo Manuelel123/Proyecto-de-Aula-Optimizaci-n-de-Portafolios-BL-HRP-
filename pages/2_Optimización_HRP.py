@@ -30,20 +30,21 @@ st.caption("Paridad por Riesgo Jerárquico con datos históricos de Yahoo Financ
 universos_hrp = {
     "Selección directa de activos": ACTIVOS_HRP,
     "Criptomonedas y commodities": {**CRIPTOMONEDAS, **COMMODITIES},
-    "Portafolio de la imagen": PORTAFOLIO_IMAGEN,
+    "portafolio actual: 1": PORTAFOLIO_IMAGEN,
     "Portafolio Colombia": PORTAFOLIO_COLOMBIA,
 }
 nombre_universo = st.selectbox(
     "Portafolio para optimizar",
     options=list(universos_hrp),
-    key="optimizacion_hrp_universo",
+    index=list(universos_hrp).index("portafolio actual: 1"),
+    key="optimizacion_hrp_universo_actual_1",
 )
 opciones_hrp = universos_hrp[nombre_universo]
 activos_hrp = st.multiselect(
     "Activos del portafolio HRP",
     options=list(opciones_hrp),
     default=list(opciones_hrp),
-    key=f"optimizacion_hrp_activos_{nombre_universo}",
+    key="optimizacion_hrp_activos_actual_1",
 )
 tickers_personalizados = st.text_input(
     "Agregar otros activos",
