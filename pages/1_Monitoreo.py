@@ -184,6 +184,7 @@ if tab_opciones.open:
             ACTIVOS_OPCIONES,
             {},
             list(ACTIVOS_OPCIONES),
+            histogramas_todos_activos=True,
         )
 
 if tab_portafolio.open:

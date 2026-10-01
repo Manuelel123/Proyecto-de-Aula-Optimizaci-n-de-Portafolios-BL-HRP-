@@ -236,6 +236,62 @@ def calcular_volatilidad_mensual(retornos: pd.DataFrame) -> pd.DataFrame:
     return volatilidad_mensual.dropna(how="all")
 
 
+PERIODOS_VOLATILIDAD = {
+    "Semanal (7 días)": "W-FRI",
+    "Quincenal (15 días)": "15D",
+    "Mensual": "ME",
+    "45 días": "45D",
+    "Dos meses": "2ME",
+}
+
+
+def calcular_volatilidades_historicas(
+    retornos: pd.DataFrame,
+    periodo: str,
+    fecha_inicio: date | pd.Timestamp,
+    fecha_fin: date | pd.Timestamp,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    regla = PERIODOS_VOLATILIDAD[periodo]
+    inicio = pd.Timestamp(fecha_inicio).normalize()
+    fin = pd.Timestamp(fecha_fin).normalize()
+    if regla in {"15D", "45D"}:
+        dias = int(regla.removesuffix("D"))
+        indices_periodo = (retornos.index.normalize() - inicio).days // dias
+        grupos = retornos.groupby(indices_periodo)
+        desviacion_diaria = grupos.std(ddof=1)
+        observaciones = grupos.count()
+        etiquetas = inicio + pd.to_timedelta(desviacion_diaria.index * dias, unit="D")
+        desviacion_diaria.index = etiquetas
+        observaciones.index = etiquetas
+    else:
+        grupos = retornos.resample(regla)
+        desviacion_diaria = grupos.std(ddof=1)
+        observaciones = grupos.count()
+    volatilidad_periodo = (desviacion_diaria * np.sqrt(observaciones)).where(
+        observaciones >= 2
+    ).dropna(how="all")
+    volatilidad_anualizada = (desviacion_diaria * np.sqrt(252)).where(
+        observaciones >= 2
+    ).dropna(how="all")
+    periodos = volatilidad_anualizada.index
+
+    if regla == "W-FRI":
+        inicio_periodo = periodos - pd.Timedelta(days=6)
+        completos = (inicio_periodo >= inicio) & (periodos <= fin)
+    elif regla in {"15D", "45D"}:
+        dias = int(regla.removesuffix("D"))
+        fin_periodo = periodos + pd.Timedelta(days=dias - 1)
+        completos = (periodos >= inicio) & (fin_periodo <= fin)
+    elif regla == "ME":
+        inicio_periodo = periodos.to_period("M").to_timestamp(how="start")
+        completos = (inicio_periodo >= inicio) & (periodos <= fin)
+    else:
+        inicio_periodo = (periodos.to_period("M") - 1).to_timestamp(how="start")
+        completos = (inicio_periodo >= inicio) & (periodos <= fin)
+
+    return volatilidad_periodo.loc[completos], volatilidad_anualizada.loc[completos]
+
+
 def calcular_metricas_quantstats(retornos_portafolio: pd.Series) -> pd.DataFrame:
     metricas = {
         "Retorno anual compuesto": qs.stats.cagr(retornos_portafolio),
@@ -295,6 +351,7 @@ def mostrar_seguimiento(
     catalogo_indices: dict[str, str],
     activos_predeterminados: list[str],
     permitir_filtro_tipo: bool = False,
+    histogramas_todos_activos: bool = False,
 ) -> None:
     st.subheader(titulo)
     st.caption(descripcion)
@@ -367,8 +424,6 @@ def mostrar_seguimiento(
     estadisticas.index.name = "Ticker"
     retornos = precios.pct_change(fill_method=None).dropna(how="all")
     retornos_esperados = calcular_retornos_esperados(precios)
-    volatilidad_mensual = calcular_volatilidad_mensual(retornos)
-    volatilidad_actual = retornos.tail(21).std() * np.sqrt(21)
     tab_precios, tab_retorno, tab_esperados, tab_volatilidad, tab_estadisticas = st.tabs(
         [
             "Precios",
@@ -398,54 +453,171 @@ def mostrar_seguimiento(
             "de 252 días. EMA usa span de 500 días."
         )
     with tab_volatilidad:
-        st.subheader("Distribución de volatilidad mensual")
-        tabla_volatilidad = volatilidad_actual.rename(
-            "Volatilidad mensual actual"
-        ).to_frame()
-        tabla_volatilidad.index.name = "Ticker"
-        st.dataframe(
-            tabla_volatilidad.style.format("{:.2%}"),
-            width="stretch",
-        )
-        activos_con_volatilidad = [
-            ticker
-            for ticker in volatilidad_mensual.columns
-            if volatilidad_mensual[ticker].notna().any()
-        ]
-        if activos_con_volatilidad:
-            ticker = st.selectbox(
-                "Activo para el histograma",
-                options=activos_con_volatilidad,
-                key=f"{clave}_activo_histograma_volatilidad",
+        if histogramas_todos_activos:
+            st.subheader("Volatilidad histórica anualizada por activo")
+            periodo = st.selectbox(
+                "Periodo de cálculo",
+                options=list(PERIODOS_VOLATILIDAD),
+                key=f"{clave}_periodo_histograma_volatilidad",
             )
-            valores_volatilidad = volatilidad_mensual[ticker].dropna()
-            valor_actual = volatilidad_actual.get(ticker, np.nan)
-            figura, eje = plt.subplots()
-            eje.hist(
-                valores_volatilidad * 100,
-                bins="auto",
-                color="#287D6B",
-                edgecolor="white",
+            volatilidad_periodo, volatilidad_anualizada = calcular_volatilidades_historicas(
+                retornos,
+                periodo,
+                precios.index.min(),
+                precios.index.max(),
             )
-            if pd.notna(valor_actual):
-                eje.axvline(
-                    valor_actual * 100,
-                    color="#D26045",
-                    linestyle="--",
-                    label=f"Actual: {valor_actual:.2%}",
+            activos_con_volatilidad = [
+                ticker
+                for ticker in volatilidad_anualizada.columns
+                if volatilidad_anualizada[ticker].notna().any()
+            ]
+            activos_sin_datos = sorted(set(tickers) - set(precios.columns))
+            if activos_sin_datos:
+                st.warning(
+                    "Yahoo Finance no devolvió precios para: "
+                    + ", ".join(activos_sin_datos)
                 )
-                eje.legend()
-            eje.set_xlabel("Volatilidad mensual (%)")
-            eje.set_ylabel("Número de meses")
-            eje.set_title(f"Histograma de volatilidad: {ticker}")
-            st.pyplot(figura)
-            plt.close(figura)
-            st.metric(
-                "Volatilidad mensual actual (últimos 21 días)",
-                f"{valor_actual:.2%}" if pd.notna(valor_actual) else "N/D",
-            )
+            if activos_con_volatilidad:
+                st.caption(
+                    f"Cada estimación usa retornos diarios dentro de un periodo "
+                    f"completo de {periodo.lower()}: VH del periodo con √N sesiones "
+                    "observadas y anualizada con √252. "
+                    f"El histograma muestra {len(volatilidad_anualizada)} periodos "
+                    "completos; se excluyen ventanas parciales. La línea roja "
+                    "marca el periodo completo más reciente."
+                )
+                volatilidad_actual = pd.DataFrame(
+                    {
+                        f"Volatilidad {periodo.lower()}": volatilidad_periodo.iloc[-1],
+                        "Volatilidad anualizada": volatilidad_anualizada.iloc[-1],
+                    }
+                )
+                volatilidad_actual.index.name = "Ticker"
+                st.dataframe(
+                    volatilidad_actual.style.format("{:.2%}"),
+                    width="stretch",
+                )
+
+                columnas = 3
+                filas = (len(activos_con_volatilidad) + columnas - 1) // columnas
+                figura, ejes = plt.subplots(
+                    filas,
+                    columnas,
+                    figsize=(18, 3.6 * filas),
+                    squeeze=False,
+                )
+                for eje, ticker in zip(ejes.flat, activos_con_volatilidad):
+                    valores_anualizados = volatilidad_anualizada[ticker].dropna()
+                    ultimo_periodo = volatilidad_periodo.loc[
+                        valores_anualizados.index[-1], ticker
+                    ]
+                    ultimo_anualizado = valores_anualizados.iloc[-1]
+                    valores = valores_anualizados * 100
+                    eje.hist(
+                        valores,
+                        bins="auto",
+                        color="#287D6B",
+                        edgecolor="white",
+                    )
+                    eje.axvline(
+                        valores.iloc[-1],
+                        color="#D26045",
+                        linestyle="--",
+                        linewidth=1,
+                    )
+                    eje.text(
+                        0.97,
+                        0.95,
+                        f"VH {periodo.lower()}: {ultimo_periodo:.2%}\n"
+                        f"VH anualizada: {ultimo_anualizado:.2%}",
+                        transform=eje.transAxes,
+                        ha="right",
+                        va="top",
+                        fontsize=10,
+                        fontweight="bold",
+                        color="#173A34",
+                        bbox={
+                            "boxstyle": "round,pad=0.35",
+                            "facecolor": "white",
+                            "edgecolor": "#287D6B",
+                            "alpha": 0.9,
+                        },
+                    )
+                    eje.set_title(f"{ticker} (n={len(valores)})")
+                    eje.set_xlabel("Volatilidad anualizada (%)")
+                    eje.set_ylabel("Frecuencia")
+                for eje in list(ejes.flat)[len(activos_con_volatilidad) :]:
+                    eje.set_visible(False)
+                figura.tight_layout()
+                st.pyplot(figura)
+                plt.close(figura)
+                with st.expander("Detalle de volatilidad por periodo"):
+                    st.dataframe(
+                        pd.concat(
+                            {
+                                f"VH {periodo.lower()}": volatilidad_periodo,
+                                "VH anualizada": volatilidad_anualizada,
+                            },
+                            axis="columns",
+                        ).style.format("{:.2%}"),
+                        width="stretch",
+                    )
+            else:
+                st.info(
+                    "No hay periodos completos con suficientes datos para calcular "
+                    "la volatilidad seleccionada. Amplía el rango de fechas."
+                )
         else:
-            st.info("No hay suficientes datos para calcular volatilidad mensual.")
+            st.subheader("Distribución de volatilidad mensual")
+            volatilidad_mensual = calcular_volatilidad_mensual(retornos)
+            volatilidad_actual = retornos.tail(21).std() * np.sqrt(21)
+            tabla_volatilidad = volatilidad_actual.rename(
+                "Volatilidad mensual actual"
+            ).to_frame()
+            tabla_volatilidad.index.name = "Ticker"
+            st.dataframe(
+                tabla_volatilidad.style.format("{:.2%}"),
+                width="stretch",
+            )
+            activos_con_volatilidad = [
+                ticker
+                for ticker in volatilidad_mensual.columns
+                if volatilidad_mensual[ticker].notna().any()
+            ]
+            if activos_con_volatilidad:
+                ticker = st.selectbox(
+                    "Activo para el histograma",
+                    options=activos_con_volatilidad,
+                    key=f"{clave}_activo_histograma_volatilidad",
+                )
+                valores_volatilidad = volatilidad_mensual[ticker].dropna()
+                valor_actual = volatilidad_actual.get(ticker, np.nan)
+                figura, eje = plt.subplots()
+                eje.hist(
+                    valores_volatilidad * 100,
+                    bins="auto",
+                    color="#287D6B",
+                    edgecolor="white",
+                )
+                if pd.notna(valor_actual):
+                    eje.axvline(
+                        valor_actual * 100,
+                        color="#D26045",
+                        linestyle="--",
+                        label=f"Actual: {valor_actual:.2%}",
+                    )
+                    eje.legend()
+                eje.set_xlabel("Volatilidad mensual (%)")
+                eje.set_ylabel("Número de meses")
+                eje.set_title(f"Histograma de volatilidad: {ticker}")
+                st.pyplot(figura)
+                plt.close(figura)
+                st.metric(
+                    "Volatilidad mensual actual (últimos 21 días)",
+                    f"{valor_actual:.2%}" if pd.notna(valor_actual) else "N/D",
+                )
+            else:
+                st.info("No hay suficientes datos para calcular volatilidad mensual.")
     with tab_estadisticas:
         st.subheader("Resumen de rendimiento y riesgo")
         st.dataframe(
@@ -460,10 +632,11 @@ def mostrar_seguimiento(
             ),
             width="stretch",
         )
-    st.caption(
-        "Los retornos esperados usan 252 días de mercado; la volatilidad mensual "
-        "usa la desviación diaria del periodo multiplicada por √21."
-    )
+    if not histogramas_todos_activos:
+        st.caption(
+            "Los retornos esperados usan 252 días de mercado; la volatilidad mensual "
+            "usa la desviación diaria del periodo multiplicada por √21."
+        )
     st.caption(
         f"Periodo: {precios.index.min().date()} a {precios.index.max().date()} | "
         f"Filas: {len(precios):,}"
