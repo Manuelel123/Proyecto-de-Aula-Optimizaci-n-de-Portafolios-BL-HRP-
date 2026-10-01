@@ -1,6 +1,9 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import quantstats as qs
 import streamlit as st
+import streamlit.components.v1 as components
 
 from optimizacion_portafolios.black_litterman import optimizar_black_litterman
 from optimizacion_portafolios.ui import (
@@ -11,8 +14,11 @@ from optimizacion_portafolios.ui import (
     CRIPTOMONEDAS,
     PORTAFOLIO_COLOMBIA,
     PORTAFOLIO_IMAGEN,
+    calcular_metricas_quantstats,
     configurar_pagina,
     descargar_precios,
+    descargar_capitalizacion_yahoo,
+    generar_tearsheet_quantstats,
 )
 
 
@@ -56,15 +62,9 @@ with st.form("form_black_litterman"):
         key="bl_tickers_personalizados",
     )
 
-    prior_seleccionado = st.radio(
-        "Prior de equilibrio",
-        ["Pesos iguales", "Capitalización bursátil"],
-        horizontal=True,
-        help=(
-            "Ambos priors calculan retornos de equilibrio. Pesos iguales asigna el "
-            "mismo peso de mercado; capitalización bursátil usa los valores ingresados."
-        ),
-        key="bl_prior",
+    st.caption(
+        "El prior usa capitalizaciones convertidas a USD; para ETFs sin marketCap, "
+        "usa sus activos netos convertidos a USD."
     )
     col_objetivo, col_tasa = st.columns(2)
     with col_objetivo:
@@ -113,17 +113,12 @@ with st.form("form_black_litterman"):
             "Activo": [nombres_activos[ticker] for ticker in tickers],
             "Ticker": tickers,
         }
-        if prior_seleccionado == "Capitalización bursátil":
-            columnas_vistas["Capitalización (USD, miles de millones)"] = [
-                1.0
-            ] * len(tickers)
         columnas_vistas["View anual (%)"] = [8.0] * len(tickers)
-        columnas_vistas["Confianza (%)"] = [50.0] * len(tickers)
+        columnas_vistas["Confianza (%)"] = [95.0] * len(tickers)
         vistas_iniciales = pd.DataFrame(columnas_vistas)
         st.subheader("Views individuales")
         st.caption(
-            "Define un retorno esperado anual por activo y cuánto confías en esa view. "
-            "La confianza debe estar entre 1% y 99%."
+            "Define el retorno esperado anual por activo. La confianza se mantiene fija en 95%."
         )
         configuracion_columnas = {
             "Activo": st.column_config.TextColumn(disabled=True),
@@ -138,24 +133,16 @@ with st.form("form_black_litterman"):
                 min_value=1.0,
                 max_value=99.0,
                 step=1.0,
-                format="%.0f",
+                format="%.0f%%",
             ),
         }
-        if prior_seleccionado == "Capitalización bursátil":
-            configuracion_columnas[
-                "Capitalización (USD, miles de millones)"
-            ] = st.column_config.NumberColumn(
-                min_value=0.001,
-                step=1.0,
-                format="%.3f",
-            )
         vistas_editadas = st.data_editor(
             vistas_iniciales,
             column_config=configuracion_columnas,
-            disabled=["Activo", "Ticker"],
+            disabled=["Activo", "Ticker", "Confianza (%)"],
             hide_index=True,
             width="stretch",
-            key=f"bl_vistas_{prior_seleccionado}_{'_'.join(tickers)}",
+            key=f"bl_vistas_yahoo_95_{'_'.join(tickers)}",
         )
     else:
         vistas_editadas = pd.DataFrame()
@@ -184,16 +171,28 @@ vistas_absolutas = {
     for _, fila in vistas_editadas.iterrows()
 }
 confianzas = {
-    fila["Ticker"]: float(fila["Confianza (%)"]) / 100
-    for _, fila in vistas_editadas.iterrows()
+    ticker: 0.95 for ticker in tickers_vistas
 }
-capitalizaciones = {ticker: 1.0 for ticker in tickers}
-if prior_seleccionado == "Capitalización bursátil":
-    columna_capitalizacion = "Capitalización (USD, miles de millones)"
-    capitalizaciones = {
-        fila["Ticker"]: float(fila[columna_capitalizacion])
-        for _, fila in vistas_editadas.iterrows()
-    }
+try:
+    with st.spinner("Descargando capitalizaciones bursátiles desde Yahoo Finance..."):
+        capitalizaciones = {
+            ticker: descargar_capitalizacion_yahoo(ticker)
+            for ticker in tickers
+        }
+except Exception as error:
+    st.error(f"No se pudieron descargar las capitalizaciones de Yahoo Finance: {error}")
+    st.stop()
+
+tickers_sin_capitalizacion = [
+    ticker for ticker, capitalizacion in capitalizaciones.items()
+    if capitalizacion is None
+]
+if tickers_sin_capitalizacion:
+    st.error(
+        "Yahoo Finance no devolvió una capitalización bursátil positiva para: "
+        + ", ".join(tickers_sin_capitalizacion)
+    )
+    st.stop()
 
 with st.spinner("Descargando precios y calculando el portafolio..."):
     try:
@@ -213,21 +212,20 @@ with st.spinner("Descargando precios y calculando el portafolio..."):
             st.stop()
 
         precios_benchmark = None
-        if capitalizaciones is not None:
-            ticker_benchmark = BENCHMARKS[nombre_benchmark]
-            precios_benchmark_descargados = descargar_precios(
-                (ticker_benchmark,), fecha_inicio_bl, fecha_actual
+        ticker_benchmark = BENCHMARKS[nombre_benchmark]
+        precios_benchmark_descargados = descargar_precios(
+            (ticker_benchmark,), fecha_inicio_bl, fecha_actual
+        )
+        if isinstance(precios_benchmark_descargados, pd.Series):
+            precios_benchmark = precios_benchmark_descargados
+        elif ticker_benchmark in precios_benchmark_descargados.columns:
+            precios_benchmark = precios_benchmark_descargados[ticker_benchmark]
+        elif len(precios_benchmark_descargados.columns) == 1:
+            precios_benchmark = precios_benchmark_descargados.iloc[:, 0]
+        else:
+            raise ValueError(
+                f"No se encontraron precios para el benchmark {ticker_benchmark}."
             )
-            if isinstance(precios_benchmark_descargados, pd.Series):
-                precios_benchmark = precios_benchmark_descargados
-            elif ticker_benchmark in precios_benchmark_descargados.columns:
-                precios_benchmark = precios_benchmark_descargados[ticker_benchmark]
-            elif len(precios_benchmark_descargados.columns) == 1:
-                precios_benchmark = precios_benchmark_descargados.iloc[:, 0]
-            else:
-                raise ValueError(
-                    f"No se encontraron precios para el benchmark {ticker_benchmark}."
-                )
 
         resultado = optimizar_black_litterman(
             precios=precios,
@@ -242,11 +240,7 @@ with st.spinner("Descargando precios y calculando el portafolio..."):
                 else "min_volatility"
             ),
             tasa_libre_riesgo=tasa_libre_riesgo_pct / 100,
-            capitalizaciones=(
-                {ticker: capitalizaciones[ticker] for ticker in precios.columns}
-                if capitalizaciones is not None
-                else None
-            ),
+            capitalizaciones={ticker: capitalizaciones[ticker] for ticker in precios.columns},
             precios_mercado=precios_benchmark,
         )
     except (ValueError, TypeError, ArithmeticError) as error:
@@ -269,6 +263,9 @@ tabla_resultados = pd.DataFrame(
         "Activo": [nombres_activos[ticker] for ticker in resultado.pesos.index],
         "Ticker": resultado.pesos.index,
         "Peso": resultado.pesos.values,
+        "Capitalización / activos netos (USD)": [
+            capitalizaciones[ticker] for ticker in resultado.pesos.index
+        ],
         "View anual": [vistas_absolutas[ticker] for ticker in resultado.pesos.index],
         "Confianza": [confianzas[ticker] for ticker in resultado.pesos.index],
         "Retorno prior": resultado.retornos_prior.reindex(resultado.pesos.index).values,
@@ -281,6 +278,7 @@ st.dataframe(
     tabla_resultados.style.format(
         {
             "Peso": "{:.2%}",
+            "Capitalización / activos netos (USD)": "{:,.0f}",
             "View anual": "{:.2%}",
             "Confianza": "{:.0%}",
             "Retorno prior": "{:.2%}",
@@ -291,6 +289,118 @@ st.dataframe(
     width="stretch",
 )
 st.caption(f"Suma de pesos: {resultado.pesos.sum():.2%}")
+
+retornos_activos = precios.pct_change(fill_method=None).dropna(how="all")
+retornos_portafolio_quantstats = retornos_activos.loc[
+    :, resultado.pesos.index
+].dot(resultado.pesos).rename("Portafolio Black Litterman")
+retornos_benchmark_quantstats = precios_benchmark.pct_change(
+    fill_method=None
+).rename(ticker_benchmark)
+datos_quantstats = pd.concat(
+    [retornos_portafolio_quantstats, retornos_benchmark_quantstats], axis=1
+).dropna()
+
+st.subheader("Análisis histórico con QuantStats")
+st.caption(
+    f"Rendimiento histórico del portafolio optimizado frente a {nombre_benchmark}. "
+    "Las métricas usan las observaciones comunes disponibles."
+)
+if len(datos_quantstats) < 2:
+    st.warning("No hay suficientes retornos comunes para generar el análisis QuantStats.")
+else:
+    retornos_portafolio_quantstats = datos_quantstats["Portafolio Black Litterman"]
+    retornos_benchmark_quantstats = datos_quantstats[ticker_benchmark]
+    metricas_quantstats = calcular_metricas_quantstats(
+        retornos_portafolio_quantstats
+    )["Valor"]
+    indicadores_porcentuales = {
+        "Retorno anual compuesto",
+        "Volatilidad anualizada",
+        "Máxima caída",
+        "Porcentaje de días positivos",
+    }
+    tabla_metricas_quantstats = pd.DataFrame(
+        {
+            "Indicador": metricas_quantstats.index,
+            "Valor": [
+                "N/D"
+                if pd.isna(valor)
+                else (
+                    f"{valor:.2%}"
+                    if indicador in indicadores_porcentuales
+                    else f"{valor:.3f}"
+                )
+                for indicador, valor in metricas_quantstats.items()
+            ],
+        }
+    )
+    st.dataframe(
+        tabla_metricas_quantstats,
+        hide_index=True,
+        width="stretch",
+    )
+
+    pestañas_quantstats = st.tabs(
+        [
+            "Rendimiento acumulado",
+            "Drawdown",
+            "Sharpe móvil",
+            "Rendimientos mensuales",
+            "Tearsheet completo",
+        ]
+    )
+    with pestañas_quantstats[0]:
+        figura = qs.plots.returns(
+            retornos_portafolio_quantstats,
+            benchmark=retornos_benchmark_quantstats,
+            figsize=(10, 5),
+            show=False,
+        )
+        st.pyplot(figura, clear_figure=True, width="stretch")
+        plt.close(figura)
+    with pestañas_quantstats[1]:
+        figura = qs.plots.drawdown(
+            retornos_portafolio_quantstats,
+            figsize=(10, 4),
+            show=False,
+        )
+        st.pyplot(figura, clear_figure=True, width="stretch")
+        plt.close(figura)
+    with pestañas_quantstats[2]:
+        figura = qs.plots.rolling_sharpe(
+            retornos_portafolio_quantstats,
+            benchmark=retornos_benchmark_quantstats,
+            figsize=(10, 4),
+            show=False,
+        )
+        st.pyplot(figura, clear_figure=True, width="stretch")
+        plt.close(figura)
+    with pestañas_quantstats[3]:
+        figura = qs.plots.monthly_heatmap(
+            retornos_portafolio_quantstats,
+            benchmark=retornos_benchmark_quantstats,
+            figsize=(10, 5),
+            show=False,
+        )
+        st.pyplot(figura, clear_figure=True, width="stretch")
+        plt.close(figura)
+
+    reporte_quantstats = generar_tearsheet_quantstats(
+        retornos_portafolio_quantstats,
+        retornos_benchmark_quantstats,
+        titulo="Portafolio Black Litterman",
+        nombre_archivo="reporte_quantstats_black_litterman.html",
+    )
+    with pestañas_quantstats[4]:
+        components.html(reporte_quantstats, height=1800, scrolling=True)
+        st.download_button(
+            "Descargar tearsheet de Black-Litterman",
+            data=reporte_quantstats,
+            file_name="reporte_quantstats_black_litterman.html",
+            mime="text/html",
+            key="descargar_reporte_quantstats_black_litterman",
+        )
 
 with st.expander("Covarianza posterior"):
     st.dataframe(

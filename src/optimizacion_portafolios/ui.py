@@ -126,6 +126,61 @@ def descargar_precios(activos: tuple[str, ...], fecha_inicio: date, fecha_fin: d
     return precios
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def descargar_tipo_cambio_yahoo(moneda: str) -> float:
+    moneda = moneda.upper()
+    if moneda == "USD":
+        return 1.0
+
+    ultimo_error = None
+    for ticker_fx, invertir in (
+        (f"{moneda}USD=X", False),
+        (f"USD{moneda}=X", True),
+    ):
+        try:
+            precios_fx = yf.Ticker(ticker_fx).history(period="5d")["Close"].dropna()
+        except Exception as error:
+            ultimo_error = error
+            continue
+        if precios_fx.empty:
+            continue
+        tasa = float(precios_fx.iloc[-1])
+        if not np.isfinite(tasa) or tasa <= 0:
+            continue
+        return 1 / tasa if invertir else tasa
+
+    raise ValueError(
+        f"No se pudo obtener el tipo de cambio de {moneda} a USD. {ultimo_error or ''}"
+    )
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def descargar_capitalizacion_yahoo(ticker: str) -> float | None:
+    informacion = yf.Ticker(ticker).get_info()
+    capitalizacion = informacion.get("marketCap")
+    if capitalizacion is None and informacion.get("quoteType") in {
+        "ETF",
+        "MUTUALFUND",
+    }:
+        capitalizacion = informacion.get("totalAssets")
+    if capitalizacion is None:
+        return None
+    try:
+        capitalizacion = float(capitalizacion)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(capitalizacion) or capitalizacion <= 0:
+        return None
+    moneda = informacion.get("currency")
+    if not moneda:
+        return None
+    moneda = str(moneda).strip()
+    if moneda in {"GBp", "GBX"}:
+        capitalizacion /= 100
+        moneda = "GBP"
+    return capitalizacion * descargar_tipo_cambio_yahoo(moneda)
+
+
 @st.cache_data(ttl=3600)
 def descargar_serie_arima(ticker: str, fecha_inicio: date, fecha_fin: date) -> pd.Series:
     return descargar_precios_yahoo(ticker, fecha_inicio, fecha_fin)
@@ -195,7 +250,10 @@ def calcular_metricas_quantstats(retornos_portafolio: pd.Series) -> pd.DataFrame
 
 
 def generar_tearsheet_quantstats(
-    retornos_portafolio: pd.Series, benchmark: pd.Series
+    retornos_portafolio: pd.Series,
+    benchmark: pd.Series,
+    titulo: str = "Portafolio HRP",
+    nombre_archivo: str = "reporte_quantstats_hrp.html",
 ) -> bytes:
     with TemporaryDirectory() as directorio_temporal:
         archivo_reporte = Path(directorio_temporal) / "reporte.html"
@@ -203,8 +261,8 @@ def generar_tearsheet_quantstats(
             retornos_portafolio,
             benchmark=benchmark,
             output=str(archivo_reporte),
-            title="Strategy Tearsheet - Portafolio HRP",
-            download_filename="reporte_quantstats_hrp.html",
+            title=f"Strategy Tearsheet - {titulo}",
+            download_filename=nombre_archivo,
         )
         return archivo_reporte.read_bytes()
 
