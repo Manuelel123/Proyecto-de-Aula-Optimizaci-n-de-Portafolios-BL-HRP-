@@ -295,6 +295,7 @@ def mostrar_seguimiento(
     catalogo_indices: dict[str, str],
     activos_predeterminados: list[str],
     permitir_filtro_tipo: bool = False,
+    mostrar_histogramas_todos: bool = False,
 ) -> None:
     st.subheader(titulo)
     st.caption(descripcion)
@@ -398,54 +399,129 @@ def mostrar_seguimiento(
             "de 252 días. EMA usa span de 500 días."
         )
     with tab_volatilidad:
-        st.subheader("Distribución de volatilidad mensual")
-        tabla_volatilidad = volatilidad_actual.rename(
-            "Volatilidad mensual actual"
-        ).to_frame()
-        tabla_volatilidad.index.name = "Ticker"
-        st.dataframe(
-            tabla_volatilidad.style.format("{:.2%}"),
-            width="stretch",
-        )
-        activos_con_volatilidad = [
-            ticker
-            for ticker in volatilidad_mensual.columns
-            if volatilidad_mensual[ticker].notna().any()
-        ]
-        if activos_con_volatilidad:
-            ticker = st.selectbox(
-                "Activo para el histograma",
-                options=activos_con_volatilidad,
-                key=f"{clave}_activo_histograma_volatilidad",
+        if mostrar_histogramas_todos:
+            ventanas_volatilidad = {
+                "Semanal (5 días hábiles)": 5,
+                "Quincenal (10 días hábiles)": 10,
+                "Mensual (21 días hábiles)": 21,
+                "45 días hábiles": 45,
+                "60 días hábiles": 60,
+            }
+            periodo_seleccionado = st.selectbox(
+                "Ventana para calcular volatilidad",
+                options=list(ventanas_volatilidad),
+                key=f"{clave}_ventana_volatilidad",
             )
-            valores_volatilidad = volatilidad_mensual[ticker].dropna()
-            valor_actual = volatilidad_actual.get(ticker, np.nan)
-            figura, eje = plt.subplots()
-            eje.hist(
-                valores_volatilidad * 100,
-                bins="auto",
-                color="#287D6B",
-                edgecolor="white",
+            dias_ventana = ventanas_volatilidad[periodo_seleccionado]
+            volatilidad_ventana = (
+                retornos.rolling(window=dias_ventana, min_periods=dias_ventana).std()
+                * np.sqrt(dias_ventana)
             )
-            if pd.notna(valor_actual):
-                eje.axvline(
-                    valor_actual * 100,
-                    color="#D26045",
-                    linestyle="--",
-                    label=f"Actual: {valor_actual:.2%}",
+            volatilidad_actual_ventana = volatilidad_ventana.iloc[-1].dropna()
+            observaciones_histograma = volatilidad_ventana.count()
+            st.subheader(f"Volatilidad móvil: {periodo_seleccionado}")
+            st.caption(
+                "Cada observación es una volatilidad móvil calculada sobre la ventana "
+                "seleccionada; el tamaño de muestra depende del historial disponible."
+            )
+            if volatilidad_actual_ventana.empty:
+                st.info(
+                    f"Se necesitan al menos {dias_ventana} días de retornos para "
+                    "calcular esta ventana."
                 )
-                eje.legend()
-            eje.set_xlabel("Volatilidad mensual (%)")
-            eje.set_ylabel("Número de meses")
-            eje.set_title(f"Histograma de volatilidad: {ticker}")
-            st.pyplot(figura)
-            plt.close(figura)
-            st.metric(
-                "Volatilidad mensual actual (últimos 21 días)",
-                f"{valor_actual:.2%}" if pd.notna(valor_actual) else "N/D",
-            )
+            else:
+                tabla_volatilidad = volatilidad_actual_ventana.rename(
+                    "Volatilidad estimada"
+                ).to_frame()
+                tabla_volatilidad["Observaciones del histograma"] = (
+                    observaciones_histograma.reindex(tabla_volatilidad.index).astype(int)
+                )
+                tabla_volatilidad.index.name = "Ticker"
+                st.dataframe(
+                    tabla_volatilidad.style.format(
+                        {"Volatilidad estimada": "{:.2%}", "Observaciones del histograma": "{:,.0f}"}
+                    ),
+                    width="stretch",
+                )
+                columnas_histogramas = st.columns(2)
+                for indice, ticker in enumerate(volatilidad_ventana.columns):
+                    valores_volatilidad = volatilidad_ventana[ticker].dropna()
+                    if valores_volatilidad.empty:
+                        continue
+                    with columnas_histogramas[indice % 2]:
+                        figura, eje = plt.subplots(figsize=(7, 4))
+                        eje.hist(
+                            valores_volatilidad * 100,
+                            bins="auto",
+                            color="#287D6B",
+                            edgecolor="white",
+                        )
+                        valor_actual = volatilidad_actual_ventana.get(ticker, np.nan)
+                        if pd.notna(valor_actual):
+                            eje.axvline(
+                                valor_actual * 100,
+                                color="#D26045",
+                                linestyle="--",
+                                label=f"Actual: {valor_actual:.2%}",
+                            )
+                            eje.legend()
+                        eje.set_xlabel("Volatilidad estimada (%)")
+                        eje.set_ylabel("Observaciones")
+                        eje.set_title(
+                            f"{ticker}: {periodo_seleccionado} "
+                            f"(N={len(valores_volatilidad)})"
+                        )
+                        st.pyplot(figura, width="stretch")
+                        plt.close(figura)
         else:
-            st.info("No hay suficientes datos para calcular volatilidad mensual.")
+            st.subheader("Distribución de volatilidad mensual")
+            tabla_volatilidad = volatilidad_actual.rename(
+                "Volatilidad mensual actual"
+            ).to_frame()
+            tabla_volatilidad.index.name = "Ticker"
+            st.dataframe(
+                tabla_volatilidad.style.format("{:.2%}"),
+                width="stretch",
+            )
+            activos_con_volatilidad = [
+                ticker
+                for ticker in volatilidad_mensual.columns
+                if volatilidad_mensual[ticker].notna().any()
+            ]
+            if activos_con_volatilidad:
+                ticker = st.selectbox(
+                    "Activo para el histograma",
+                    options=activos_con_volatilidad,
+                    key=f"{clave}_activo_histograma_volatilidad",
+                )
+                valores_volatilidad = volatilidad_mensual[ticker].dropna()
+                valor_actual = volatilidad_actual.get(ticker, np.nan)
+                figura, eje = plt.subplots()
+                eje.hist(
+                    valores_volatilidad * 100,
+                    bins="auto",
+                    color="#287D6B",
+                    edgecolor="white",
+                )
+                if pd.notna(valor_actual):
+                    eje.axvline(
+                        valor_actual * 100,
+                        color="#D26045",
+                        linestyle="--",
+                        label=f"Actual: {valor_actual:.2%}",
+                    )
+                    eje.legend()
+                eje.set_xlabel("Volatilidad mensual (%)")
+                eje.set_ylabel("Número de meses")
+                eje.set_title(f"Histograma de volatilidad: {ticker}")
+                st.pyplot(figura)
+                plt.close(figura)
+                st.metric(
+                    "Volatilidad mensual actual (últimos 21 días)",
+                    f"{valor_actual:.2%}" if pd.notna(valor_actual) else "N/D",
+                )
+            else:
+                st.info("No hay suficientes datos para calcular volatilidad mensual.")
     with tab_estadisticas:
         st.subheader("Resumen de rendimiento y riesgo")
         st.dataframe(
