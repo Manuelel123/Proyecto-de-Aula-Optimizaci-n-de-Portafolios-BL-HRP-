@@ -18,11 +18,13 @@ from optimizacion_portafolios.ui import (
     configurar_pagina,
     descargar_precios,
     descargar_capitalizacion_yahoo,
+    fecha_hace_un_anio,
     generar_tearsheet_quantstats,
 )
 
 
-fecha_actual, fecha_inicio = configurar_pagina("Optimización Black Litterman")
+fecha_actual, _ = configurar_pagina("Optimización Black Litterman")
+fecha_inicio_bl = fecha_hace_un_anio(fecha_hace_un_anio(fecha_actual))
 
 st.title("Optimización Black Litterman")
 st.caption(
@@ -70,9 +72,18 @@ with st.form("form_black_litterman"):
     with col_objetivo:
         objetivo_seleccionado = st.selectbox(
             "Objetivo de optimización",
-            ["Máximo Sharpe", "Mínima volatilidad"],
+            [
+                "Máximo Sharpe",
+                "Mínima volatilidad",
+                "Pesos implícitos del modelo",
+            ],
             key="bl_objetivo",
         )
+        if objetivo_seleccionado == "Pesos implícitos del modelo":
+            st.info(
+                "Usa BlackLittermanModel.bl_weights() sin límites long-only; "
+                "los pesos pueden ser negativos o superar el 100%."
+            )
     with col_tasa:
         tasa_libre_riesgo_pct = st.number_input(
             "Tasa libre de riesgo anual (%)",
@@ -85,10 +96,11 @@ with st.form("form_black_litterman"):
     col_fecha, col_benchmark = st.columns(2)
     with col_fecha:
         fecha_inicio_bl = st.date_input(
-            "Fecha inicial de los datos",
-            value=fecha_inicio,
+            "Inicio de ventana fija de 2 años",
+            value=fecha_hace_un_anio(fecha_hace_un_anio(fecha_actual)),
             max_value=fecha_actual,
-            key="bl_fecha_inicio",
+            disabled=True,
+            key="bl_fecha_inicio_ventana_dos_anios_fija",
         )
     with col_benchmark:
         nombre_benchmark = st.selectbox(
@@ -162,7 +174,7 @@ if len(tickers) < 2:
     st.stop()
 
 if vistas_editadas.empty or vistas_editadas.isna().any().any():
-    st.error("Completa las views, confianzas y capitalizaciones requeridas.")
+    st.error("Completa las views requeridas.")
     st.stop()
 
 tickers_vistas = vistas_editadas["Ticker"].tolist()
@@ -237,7 +249,11 @@ with st.spinner("Descargando precios y calculando el portafolio..."):
             objetivo=(
                 "max_sharpe"
                 if objetivo_seleccionado == "Máximo Sharpe"
-                else "min_volatility"
+                else (
+                    "min_volatility"
+                    if objetivo_seleccionado == "Mínima volatilidad"
+                    else "model_weights"
+                )
             ),
             tasa_libre_riesgo=tasa_libre_riesgo_pct / 100,
             capitalizaciones={ticker: capitalizaciones[ticker] for ticker in precios.columns},
