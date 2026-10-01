@@ -41,8 +41,10 @@ def optimizar_black_litterman(
         raise ValueError("Debe especificarse una confianza para cada activo.")
     if any(not 0 < confianzas[ticker] < 1 for ticker in tickers):
         raise ValueError("Las confianzas deben estar entre 0 y 1, sin incluirlos.")
-    if objetivo not in {"max_sharpe", "min_volatility"}:
-        raise ValueError("El objetivo debe ser max_sharpe o min_volatility.")
+    if objetivo not in {"max_sharpe", "min_volatility", "model_weights"}:
+        raise ValueError(
+            "El objetivo debe ser max_sharpe, min_volatility o model_weights."
+        )
 
     covarianza = risk_models.CovarianceShrinkage(
         precios, frequency=252
@@ -83,6 +85,7 @@ def optimizar_black_litterman(
         omega="idzorek",
         view_confidences=[confianzas[ticker] for ticker in tickers],
         tau=0.05,
+        risk_aversion=aversion_al_riesgo,
     )
     retornos_posteriores = modelo.bl_returns()
     covarianza_posterior = modelo.bl_cov()
@@ -92,18 +95,27 @@ def optimizar_black_litterman(
         dtype=float,
     )
 
-    frontera = EfficientFrontier(
-        retornos_posteriores,
-        covarianza_posterior,
-        weight_bounds=(0, 1),
-    )
-    if objetivo == "max_sharpe":
-        pesos_optimos = frontera.max_sharpe(risk_free_rate=tasa_libre_riesgo)
+    if objetivo == "model_weights":
+        pesos_optimos = pd.Series(
+            modelo.bl_weights(risk_aversion=aversion_al_riesgo),
+            dtype=float,
+        ).reindex(tickers)
+        retorno_esperado, volatilidad, sharpe = modelo.portfolio_performance(
+            risk_free_rate=tasa_libre_riesgo
+        )
     else:
-        pesos_optimos = frontera.min_volatility()
-    retorno_esperado, volatilidad, sharpe = frontera.portfolio_performance(
-        risk_free_rate=tasa_libre_riesgo
-    )
+        frontera = EfficientFrontier(
+            retornos_posteriores,
+            covarianza_posterior,
+            weight_bounds=(0, 1),
+        )
+        if objetivo == "max_sharpe":
+            pesos_optimos = frontera.max_sharpe(risk_free_rate=tasa_libre_riesgo)
+        else:
+            pesos_optimos = frontera.min_volatility()
+        retorno_esperado, volatilidad, sharpe = frontera.portfolio_performance(
+            risk_free_rate=tasa_libre_riesgo
+        )
 
     return ResultadoBlackLitterman(
         pesos=pd.Series(pesos_optimos, dtype=float).reindex(tickers),
