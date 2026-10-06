@@ -7,7 +7,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from optimizacion_portafolios.web import create_app
+from optimizacion_portafolios.app import create_app
 from optimizacion_portafolios.market_data import download_prices
 
 
@@ -79,7 +79,7 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("no es válido".encode(), response.data)
 
-    @patch("optimizacion_portafolios.web.monitoring.download_prices")
+    @patch("optimizacion_portafolios.app.monitoring.routes.download_prices")
     def test_monitoring_post_renders_prices_and_risk_tables(self, download) -> None:
         download.return_value = make_prices(("AAPL",))
         response = self.post(
@@ -98,7 +98,7 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertIn(b'<option value="AAPL" selected>', response.data)
         download.assert_called_once()
 
-    @patch("optimizacion_portafolios.web.hrp.download_prices")
+    @patch("optimizacion_portafolios.app.hrp.routes.download_prices")
     def test_hrp_optimization_renders_result_and_quantstats(self, download) -> None:
         def price_response(tickers, _start_date, _end_date):
             return make_prices(tickers)
@@ -121,8 +121,8 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertEqual(download.call_count, 2)
         self.assertEqual(download.call_args_list[1].args[0], ("^GSPC",))
 
-    @patch("optimizacion_portafolios.web.black_litterman.fetch_market_cap_usd")
-    @patch("optimizacion_portafolios.web.black_litterman.download_prices")
+    @patch("optimizacion_portafolios.app.black_litterman.routes.fetch_market_cap_usd")
+    @patch("optimizacion_portafolios.app.black_litterman.routes.download_prices")
     def test_black_litterman_runs_and_renders_posterior(
         self, download, market_cap
     ) -> None:

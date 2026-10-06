@@ -1,4 +1,4 @@
-"""Input parsing and validation shared by the Flask blueprints."""
+"""Input parsing and validation shared by Flask application modules."""
 
 import re
 from datetime import date

@@ -1,4 +1,4 @@
-"""Helpers for rendering Matplotlib charts in server-rendered pages."""
+"""Shared helpers for rendering Matplotlib charts."""
 
 import base64
 from io import BytesIO

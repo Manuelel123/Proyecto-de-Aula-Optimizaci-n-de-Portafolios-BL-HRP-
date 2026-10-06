@@ -8,7 +8,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import requests
-from flask import Blueprint, flash, render_template, request
+from flask import flash, render_template, request
 from yfinance.exceptions import YFException
 
 matplotlib.use("Agg")
@@ -31,15 +31,15 @@ from optimizacion_portafolios.market_data import (
     download_prices,
     fetch_fundamental_information,
 )
-from optimizacion_portafolios.web.charts import figure_to_data_uri
-from optimizacion_portafolios.web.forms import (
+from optimizacion_portafolios.app.common.charts import figure_to_data_uri
+from optimizacion_portafolios.app.common.forms import (
     parse_start_date,
     selected_option,
     selected_tickers,
 )
+from optimizacion_portafolios.app.monitoring import bp
 
 logger = logging.getLogger(__name__)
-monitoring_blueprint = Blueprint("monitoring", __name__)
 _VIEWS = {"options", "portfolio", "fundamental"}
 _FUNDAMENTAL_METRICS = (
     ("Precio actual", "currentPrice", "currency"),
@@ -175,7 +175,7 @@ def _single_histogram(volatility: pd.Series, ticker: str, current: float) -> str
     return figure_to_data_uri(figure)
 
 
-@monitoring_blueprint.route("/monitoring", methods=["GET", "POST"])
+@bp.route("/monitoring", methods=["GET", "POST"])
 def monitoring():
     view = request.values.get("view", "portfolio")
     if view not in _VIEWS:
@@ -421,7 +421,7 @@ def monitoring():
             flash(str(error), "error")
 
     return render_template(
-        "monitoring.html",
+        "monitoring/monitoring.html",
         view=view,
         today=today.isoformat(),
         default_start=start_value,

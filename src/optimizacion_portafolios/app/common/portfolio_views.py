@@ -1,4 +1,4 @@
-"""Reusable plots and safely rendered tables for portfolio pages."""
+"""Reusable plots and safely rendered tables for portfolio modules."""
 
 import matplotlib
 import pandas as pd
@@ -8,7 +8,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from optimizacion_portafolios.web.charts import figure_to_data_uri
+from optimizacion_portafolios.app.common.charts import figure_to_data_uri
 
 
 def dataframe_html(

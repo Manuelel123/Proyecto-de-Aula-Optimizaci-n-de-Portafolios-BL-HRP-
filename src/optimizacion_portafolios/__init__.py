@@ -1,4 +1,4 @@
 def main() -> None:
-    from optimizacion_portafolios.web import run
+    from optimizacion_portafolios.app import run
 
     run()

@@ -1,4 +1,4 @@
-"""Hierarchical risk parity workflow."""
+"""Hierarchical risk parity routes and workflow."""
 
 import logging
 from datetime import date
@@ -8,7 +8,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import requests
-from flask import Blueprint, flash, render_template, request, send_file
+from flask import flash, render_template, request, send_file
 from yfinance.exceptions import YFException
 
 matplotlib.use("Agg")
@@ -29,14 +29,14 @@ from optimizacion_portafolios.catalogs import (
     UNIVERSOS_HRP,
 )
 from optimizacion_portafolios.market_data import download_prices
-from optimizacion_portafolios.web.forms import (
+from optimizacion_portafolios.app.common.forms import (
     normalize_ticker,
     parse_start_date,
     selected_option,
     selected_tickers,
 )
-from optimizacion_portafolios.web.charts import figure_to_data_uri
-from optimizacion_portafolios.web.portfolio_views import (
+from optimizacion_portafolios.app.common.charts import figure_to_data_uri
+from optimizacion_portafolios.app.common.portfolio_views import (
     bar_chart,
     correlation_chart,
     dataframe_html,
@@ -44,9 +44,9 @@ from optimizacion_portafolios.web.portfolio_views import (
     metrics_html,
     quantstats_charts,
 )
+from optimizacion_portafolios.app.hrp import bp
 
 logger = logging.getLogger(__name__)
-hrp_blueprint = Blueprint("hrp", __name__)
 _ROLLING_SHARPE_PERIOD = 126
 
 
@@ -206,7 +206,7 @@ def _run_hrp(
     }
 
 
-@hrp_blueprint.route("/hrp", methods=["GET", "POST"])
+@bp.route("/hrp", methods=["GET", "POST"])
 def hrp():
     today = date.today()
     default_start = date_one_year_ago(today)
@@ -294,7 +294,7 @@ def hrp():
             flash(str(error), "error")
 
     return render_template(
-        "hrp.html",
+        "hrp/hrp.html",
         today=today.isoformat(),
         default_start=start_value,
         universe_names=universe_names,

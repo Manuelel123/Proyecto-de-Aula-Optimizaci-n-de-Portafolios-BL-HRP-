@@ -1,4 +1,4 @@
-"""Black-Litterman portfolio construction workflow."""
+"""Black-Litterman routes and portfolio workflow."""
 
 import logging
 from datetime import date
@@ -8,7 +8,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import requests
-from flask import Blueprint, flash, render_template, request, send_file
+from flask import flash, render_template, request, send_file
 from yfinance.exceptions import YFException
 
 matplotlib.use("Agg")
@@ -28,8 +28,9 @@ from optimizacion_portafolios.market_data import (
     download_prices,
     fetch_market_cap_usd,
 )
-from optimizacion_portafolios.web.forms import selected_option, selected_tickers
-from optimizacion_portafolios.web.portfolio_views import (
+from optimizacion_portafolios.app.black_litterman import bp
+from optimizacion_portafolios.app.common.forms import selected_option, selected_tickers
+from optimizacion_portafolios.app.common.portfolio_views import (
     bar_chart,
     dataframe_html,
     metrics_html,
@@ -37,7 +38,6 @@ from optimizacion_portafolios.web.portfolio_views import (
 )
 
 logger = logging.getLogger(__name__)
-black_litterman_blueprint = Blueprint("black_litterman", __name__)
 _OBJECTIVES = {
     "Máximo Sharpe": "max_sharpe",
     "Mínima volatilidad": "min_volatility",
@@ -197,7 +197,7 @@ def _run_black_litterman(
     }
 
 
-@black_litterman_blueprint.route("/black-litterman", methods=["GET", "POST"])
+@bp.route("/black-litterman", methods=["GET", "POST"])
 def black_litterman():
     today = date.today()
     default_start = date_one_year_ago(date_one_year_ago(today))
@@ -333,7 +333,7 @@ def black_litterman():
             flash(str(error), "error")
 
     return render_template(
-        "black_litterman.html",
+        "black_litterman/black_litterman.html",
         today=today.isoformat(),
         default_start=start_value,
         universe_names=universe_names,

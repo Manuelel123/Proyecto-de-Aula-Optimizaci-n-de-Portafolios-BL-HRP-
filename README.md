@@ -36,7 +36,7 @@ Configura `FLASK_SECRET_KEY` con un valor aleatorio secreto al desplegar y habil
 - **Optimización HRP:** selección de activos, benchmark, pesos, correlación, contribuciones, métricas de riesgo, gráficos QuantStats e informe HTML descargable.
 - **Black-Litterman:** views individuales, objetivos de optimización, prior de mercado, capitalizaciones en USD, pesos posteriores, covarianza y análisis/informe QuantStats.
 
-La interfaz utiliza Flask Blueprints, plantillas Jinja, servicios de datos y analítica separados y formularios protegidos con tokens CSRF. Los gráficos se generan en el servidor y la interfaz no necesita un servicio externo de gráficos.
+La aplicación se organiza en módulos Flask independientes al estilo de las aplicaciones Django. Cada módulo (`main`, `monitoring`, `hrp` y `black_litterman`) registra su propio Blueprint y agrupa rutas y plantillas; `common` contiene helpers compartidos. Los formularios están protegidos con tokens CSRF. Los gráficos se generan en el servidor y la interfaz no necesita un servicio externo de gráficos.
 
 ## Estructura
 
@@ -48,14 +48,30 @@ src/optimizacion_portafolios/
   catalogs.py
   market_data.py
   black_litterman.py
-  web/
+  app/
     __init__.py
-    main.py
-    monitoring.py
-    hrp.py
-    black_litterman.py
     templates/
-    static/css/
+    static/
+    common/
+      charts.py
+      forms.py
+      portfolio_views.py
+    main/
+      __init__.py
+      routes.py
+      templates/main/
+    monitoring/
+      __init__.py
+      routes.py
+      templates/monitoring/
+    hrp/
+      __init__.py
+      routes.py
+      templates/hrp/
+    black_litterman/
+      __init__.py
+      routes.py
+      templates/black_litterman/
 ```
 
 Los servicios ARIMA permanecen disponibles en `src/optimizacion_portafolios/arima.py` para que puedan integrarse como módulo Flask en una etapa posterior.

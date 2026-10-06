@@ -1,6 +1,6 @@
 """Flask WSGI application entry point."""
 
-from optimizacion_portafolios.web import create_app
+from optimizacion_portafolios.app import create_app
 
 app = create_app()
 

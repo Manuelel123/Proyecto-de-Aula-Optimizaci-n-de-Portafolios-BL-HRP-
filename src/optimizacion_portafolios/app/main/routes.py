@@ -1,13 +1,12 @@
-"""Dashboard route."""
+"""Dashboard routes."""
 
-from flask import Blueprint, render_template
+from flask import render_template
 
+from optimizacion_portafolios.app.main import bp
 from optimizacion_portafolios.catalogs import ACTIVOS, INDICES
 
-main_blueprint = Blueprint("main", __name__)
 
-
-@main_blueprint.get("/")
+@bp.get("/")
 def index():
     modules = [
         {
@@ -33,7 +32,7 @@ def index():
         },
     ]
     return render_template(
-        "index.html",
+        "main/index.html",
         modules=modules,
         asset_count=len(set(ACTIVOS.values()) | set(INDICES.values())),
         model_count=2,

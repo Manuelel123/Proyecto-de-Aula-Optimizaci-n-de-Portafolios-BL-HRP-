@@ -1,4 +1,4 @@
-"""Flask application factory and web presentation layer."""
+"""Flask application factory and shared application configuration."""
 
 import hmac
 import os
@@ -22,15 +22,15 @@ def create_app(test_config: dict | None = None) -> Flask:
     if test_config:
         app.config.update(test_config)
 
-    from optimizacion_portafolios.web.black_litterman import black_litterman_blueprint
-    from optimizacion_portafolios.web.hrp import hrp_blueprint
-    from optimizacion_portafolios.web.main import main_blueprint
-    from optimizacion_portafolios.web.monitoring import monitoring_blueprint
+    from optimizacion_portafolios.app.black_litterman import bp as black_litterman_bp
+    from optimizacion_portafolios.app.hrp import bp as hrp_bp
+    from optimizacion_portafolios.app.main import bp as main_bp
+    from optimizacion_portafolios.app.monitoring import bp as monitoring_bp
 
-    app.register_blueprint(main_blueprint)
-    app.register_blueprint(monitoring_blueprint)
-    app.register_blueprint(hrp_blueprint)
-    app.register_blueprint(black_litterman_blueprint)
+    app.register_blueprint(main_bp)
+    app.register_blueprint(monitoring_bp)
+    app.register_blueprint(hrp_bp)
+    app.register_blueprint(black_litterman_bp)
 
     @app.context_processor
     def inject_csrf_token():
