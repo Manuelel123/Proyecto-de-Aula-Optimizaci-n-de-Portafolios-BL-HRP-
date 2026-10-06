@@ -133,6 +133,13 @@ retornos_portafolio_hrp = retornos_hrp.dot(pesos_hrp).rename("Portafolio HRP")
 datos_quantstats = pd.concat(
     [retornos_portafolio_hrp, retornos_benchmark], axis=1
 ).dropna()
+if datos_quantstats.empty:
+    st.error(
+        "No hay fechas con retornos disponibles simultáneamente para el portafolio "
+        f"y el benchmark {ticker_benchmark}. Elige otro benchmark o ajusta la fecha "
+        "inicial para que ambos tengan datos en común."
+    )
+    st.stop()
 retornos_portafolio_hrp = datos_quantstats["Portafolio HRP"]
 retornos_benchmark = datos_quantstats[ticker_benchmark]
 tabla_pesos = pd.DataFrame(
@@ -242,6 +249,7 @@ with tab_quantstats:
         ["Gráficos QuantStats", "Tearsheet completo"]
     )
     with tab_graficos_qs:
+        periodo_sharpe_movil = 126
         graficos_quantstats = [
             (
                 "Rendimiento acumulado",
@@ -261,15 +269,6 @@ with tab_quantstats:
                 ),
             ),
             (
-                "Sharpe móvil",
-                qs.plots.rolling_sharpe(
-                    retornos_portafolio_hrp,
-                    benchmark=retornos_benchmark,
-                    figsize=(10, 3.5),
-                    show=False,
-                ),
-            ),
-            (
                 "Rendimientos mensuales",
                 qs.plots.monthly_heatmap(
                     retornos_portafolio_hrp,
@@ -279,6 +278,26 @@ with tab_quantstats:
                 ),
             ),
         ]
+        if len(retornos_portafolio_hrp) >= periodo_sharpe_movil:
+            graficos_quantstats.insert(
+                2,
+                (
+                    "Sharpe móvil",
+                    qs.plots.rolling_sharpe(
+                        retornos_portafolio_hrp,
+                        benchmark=retornos_benchmark,
+                        period=periodo_sharpe_movil,
+                        figsize=(10, 3.5),
+                        show=False,
+                    ),
+                ),
+            )
+        else:
+            st.info(
+                "El gráfico de Sharpe móvil requiere al menos "
+                f"{periodo_sharpe_movil} días de retornos alineados. "
+                "Amplía el periodo histórico para generarlo."
+            )
         for titulo_grafico, figura_quantstats in graficos_quantstats:
             st.subheader(titulo_grafico)
             st.pyplot(figura_quantstats, clear_figure=True, width="stretch")
