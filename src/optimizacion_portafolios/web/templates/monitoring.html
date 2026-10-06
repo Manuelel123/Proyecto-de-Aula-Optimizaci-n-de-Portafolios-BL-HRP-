@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Monitoreo de activos{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div><span class="page-kicker">MERCADO · DATOS HISTÓRICOS</span><h1>Monitoreo de activos</h1><p>Explora precios, retornos, volatilidad y fundamentos de los activos en tus listas.</p></div>
+  </section>
+  <nav class="tabs" aria-label="Secciones de monitoreo">
+    <a class="{{ 'active' if view == 'options' else '' }}" href="{{ url_for('monitoring.monitoring', view='options') }}">Universo de opciones</a>
+    <a class="{{ 'active' if view == 'portfolio' else '' }}" href="{{ url_for('monitoring.monitoring', view='portfolio') }}">Seguimiento de portafolio</a>
+    <a class="{{ 'active' if view == 'fundamental' else '' }}" href="{{ url_for('monitoring.monitoring', view='fundamental', portfolio=portfolio_name) }}">Análisis fundamental</a>
+  </nav>
+
+  <div class="content-grid">
+    <aside>
+      <section class="panel">
+        <h2 class="panel-title">Parámetros del análisis</h2>
+        <form method="post" class="form-stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="view" value="{{ view }}">
+          {% if view != 'options' %}
+            <div class="form-field">
+              <label for="portfolio">Portafolio</label>
+              <select id="portfolio" name="portfolio">
+                {% for name in portfolio_names %}<option value="{{ name }}" {{ 'selected' if name == portfolio_name else '' }}>{{ name }}</option>{% endfor %}
+              </select>
+            </div>
+            <button class="button button-secondary" type="submit" name="action" value="refresh">Actualizar lista del portafolio</button>
+          {% endif %}
+          {% if view == 'fundamental' %}
+            <div class="form-field">
+              <label for="ticker">Compañía o instrumento</label>
+              <select id="ticker" name="ticker">
+                {% for ticker in portfolio_tickers %}<option value="{{ ticker }}" {{ 'selected' if ticker == selected_ticker else '' }}>{{ ticker }}</option>{% endfor %}
+              </select>
+              <span class="help-text">Consulta valoración, rentabilidad, márgenes y descripción.</span>
+            </div>
+          {% else %}
+            <div class="form-field">
+              <span class="field-label">Activos del universo</span>
+              <div class="check-grid">
+                {% set chosen = request.form.getlist('tickers') if request.method == 'POST' else (option_tickers if view == 'options' else portfolio_tickers) %}
+                {% for ticker in (option_tickers if view == 'options' else portfolio_tickers) %}
+                  <label><input type="checkbox" name="tickers" value="{{ ticker }}" {{ 'checked' if ticker in chosen else '' }}> {{ ticker }}</label>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="form-field">
+              <label for="custom_tickers">Otros tickers</label>
+              <input id="custom_tickers" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}" placeholder="AMZN, NVDA, ^VIX">
+              <span class="help-text">Símbolos separados por comas.</span>
+            </div>
+            <div class="form-field">
+              <label for="start_date">Fecha inicial</label>
+              <input id="start_date" name="start_date" type="date" value="{{ default_start }}" max="{{ today }}" required>
+            </div>
+            {% if view == 'portfolio' %}
+              <div class="form-field">
+                <label for="volatility_ticker">Activo para la distribución de volatilidad</label>
+                <select id="volatility_ticker" name="volatility_ticker">
+                  {% for ticker in (result.volatility_tickers if result and result.volatility_tickers else portfolio_tickers) %}
+                    <option value="{{ ticker }}" {{ 'selected' if ticker == selected_volatility_ticker else '' }}>{{ ticker }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% endif %}
+            {% if view == 'options' %}
+              <div class="form-field">
+                <label for="period">Periodo para la volatilidad</label>
+                <select id="period" name="period">
+                  {% for name in period_names %}<option value="{{ name }}" {{ 'selected' if name == period else '' }}>{{ name }}</option>{% endfor %}
+                </select>
+              </div>
+            {% endif %}
+          {% endif %}
+          <button class="button button-primary" type="submit" name="action" value="analyze">
+            {{ 'Consultar información' if view == 'fundamental' else 'Analizar activos' }} <span aria-hidden="true">↗</span>
+          </button>
+        </form>
+      </section>
+      {% if view == 'options' %}
+        <p class="footer-note">La volatilidad se calcula sobre ventanas completas. La anualización usa 252 sesiones.</p>
+      {% endif %}
+    </aside>
+
+    <section class="result-column">
+      {% if result and view == 'fundamental' %}
+        <div class="result-panel">
+          <span class="page-kicker">PERFIL DE COMPAÑÍA · {{ result.fundamental.ticker }}</span>
+          <h2>{{ result.fundamental.name }}</h2>
+          <p>{{ result.fundamental.sector }} · {{ result.fundamental.industry }} · {{ result.fundamental.country }}</p>
+          <div class="result-grid">
+            {% for metric in result.fundamental.indicators %}
+              <div class="metric-card"><span>{{ metric.label }}</span><strong>{{ metric.value }}</strong></div>
+            {% endfor %}
+          </div>
+          <div class="metric-card"><span>Rango de precio · 52 semanas</span><strong>{{ result.fundamental.annual_range }}</strong></div>
+        </div>
+        <div class="result-panel"><h2>Indicadores financieros</h2><div class="data-table-wrap">{{ result.fundamental.table|safe }}</div></div>
+        {% if result.fundamental.summary %}<div class="result-panel"><h2>Descripción de la compañía</h2><p>{{ result.fundamental.summary }}</p></div>{% endif %}
+      {% elif result %}
+        {% if result.missing %}<div class="notice">Yahoo Finance no devolvió datos para: {{ result.missing|join(', ') }}.</div>{% endif %}
+        <div class="result-panel">
+          <span class="page-kicker">RESULTADO DEL MONITOREO</span>
+          <h2>{{ result.start }} — {{ result.end }}</h2>
+          <p>{{ result.observations }} observaciones · {{ result.tickers|length }} activos en el análisis</p>
+          <div class="tabs" aria-label="Resultados">
+            {% for key, label in [('prices','Precios'), ('returns','Retornos'), ('expected','Retornos esperados'), ('volatility','Volatilidad'), ('statistics','Estadísticas')] %}
+              {% if key in result.tables %}<a href="#{{ key }}">{{ label }}</a>{% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        <div id="prices" class="result-panel"><h2>Evolución de precios ajustados</h2><img class="chart-image" src="{{ result.charts.prices }}" alt="Gráfico de precios históricos"><details><summary>Ver datos recientes</summary><div class="data-table-wrap">{{ result.tables.prices|safe }}</div></details></div>
+        <div id="returns" class="result-panel"><h2>Retornos diarios</h2><img class="chart-image" src="{{ result.charts.returns }}" alt="Gráfico de retornos históricos"><details><summary>Ver retornos recientes</summary><div class="data-table-wrap">{{ result.tables.returns|safe }}</div></details></div>
+        <div id="expected" class="result-panel"><h2>Retornos esperados anualizados</h2><div class="data-table-wrap">{{ result.tables.expected|safe }}</div><p class="footer-note">Estimaciones con precios ajustados y frecuencia de 252 días. EMA usa un span de 500 días.</p></div>
+        <div id="volatility" class="result-panel"><h2>Volatilidad</h2>
+          {% if result.charts.volatility %}<img class="chart-image" src="{{ result.charts.volatility }}" alt="Distribución de volatilidad">{% endif %}
+          <div class="data-table-wrap">{{ result.tables.volatility|safe }}</div>
+          {% if result.volatility_tickers %}<p class="footer-note">Volatilidad mensual realizada con una ventana de 21 sesiones.</p>{% endif %}
+        </div>
+        <div id="statistics" class="result-panel"><h2>Resumen de rendimiento y riesgo</h2><div class="data-table-wrap">{{ result.tables.statistics|safe }}</div></div>
+      {% else %}
+        <div class="empty-state"><strong>Comienza con una selección</strong><p>Configura los parámetros y ejecuta el análisis para cargar datos de mercado y estadísticas.</p></div>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Optimización HRP{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div><span class="page-kicker">ASIGNACIÓN · RIESGO JERÁRQUICO</span><h1>Optimización HRP</h1><p>Distribuye el capital a partir de la estructura de correlación y riesgo de los activos.</p></div>
+  </section>
+  <div class="content-grid">
+    <aside class="panel">
+      <h2 class="panel-title">Configura tu portafolio</h2>
+      <form method="post" class="form-stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-field"><label for="universe">Universo</label><select id="universe" name="universe">{% for name in universe_names %}<option value="{{ name }}" {{ 'selected' if name == universe_name else '' }}>{{ name }}</option>{% endfor %}</select></div>
+        <button class="button button-secondary" type="submit" name="action" value="refresh">Actualizar lista de activos</button>
+        <div class="form-field"><span class="field-label">Activos seleccionados</span><div class="check-grid">
+          {% for ticker in available_tickers %}<label><input type="checkbox" name="tickers" value="{{ ticker }}" {{ 'checked' if ticker in selected_tickers else '' }}> {{ ticker }}</label>{% endfor %}
+        </div></div>
+        <div class="form-field"><label for="custom_tickers">Otros tickers</label><input id="custom_tickers" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}" placeholder="AMZN, NVDA, ^VIX"><span class="help-text">Símbolos de Yahoo Finance separados por comas.</span></div>
+        <div class="form-field"><label for="benchmark">Benchmark del análisis</label><select id="benchmark" name="benchmark">{% for name in benchmark_names %}<option value="{{ name }}" {{ 'selected' if name == benchmark_name else '' }}>{{ name }}</option>{% endfor %}</select></div>
+        <div class="form-field"><label for="custom_benchmark">Benchmark personalizado (opcional)</label><input id="custom_benchmark" name="custom_benchmark" value="{{ custom_benchmark }}" placeholder="^COLCAP, SPY o QQQ"></div>
+        <div class="form-field"><label for="start_date">Fecha inicial</label><input id="start_date" name="start_date" type="date" value="{{ default_start }}" max="{{ today }}" required></div>
+        <button class="button button-primary" type="submit" name="action" value="optimize">Calcular portafolio HRP <span aria-hidden="true">↗</span></button>
+      </form>
+    </aside>
+
+    <section class="result-column">
+      {% if result %}
+        <div class="result-grid">
+          <div class="metric-card"><span>Pesos asignados</span><strong>{{ result.selected_tickers|length }}</strong></div>
+          <div class="metric-card"><span>Observaciones de los activos</span><strong>{{ result.observations }}</strong></div>
+          <div class="metric-card"><span>Suma de pesos</span><strong>{{ '%.2f'|format(result.weight_sum * 100) }}%</strong></div>
+        </div>
+        {% if result.missing %}<div class="notice">Yahoo Finance no devolvió datos para: {{ result.missing|join(', ') }}.</div>{% endif %}
+        <div class="result-panel">
+          <span class="page-kicker">RESULTADO HRP · {{ result.start }} — {{ result.end }}</span>
+          <h2>Distribución del portafolio</h2>
+          <div class="chart-grid"><div><img class="chart-image" src="{{ result.charts.Pesos }}" alt="Pesos HRP por activo"></div><div class="data-table-wrap">{{ result.tables.weights|safe }}</div></div>
+        </div>
+        <div class="result-panel"><h2>Estructura del portafolio</h2>        <div class="chart-grid"><div class="chart-card"><h3>Precios ajustados</h3><img class="chart-image" src="{{ result.charts['Evolución de precios'] }}" alt="Precios históricos"></div><div class="chart-card"><h3>Evolución unitaria</h3><img class="chart-image" src="{{ result.charts['Evolución unitaria'] }}" alt="Evolución unitaria de activos"></div><div class="chart-card"><h3>Retornos por activo</h3><img class="chart-image" src="{{ result.charts['Retornos por activo'] }}" alt="Retornos históricos por activo"></div><div class="chart-card"><h3>Retorno del portafolio</h3><img class="chart-image" src="{{ result.charts['Retorno del portafolio'] }}" alt="Retornos diarios HRP"></div></div><div class="chart-card"><h3>Correlación cuasi-diagonal</h3><img class="chart-image" src="{{ result.charts.Correlación }}" alt="Matriz de correlación"></div>
+          {% if result.charts['Volatilidad mensual'] %}<div class="chart-card"><h3>Distribución de volatilidad mensual</h3><img class="chart-image" src="{{ result.charts['Volatilidad mensual'] }}" alt="Histogramas de volatilidad mensual"></div>{% endif %}
+        </div>
+        <div class="result-panel"><h2>Contribución por activo</h2><div class="data-table-wrap">{{ result.tables.contributions|safe }}</div></div>
+        <div class="result-panel"><h2>Métricas del portafolio</h2><div class="data-table-wrap">{{ result.tables.metrics|safe }}</div></div>
+        <div class="result-panel">
+          <h2>Análisis histórico · {{ result.benchmark }}</h2>
+          <p>{{ result.common_observations }} retornos comunes con el benchmark.</p>
+          {% if not result.has_rolling_sharpe %}<div class="notice">El gráfico de Sharpe móvil requiere al menos 126 retornos alineados.</div>{% endif %}
+          <div class="chart-grid">{% for name, image in result.charts.items() %}{% if name not in ['Pesos', 'Evolución de precios', 'Retornos por activo', 'Retorno del portafolio', 'Evolución unitaria', 'Correlación', 'Volatilidad mensual'] %}<div class="chart-card"><h3>{{ name }}</h3><img class="chart-image" src="{{ image }}" alt="{{ name }}"></div>{% endif %}{% endfor %}</div>
+          <form method="post" class="form-stack" style="margin-top:16px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="custom_benchmark" value="{{ custom_benchmark }}"><input type="hidden" name="start_date" value="{{ default_start }}"><input type="hidden" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}">
+            {% for ticker in result.selected_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}">{% endfor %}
+            <button class="button button-secondary" type="submit" name="action" value="download_report">Descargar informe QuantStats</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="empty-state"><strong>Optimiza tu selección</strong><p>Elige dos o más activos y un benchmark para calcular pesos, riesgo y desempeño histórico.</p></div>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

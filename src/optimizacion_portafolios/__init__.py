@@ -1,2 +1,4 @@
 def main() -> None:
-    print("Hello from optimizacion-portafolios!")
+    from optimizacion_portafolios.web import run
+
+    run()
