@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Error {{ status }}{% endblock %}
+{% block content %}
+  <section class="empty-state">
+    <span class="page-kicker">ATLAS · {{ status }}</span>
+    <strong>{{ message }}</strong>
+    <p>Regresa al panel principal para continuar con el análisis.</p>
+    <a class="button button-primary" href="{{ url_for('main.index') }}">Ir al inicio</a>
+  </section>
+{% endblock %}

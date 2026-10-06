@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#102b28">
+    <title>{% block title %}Portafolios{% endblock %} · Atlas</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="{{ url_for('main.index') }}" aria-label="Atlas, inicio">
+          <span class="brand-mark">A</span>
+          <span><strong>ATLAS</strong><small>PORTFOLIO LAB</small></span>
+        </a>
+        <nav class="primary-nav" aria-label="Navegación principal">
+          <a class="{{ 'active' if request.blueprint == 'main' else '' }}" href="{{ url_for('main.index') }}">Inicio</a>
+          <a class="{{ 'active' if request.blueprint == 'monitoring' else '' }}" href="{{ url_for('monitoring.monitoring') }}">Mercado</a>
+          <a class="{{ 'active' if request.blueprint == 'hrp' else '' }}" href="{{ url_for('hrp.hrp') }}">HRP</a>
+          <a class="{{ 'active' if request.blueprint == 'black_litterman' else '' }}" href="{{ url_for('black_litterman.black_litterman') }}">Black-Litterman</a>
+        </nav>
+        <div class="market-status"><span></span> Datos de mercado · Yahoo Finance</div>
+      </div>
+    </header>
+    <main class="page-shell">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack" role="status">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="site-footer">
+      <span>ATLAS · Analítica de portafolios</span>
+      <span>Los datos de mercado se consultan desde Yahoo Finance.</span>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Panel de inversiones{% endblock %}
+{% block content %}
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">PLATAFORMA DE ANÁLISIS CUANTITATIVO</p>
+      <h1>Decisiones de inversión,<br><em>con mejor perspectiva.</em></h1>
+      <p class="hero-intro">Explora el mercado, entiende la distribución del riesgo y construye portafolios con metodologías cuantitativas.</p>
+      <a class="button button-light" href="{{ url_for('monitoring.monitoring') }}">Explorar mercado <span aria-hidden="true">↗</span></a>
+    </div>
+    <div class="hero-ornament" aria-hidden="true">
+      <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+      <div class="orbit-center"><span>AT</span><small>MARKET<br>INSIGHTS</small></div>
+      <div class="orbit-dot dot-one"></div><div class="orbit-dot dot-two"></div><div class="orbit-dot dot-three"></div>
+    </div>
+    <div class="hero-index">01 <span>/ 03</span></div>
+  </section>
+
+  <section class="section-block">
+    <div class="section-heading">
+      <div><p class="eyebrow">ESPACIO DE TRABAJO</p><h2>Herramientas para tu estrategia</h2></div>
+      <p class="section-note">Un flujo integrado desde los datos hasta la asignación.</p>
+    </div>
+    <div class="module-grid">
+      {% for module in modules %}
+        <a class="module-card" href="{{ module.href }}">
+          <div class="card-top"><span class="eyebrow">{{ module.eyebrow }}</span><span class="card-number">{{ module.icon }}</span></div>
+          <div><h3>{{ module.title }}</h3><p>{{ module.description }}</p></div>
+          <span class="card-link">Abrir módulo <b aria-hidden="true">↗</b></span>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="overview-strip">
+    <div><span class="eyebrow">COBERTURA</span><strong>{{ asset_count }}</strong><span>activos e índices principales</span></div>
+    <div><span class="eyebrow">METODOLOGÍA</span><strong>{{ model_count }}</strong><span>modelos de optimización</span></div>
+    <div><span class="eyebrow">DATOS</span><strong>01</strong><span>fuente integrada de mercado</span></div>
+    <p>Diseñado para explorar datos, comparar escenarios y hacer explícitas las hipótesis de inversión.</p>
+  </section>
+{% endblock %}

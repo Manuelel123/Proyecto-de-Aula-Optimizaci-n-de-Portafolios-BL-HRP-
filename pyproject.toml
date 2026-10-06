@@ -1,13 +1,14 @@
 [project]
 name = "optimizacion-portafolios"
 version = "0.1.0"
-description = "Add your description here"
+description = "Portfolio monitoring and optimization using Flask"
 readme = "README.md"
 authors = [
     { name = "Manuelel123", email = "bedoyayonatan164@gmail.com" }
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "flask>=3.1.2",
     "matplotlib>=3.9.0",
     "numpy>=2.0.0",
     "pandas>=2.0.0",
@@ -16,12 +17,12 @@ dependencies = [
     "requests>=2.31",
     "scipy>=1.14.0,<1.17",
     "statsmodels>=0.14.4",
-    "streamlit>=1.64.0",
+    "waitress>=3.0.2",
     "yfinance>=1.7.0",
 ]
 
 [project.scripts]
-optimizacion-portafolios = "optimizacion_portafolios:main"
+optimizacion-portafolios = "optimizacion_portafolios.web:run"
 
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]
