@@ -59,7 +59,6 @@ data       →  catálogos de activos y acceso a Yahoo Finance
 
 ```text
 wsgi.py                         punto de entrada WSGI (Flask CLI y Waitress)
-notebooks/                      material de exploración (no forma parte del paquete)
 tests/
   support.py                    precios sintéticos y cliente Flask con CSRF
   test_market_data.py           capa data
