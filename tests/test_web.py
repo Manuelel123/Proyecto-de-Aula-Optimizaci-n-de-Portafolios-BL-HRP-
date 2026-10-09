@@ -6,9 +6,15 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+from yfinance.exceptions import YFRateLimitError
 
 from optimizacion_portafolios.app import create_app
-from optimizacion_portafolios.market_data import download_prices
+from optimizacion_portafolios.market_data import (
+    _cached_ticker_info,
+    download_prices,
+    fetch_fundamental_information,
+    fetch_market_cap_usd,
+)
 
 
 def make_prices(tickers: tuple[str, ...], rows: int = 280) -> pd.DataFrame:
@@ -98,6 +104,48 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertIn(b'<option value="AAPL" selected>', response.data)
         download.assert_called_once()
 
+    @patch("optimizacion_portafolios.app.monitoring.routes.fetch_fundamental_information")
+    def test_fundamental_analysis_renders_company_information(self, fetch_info) -> None:
+        fetch_info.return_value = {
+            "longName": "Apple Inc.",
+            "currency": "USD",
+            "currentPrice": 200.0,
+            "marketCap": 3_000_000_000_000,
+            "sector": "Technology",
+            "industry": "Consumer Electronics",
+            "country": "United States",
+            "fiftyTwoWeekLow": 150.0,
+            "fiftyTwoWeekHigh": 250.0,
+            "revenueGrowth": 0.1,
+        }
+        response = self.post(
+            "/monitoring",
+            action="analyze",
+            view="fundamental",
+            portfolio="Portafolio actual",
+            ticker="AAPL",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Apple Inc.", response.data)
+        self.assertIn(b"Technology", response.data)
+        self.assertIn("Capitalización bursátil".encode(), response.data)
+        fetch_info.assert_called_once_with("AAPL")
+
+    @patch(
+        "optimizacion_portafolios.app.monitoring.routes.fetch_fundamental_information",
+        side_effect=YFRateLimitError(),
+    )
+    def test_fundamental_analysis_reports_yahoo_rate_limit(self, _fetch_info) -> None:
+        response = self.post(
+            "/monitoring",
+            action="analyze",
+            view="fundamental",
+            portfolio="Portafolio actual",
+            ticker="AAPL",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Yahoo Finance limitó temporalmente".encode(), response.data)
+
     @patch("optimizacion_portafolios.app.hrp.routes.download_prices")
     def test_hrp_optimization_renders_result_and_quantstats(self, download) -> None:
         def price_response(tickers, _start_date, _end_date):
@@ -120,6 +168,27 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertIn("Descargar informe QuantStats".encode(), response.data)
         self.assertEqual(download.call_count, 2)
         self.assertEqual(download.call_args_list[1].args[0], ("^GSPC",))
+
+    @patch(
+        "optimizacion_portafolios.app.black_litterman.routes._run_black_litterman",
+        side_effect=YFRateLimitError(),
+    )
+    def test_black_litterman_reports_yahoo_rate_limit(self, _run_model) -> None:
+        response = self.post(
+            "/black-litterman",
+            action="optimize",
+            universe="Activos principales",
+            benchmark="S&P 500 (SPY)",
+            objective="Máximo Sharpe",
+            risk_free_rate="2.0",
+            start_date="2024-01-01",
+            tickers=["AAPL", "MSFT"],
+            custom_tickers="",
+            view_AAPL="8.0",
+            view_MSFT="8.0",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Yahoo Finance limitó temporalmente".encode(), response.data)
 
     @patch("optimizacion_portafolios.app.black_litterman.routes.fetch_market_cap_usd")
     @patch("optimizacion_portafolios.app.black_litterman.routes.download_prices")
@@ -156,6 +225,9 @@ class FlaskInterfaceTests(unittest.TestCase):
 
 
 class MarketDataTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        _cached_ticker_info.cache_clear()
+
     @patch("optimizacion_portafolios.market_data.yf.download")
     def test_download_prices_selects_close_level_from_multiindex(self, download):
         index = pd.bdate_range("2025-01-01", periods=3, name="Date")
@@ -170,6 +242,43 @@ class MarketDataTests(unittest.TestCase):
         self.assertEqual(list(result.columns), ["MSFT", "AAPL"])
         self.assertEqual(result.index.name, "Fecha")
         self.assertEqual(result.iloc[0].tolist(), [1.0, 0.0])
+        self.assertFalse(download.call_args.kwargs["threads"])
+
+    @patch("optimizacion_portafolios.market_data.yf.Ticker")
+    def test_fundamental_and_market_cap_share_cached_ticker_info(self, ticker):
+        ticker.return_value.get_info.return_value = {
+            "longName": "Example Corp.",
+            "currency": "USD",
+            "marketCap": 1_000_000_000,
+        }
+
+        profile = fetch_fundamental_information("CACHE-TEST")
+        profile["longName"] = "Modified locally"
+        market_cap = fetch_market_cap_usd("CACHE-TEST")
+
+        self.assertEqual(market_cap, 1_000_000_000)
+        self.assertEqual(ticker.return_value.get_info.call_count, 1)
+        self.assertEqual(
+            fetch_fundamental_information("CACHE-TEST")["longName"],
+            "Example Corp.",
+        )
+
+    @patch("optimizacion_portafolios.market_data.sleep")
+    @patch("optimizacion_portafolios.market_data.yf.Ticker")
+    def test_ticker_info_retries_yahoo_rate_limit(self, ticker, sleep_mock):
+        from yfinance.exceptions import YFRateLimitError
+
+        ticker.return_value.get_info.side_effect = [
+            YFRateLimitError(),
+            {"longName": "Recovered Corp."},
+        ]
+
+        self.assertEqual(
+            fetch_fundamental_information("RETRY-TEST"),
+            {"longName": "Recovered Corp."},
+        )
+        self.assertEqual(ticker.return_value.get_info.call_count, 2)
+        sleep_mock.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

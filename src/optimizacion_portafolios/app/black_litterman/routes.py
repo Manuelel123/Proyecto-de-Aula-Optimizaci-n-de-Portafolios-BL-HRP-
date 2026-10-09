@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import requests
 from flask import flash, render_template, request, send_file
-from yfinance.exceptions import YFException
+from yfinance.exceptions import YFException, YFRateLimitError
 
 matplotlib.use("Agg")
 
@@ -302,7 +302,14 @@ def black_litterman():
                 logger.exception(
                     "Yahoo Finance request failed during Black-Litterman optimization"
                 )
-                raise ValueError(f"No se pudieron descargar los datos: {error}") from error
+                if isinstance(error, YFRateLimitError):
+                    message = (
+                        "Yahoo Finance limitó temporalmente las consultas. "
+                        "Espera unos minutos y vuelve a intentar."
+                    )
+                else:
+                    message = f"No se pudieron descargar los datos: {error}"
+                raise ValueError(message) from error
             if result.get("report"):
                 return send_file(
                     BytesIO(result["report"]),

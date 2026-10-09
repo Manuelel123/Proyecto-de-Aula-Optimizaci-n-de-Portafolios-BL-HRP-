@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import requests
 from flask import flash, render_template, request
-from yfinance.exceptions import YFException
+from yfinance.exceptions import YFException, YFRateLimitError
 
 matplotlib.use("Agg")
 
@@ -215,8 +215,18 @@ def monitoring():
                     info = fetch_fundamental_information(selected_ticker)
                 except (requests.RequestException, TimeoutError, YFException) as error:
                     logger.exception("Yahoo Finance fundamental lookup failed for %s", selected_ticker)
+                    if isinstance(error, YFRateLimitError):
+                        message = (
+                            "Yahoo Finance limitó temporalmente las consultas. "
+                            "Espera unos minutos y vuelve a intentar."
+                        )
+                    else:
+                        message = (
+                            f"No se pudo consultar Yahoo Finance para "
+                            f"{selected_ticker}: {error}"
+                        )
                     raise ValueError(
-                        f"No se pudo consultar Yahoo Finance para {selected_ticker}: {error}"
+                        message
                     ) from error
                 if not info:
                     flash(

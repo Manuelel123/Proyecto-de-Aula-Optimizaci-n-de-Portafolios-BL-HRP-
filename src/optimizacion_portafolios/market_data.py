@@ -1,17 +1,55 @@
 """Yahoo Finance data access for portfolio analysis."""
 
 from datetime import date, timedelta
+from functools import lru_cache
+import logging
 from math import isfinite
+from threading import Lock
+from time import monotonic, sleep
 
 import pandas as pd
 import requests
 import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
+
+logger = logging.getLogger(__name__)
+_INFO_CACHE_TTL_SECONDS = 15 * 60
+_INFO_CACHE_MAX_SIZE = 512
+_RATE_LIMIT_RETRIES = 2
+_info_lock = Lock()
 
 
 class TimeoutSession(requests.Session):
     def request(self, *args, **kwargs):
         kwargs.setdefault("timeout", 20)
         return super().request(*args, **kwargs)
+
+
+_yahoo_session = TimeoutSession()
+
+
+@lru_cache(maxsize=_INFO_CACHE_MAX_SIZE)
+def _cached_ticker_info(ticker: str, cache_window: int) -> dict:
+    for attempt in range(_RATE_LIMIT_RETRIES + 1):
+        try:
+            return yf.Ticker(ticker, session=_yahoo_session).get_info()
+        except YFRateLimitError:
+            if attempt == _RATE_LIMIT_RETRIES:
+                raise
+            delay = 2**attempt
+            logger.warning(
+                "Yahoo Finance rate-limited profile lookup for %s; retrying in %s seconds",
+                ticker,
+                delay,
+            )
+            sleep(delay)
+    raise RuntimeError("Yahoo Finance retry loop ended unexpectedly.")
+
+
+def _ticker_info(ticker: str) -> dict:
+    cache_window = int(monotonic() // _INFO_CACHE_TTL_SECONDS)
+    with _info_lock:
+        return dict(_cached_ticker_info(ticker, cache_window))
 
 
 def download_prices(
@@ -27,7 +65,7 @@ def download_prices(
         interval="1d",
         auto_adjust=True,
         progress=False,
-        threads=True,
+        threads=False,
         timeout=20,
     )
     if downloaded.empty:
@@ -61,7 +99,7 @@ def download_prices(
 
 def fetch_fundamental_information(ticker: str) -> dict:
     """Return the Yahoo Finance profile for a single ticker."""
-    return yf.Ticker(ticker, session=TimeoutSession()).get_info()
+    return _ticker_info(ticker)
 
 
 def _exchange_rate_to_usd(currency: str) -> float:
@@ -92,7 +130,7 @@ def _exchange_rate_to_usd(currency: str) -> float:
 
 def fetch_market_cap_usd(ticker: str) -> float | None:
     """Get market capitalization or ETF net assets, converted into USD."""
-    info = yf.Ticker(ticker, session=TimeoutSession()).get_info()
+    info = _ticker_info(ticker)
     amount = info.get("marketCap")
     if amount is None and info.get("quoteType") in {"ETF", "MUTUALFUND"}:
         amount = info.get("totalAssets")
