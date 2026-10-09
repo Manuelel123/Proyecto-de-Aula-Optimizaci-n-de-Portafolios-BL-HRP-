@@ -1,48 +1,14 @@
-"""Focused tests for the Flask interface and its portfolio workflows."""
+"""HTTP-level tests for the Flask pages and their portfolio workflows."""
 
-import re
 import unittest
 from unittest.mock import patch
 
-import numpy as np
-import pandas as pd
 from yfinance.exceptions import YFRateLimitError
 
-from optimizacion_portafolios.app import create_app
-from optimizacion_portafolios.market_data import (
-    _cached_ticker_info,
-    download_prices,
-    fetch_fundamental_information,
-    fetch_market_cap_usd,
-)
+from support import WebTestCase, make_prices
 
 
-def make_prices(tickers: tuple[str, ...], rows: int = 280) -> pd.DataFrame:
-    seed = sum(ord(character) for ticker in tickers for character in ticker)
-    rng = np.random.default_rng(seed)
-    daily_returns = rng.normal(0.00035, 0.012, size=(rows, len(tickers)))
-    prices = 100 * np.cumprod(1 + daily_returns, axis=0)
-    index = pd.bdate_range("2024-01-02", periods=rows, name="Fecha")
-    return pd.DataFrame(prices, index=index, columns=tickers)
-
-
-class FlaskInterfaceTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.app = create_app({"TESTING": True, "SECRET_KEY": "test-secret"})
-        self.client = self.app.test_client()
-        response = self.client.get("/hrp")
-        self.assertEqual(response.status_code, 200)
-        match = re.search(
-            rb'name="csrf_token"\s+value="([^"]+)"',
-            response.data,
-        )
-        self.assertIsNotNone(match)
-        self.csrf_token = match.group(1).decode()
-
-    def post(self, path: str, **data):
-        data["csrf_token"] = self.csrf_token
-        return self.client.post(path, data=data)
-
+class FlaskInterfaceTests(WebTestCase):
     def test_all_primary_pages_render(self) -> None:
         for path, title in (
             ("/", "ATLAS"),
@@ -85,7 +51,7 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("no es válido".encode(), response.data)
 
-    @patch("optimizacion_portafolios.app.monitoring.routes.download_prices")
+    @patch("optimizacion_portafolios.web.monitoring.services.download_prices")
     def test_monitoring_post_renders_prices_and_risk_tables(self, download) -> None:
         download.return_value = make_prices(("AAPL",))
         response = self.post(
@@ -104,7 +70,23 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertIn(b'<option value="AAPL" selected>', response.data)
         download.assert_called_once()
 
-    @patch("optimizacion_portafolios.app.monitoring.routes.fetch_fundamental_information")
+    @patch("optimizacion_portafolios.web.monitoring.services.download_prices")
+    def test_options_view_renders_period_volatility(self, download) -> None:
+        download.return_value = make_prices(("UEC", "EQT"))
+        response = self.post(
+            "/monitoring",
+            action="analyze",
+            view="options",
+            start_date="2024-01-01",
+            period="Mensual",
+            tickers=["UEC", "EQT"],
+            custom_tickers="",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"VH mensual", response.data)
+        self.assertIn(b'<option value="Mensual" selected>', response.data)
+
+    @patch("optimizacion_portafolios.web.monitoring.services.fetch_fundamental_information")
     def test_fundamental_analysis_renders_company_information(self, fetch_info) -> None:
         fetch_info.return_value = {
             "longName": "Apple Inc.",
@@ -132,7 +114,7 @@ class FlaskInterfaceTests(unittest.TestCase):
         fetch_info.assert_called_once_with("AAPL")
 
     @patch(
-        "optimizacion_portafolios.app.monitoring.routes.fetch_fundamental_information",
+        "optimizacion_portafolios.web.monitoring.services.fetch_fundamental_information",
         side_effect=YFRateLimitError(),
     )
     def test_fundamental_analysis_reports_yahoo_rate_limit(self, _fetch_info) -> None:
@@ -146,7 +128,7 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Yahoo Finance limitó temporalmente".encode(), response.data)
 
-    @patch("optimizacion_portafolios.app.hrp.routes.download_prices")
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
     def test_hrp_optimization_renders_result_and_quantstats(self, download) -> None:
         def price_response(tickers, _start_date, _end_date):
             return make_prices(tickers)
@@ -169,8 +151,27 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertEqual(download.call_count, 2)
         self.assertEqual(download.call_args_list[1].args[0], ("^GSPC",))
 
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_hrp_report_download_returns_html_attachment(self, download) -> None:
+        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
+        response = self.post(
+            "/hrp",
+            action="download_report",
+            universe="Portafolio actual",
+            benchmark="S&P 500 (SPY)",
+            start_date="2024-01-01",
+            tickers=["AAPL", "MSFT"],
+            custom_tickers="",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "text/html")
+        self.assertIn(
+            "reporte_quantstats_hrp.html",
+            response.headers["Content-Disposition"],
+        )
+
     @patch(
-        "optimizacion_portafolios.app.black_litterman.routes._run_black_litterman",
+        "optimizacion_portafolios.web.black_litterman.routes.run_black_litterman",
         side_effect=YFRateLimitError(),
     )
     def test_black_litterman_reports_yahoo_rate_limit(self, _run_model) -> None:
@@ -190,8 +191,8 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Yahoo Finance limitó temporalmente".encode(), response.data)
 
-    @patch("optimizacion_portafolios.app.black_litterman.routes.fetch_market_cap_usd")
-    @patch("optimizacion_portafolios.app.black_litterman.routes.download_prices")
+    @patch("optimizacion_portafolios.web.black_litterman.services.fetch_market_cap_usd")
+    @patch("optimizacion_portafolios.web.black_litterman.services.download_prices")
     def test_black_litterman_runs_and_renders_posterior(
         self, download, market_cap
     ) -> None:
@@ -222,63 +223,6 @@ class FlaskInterfaceTests(unittest.TestCase):
         self.assertIn("Covarianza posterior".encode(), response.data)
         self.assertIn("Análisis histórico".encode(), response.data)
         self.assertEqual(market_cap.call_count, 3)
-
-
-class MarketDataTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        _cached_ticker_info.cache_clear()
-
-    @patch("optimizacion_portafolios.market_data.yf.download")
-    def test_download_prices_selects_close_level_from_multiindex(self, download):
-        index = pd.bdate_range("2025-01-01", periods=3, name="Date")
-        columns = pd.MultiIndex.from_product(
-            [["Close", "Open"], ["AAPL", "MSFT"]]
-        )
-        values = np.arange(12, dtype=float).reshape(3, 4)
-        download.return_value = pd.DataFrame(values, index=index, columns=columns)
-
-        result = download_prices(("MSFT", "AAPL"), index[0].date(), index[-1].date())
-
-        self.assertEqual(list(result.columns), ["MSFT", "AAPL"])
-        self.assertEqual(result.index.name, "Fecha")
-        self.assertEqual(result.iloc[0].tolist(), [1.0, 0.0])
-        self.assertFalse(download.call_args.kwargs["threads"])
-
-    @patch("optimizacion_portafolios.market_data.yf.Ticker")
-    def test_fundamental_and_market_cap_share_cached_ticker_info(self, ticker):
-        ticker.return_value.get_info.return_value = {
-            "longName": "Example Corp.",
-            "currency": "USD",
-            "marketCap": 1_000_000_000,
-        }
-
-        profile = fetch_fundamental_information("CACHE-TEST")
-        profile["longName"] = "Modified locally"
-        market_cap = fetch_market_cap_usd("CACHE-TEST")
-
-        self.assertEqual(market_cap, 1_000_000_000)
-        self.assertEqual(ticker.return_value.get_info.call_count, 1)
-        self.assertEqual(
-            fetch_fundamental_information("CACHE-TEST")["longName"],
-            "Example Corp.",
-        )
-
-    @patch("optimizacion_portafolios.market_data.sleep")
-    @patch("optimizacion_portafolios.market_data.yf.Ticker")
-    def test_ticker_info_retries_yahoo_rate_limit(self, ticker, sleep_mock):
-        from yfinance.exceptions import YFRateLimitError
-
-        ticker.return_value.get_info.side_effect = [
-            YFRateLimitError(),
-            {"longName": "Recovered Corp."},
-        ]
-
-        self.assertEqual(
-            fetch_fundamental_information("RETRY-TEST"),
-            {"longName": "Recovered Corp."},
-        )
-        self.assertEqual(ticker.return_value.get_info.call_count, 2)
-        sleep_mock.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,8 @@
 
 from flask import render_template
 
-from optimizacion_portafolios.app.main import bp
-from optimizacion_portafolios.catalogs import ACTIVOS, INDICES
+from optimizacion_portafolios.web.main import bp
+from optimizacion_portafolios.data.catalogs import ACTIVOS, INDICES
 
 
 @bp.get("/")

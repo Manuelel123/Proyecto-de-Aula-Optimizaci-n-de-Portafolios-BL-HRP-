@@ -4,6 +4,12 @@ import hmac
 import os
 import secrets
 
+import matplotlib
+
+# Charts are rendered server-side; select the non-interactive backend before
+# any module (including QuantStats) imports pyplot.
+matplotlib.use("Agg")
+
 from flask import Flask, abort, render_template, request, session
 
 
@@ -22,16 +28,25 @@ def create_app(test_config: dict | None = None) -> Flask:
     if test_config:
         app.config.update(test_config)
 
-    from optimizacion_portafolios.app.black_litterman import bp as black_litterman_bp
-    from optimizacion_portafolios.app.hrp import bp as hrp_bp
-    from optimizacion_portafolios.app.main import bp as main_bp
-    from optimizacion_portafolios.app.monitoring import bp as monitoring_bp
+    _register_blueprints(app)
+    _register_csrf_protection(app)
+    _register_error_handlers(app)
+    return app
+
+
+def _register_blueprints(app: Flask) -> None:
+    from optimizacion_portafolios.web.black_litterman import bp as black_litterman_bp
+    from optimizacion_portafolios.web.hrp import bp as hrp_bp
+    from optimizacion_portafolios.web.main import bp as main_bp
+    from optimizacion_portafolios.web.monitoring import bp as monitoring_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(monitoring_bp)
     app.register_blueprint(hrp_bp)
     app.register_blueprint(black_litterman_bp)
 
+
+def _register_csrf_protection(app: Flask) -> None:
     @app.context_processor
     def inject_csrf_token():
         if "csrf_token" not in session:
@@ -46,10 +61,12 @@ def create_app(test_config: dict | None = None) -> Flask:
         ):
             abort(400, description="La sesión del formulario expiró. Vuelve a cargarlo.")
 
+
+def _register_error_handlers(app: Flask) -> None:
     @app.errorhandler(400)
-    def bad_request(_error):
+    def bad_request(error):
         return render_template(
-            "error.html", status=400, message=_error.description
+            "error.html", status=400, message=error.description
         ), 400
 
     @app.errorhandler(404)
@@ -60,10 +77,9 @@ def create_app(test_config: dict | None = None) -> Flask:
             message="La dirección solicitada no existe.",
         ), 404
 
-    return app
-
 
 def run() -> None:
+    """Console entry point: ``uv run optimizacion-portafolios``."""
     create_app().run(
         host=os.environ.get("HOST", "127.0.0.1"),
         port=int(os.environ.get("PORT", "5000")),

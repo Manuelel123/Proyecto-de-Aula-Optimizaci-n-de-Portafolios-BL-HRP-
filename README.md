@@ -14,11 +14,19 @@ uv sync
 uv run flask --app wsgi:app run --debug
 ```
 
-Abre `http://127.0.0.1:5000`. Para iniciar el servidor local sin el CLI:
+Abre `http://127.0.0.1:5000`. Para iniciar el servidor local sin el CLI de Flask:
 
 ```powershell
 uv run optimizacion-portafolios
 ```
+
+## Pruebas
+
+```powershell
+uv run python -m unittest discover -s tests
+```
+
+Las pruebas no acceden a la red: las descargas de Yahoo Finance se simulan con `unittest.mock`.
 
 ## Despliegue WSGI
 
@@ -36,42 +44,68 @@ Configura `FLASK_SECRET_KEY` con un valor aleatorio secreto al desplegar y habil
 - **Optimización HRP:** selección de activos, benchmark, pesos, correlación, contribuciones, métricas de riesgo, gráficos QuantStats e informe HTML descargable.
 - **Black-Litterman:** views individuales, objetivos de optimización, prior de mercado, capitalizaciones en USD, pesos posteriores, covarianza y análisis/informe QuantStats.
 
-La aplicación se organiza en módulos Flask independientes al estilo de las aplicaciones Django. Cada módulo (`main`, `monitoring`, `hrp` y `black_litterman`) registra su propio Blueprint y agrupa rutas y plantillas; `common` contiene helpers compartidos. Los formularios están protegidos con tokens CSRF. Los gráficos se generan en el servidor y la interfaz no necesita un servicio externo de gráficos.
+## Arquitectura
 
-## Estructura
+El código está organizado en capas. Cada capa solo depende de las que están por debajo:
 
 ```text
-app.py
-wsgi.py
-src/optimizacion_portafolios/
-  analytics.py
-  catalogs.py
-  market_data.py
-  black_litterman.py
-  app/
-    __init__.py
-    templates/
-    static/
-    common/
-      charts.py
-      forms.py
-      portfolio_views.py
-    main/
-      __init__.py
-      routes.py
-      templates/main/
-    monitoring/
-      __init__.py
-      routes.py
-      templates/monitoring/
-    hrp/
-      __init__.py
-      routes.py
-      templates/hrp/
-    black_litterman/
-      __init__.py
-      routes.py
-      templates/black_litterman/
+web        →  interfaz Flask: rutas HTTP, servicios de página, plantillas
+models     →  modelos de optimización y pronóstico (HRP, Black-Litterman, ARIMA)
+analytics  →  estadísticas, volatilidad y métricas de desempeño
+data       →  catálogos de activos y acceso a Yahoo Finance
 ```
 
-Los servicios ARIMA permanecen disponibles en `src/optimizacion_portafolios/arima.py` para que puedan integrarse como módulo Flask en una etapa posterior.
+`data`, `analytics` y `models` no importan Flask: se pueden usar desde un notebook, un script o las pruebas sin levantar la aplicación.
+
+```text
+wsgi.py                         punto de entrada WSGI (Flask CLI y Waitress)
+notebooks/                      material de exploración (no forma parte del paquete)
+tests/
+  support.py                    precios sintéticos y cliente Flask con CSRF
+  test_market_data.py           capa data
+  test_analytics.py             capa analytics
+  test_models.py                capa models
+  test_web.py                   rutas HTTP de punta a punta
+src/optimizacion_portafolios/
+  data/
+    catalogs.py                 universos, benchmarks y periodos de volatilidad
+    market_data.py              descargas de Yahoo Finance con caché y reintentos
+  analytics/
+    statistics.py               retornos, riesgo y retornos esperados
+    volatility.py               volatilidad mensual e histórica por periodo
+    performance.py              métricas e informe QuantStats
+  models/
+    hrp.py                      pesos HRP y contribuciones
+    black_litterman.py          prior de equilibrio, views y optimización
+    arima.py                    flujo Box-Jenkins (pendiente de integrar en la web)
+  web/
+    __init__.py                 create_app(), CSRF, manejo de errores, run()
+    templates/  static/         plantilla base, error y CSS compartidos
+    common/
+      charts.py                 gráficos Matplotlib/QuantStats como imágenes PNG
+      tables.py                 tablas HTML escapadas y formatos
+      forms.py                  lectura y validación de formularios
+    main/                       panel de inicio
+    monitoring/                 monitoreo y análisis fundamental
+    hrp/                        optimización HRP
+    black_litterman/            optimización Black-Litterman
+```
+
+Cada módulo web (`main`, `monitoring`, `hrp`, `black_litterman`) sigue la misma forma:
+
+| Archivo | Responsabilidad |
+|---|---|
+| `__init__.py` | Declara el `Blueprint` |
+| `routes.py` | Solo HTTP: lee el formulario, valida, muestra mensajes y renderiza |
+| `services.py` | Orquesta datos → analytics → modelo y arma el diccionario que usa la plantilla |
+| `templates/<módulo>/` | Plantillas Jinja del módulo |
+
+## Convenciones para extender el proyecto
+
+- **Nuevo cálculo o modelo:** va en `analytics/` o `models/`, sin importar Flask, con sus pruebas en `tests/test_analytics.py` o `tests/test_models.py`.
+- **Nueva fuente de datos:** va en `data/`. Las llamadas de red se simulan en las pruebas.
+- **Nueva página:** crea `web/<módulo>/` con `__init__.py`, `routes.py`, `services.py` y `templates/<módulo>/`, y registra el Blueprint en `web/__init__.py`.
+- **Gráficos y tablas:** reutiliza `web/common/charts.py` y `web/common/tables.py` antes de crear funciones nuevas.
+- **Nuevos universos de activos:** se agregan en `data/catalogs.py`.
+- **Idioma:** el código nuevo usa identificadores en inglés y textos de interfaz en español. `models/black_litterman.py` y `models/arima.py` conservan su API original en español.
+- **Integración de ARIMA:** cuando se incorpore, crea `web/forecast/` siguiendo la misma forma y reutiliza `models/arima.py`.
