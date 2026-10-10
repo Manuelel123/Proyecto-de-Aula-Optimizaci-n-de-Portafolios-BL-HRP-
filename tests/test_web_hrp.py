@@ -1,5 +1,6 @@
 """HTTP tests for the HRP page."""
 
+import json
 import re
 import unittest
 from unittest.mock import patch
@@ -159,12 +160,109 @@ class HrpPageTests(WebTestCase):
                 self.assertIn(message.encode(), response.data)
                 self.assertNotIn("Distribución del portafolio".encode(), response.data)
 
+    def test_get_renders_form_components_and_empty_state(self) -> None:
+        html = self.client.get("/hrp").data.decode()
+        self.assertIn('id="universes"', html)
+        self.assertIn("Portafolio actual", html)
+        self.assertIn('data-loading-title="Optimizando portafolio HRP"', html)
+        self.assertIn('data-ticker-rows="limit-row"', html)
+        self.assertIn('<template id="limit-row">', html)
+        self.assertIn(
+            'id="min___TICKER__" name="min___TICKER__" type="number"', html
+        )
+        self.assertIn('name="action" value="refresh"', html)
+        self.assertIn("data-feasibility", html)
+        self.assertIn('class="empty-state"', html)
+        self.assertNotIn("data-plotly=", html)
+
+    def test_refresh_keeps_selection_inside_new_universe(self) -> None:
+        response = self.post(
+            "/hrp",
+            action="refresh",
+            universe="Criptomonedas y commodities",
+            tickers=["AAPL", "BTC-USD"],
+        )
+        html = response.data.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(html, r'value="BTC-USD"\s+checked')
+        self.assertIn('id="min_BTC-USD" name="min_BTC-USD" type="number"', html)
+        self.assertNotIn('id="min_AAPL"', html)
+
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_result_uses_interactive_charts_and_closed_sections(self, download) -> None:
+        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
+        tickers = ["AAPL", "MSFT", "XLV"]
+        response = self.post(
+            "/hrp",
+            action="optimize",
+            universe="Portafolio actual",
+            benchmark="S&P 500 (SPY)",
+            start_date="2024-01-01",
+            tickers=tickers,
+            custom_tickers="",
+        )
+        html = response.data.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("data:image/png", html)
+        self.assertIn('data-plotly="chart-allocation"', html)
+        self.assertIn("data-price-explorer", html)
+        self.assertIn('id="universes"', html)
+        self.assertNotIn('class="empty-state"', html)
+
+        payload = re.search(
+            r'<script type="application/json" id="chart-allocation">(.*?)</script>',
+            html,
+            re.S,
+        )
+        self.assertIsNotNone(payload)
+        figure = json.loads(payload.group(1))
+        bars = [trace for trace in figure["data"] if trace.get("type") == "bar"]
+        self.assertTrue(bars)
+        self.assertEqual(len(bars[0]["y"]), len(tickers))
+
+        # The allocation card is immediate; every other analysis is on demand.
+        allocation_at = html.index('data-plotly="chart-allocation"')
+        first_section = html.index('<details class="analysis-section"')
+        self.assertLess(allocation_at, first_section)
+        sections = re.findall(r'<details class="analysis-section"[^>]*>', html)
+        self.assertGreaterEqual(len(sections), 6)
+        self.assertTrue(all(" open" not in section for section in sections))
+        for key in ("correlation", "dendrogram", "risk_contribution", "cumulative"):
+            self.assertGreater(html.index(f'data-plotly="chart-{key}"'), first_section)
+        self.assertGreater(html.index("data-price-explorer"), first_section)
+
+        # Real catalog names instead of repeating the ticker; exact total.
+        weights = self._hrp_weights(html)
+        self.assertEqual(set(weights), set(tickers))
+        self.assertIn("<td>AAPL</td><td>Apple</td>", html)
+        self.assertIn("100.00%", html.split('id="allocation-table"', 1)[1])
+        self.assertNotIn("Límite aplicado", html)
+
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_limits_column_appears_only_with_limits(self, download) -> None:
+        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
+        response = self.post(
+            "/hrp",
+            action="optimize",
+            universe="Portafolio actual",
+            benchmark="S&P 500 (SPY)",
+            start_date="2024-01-01",
+            tickers=["AAPL", "MSFT", "XLV"],
+            custom_tickers="",
+            max_weight="45",
+        )
+        html = response.data.decode()
+        self.assertIn("Límite aplicado (mín–máx)", html)
+        self.assertIn("0.00% – 45.00%", html)
+        self.assertIn('<details class="advanced" open data-weight-limits>', html)
+
     @staticmethod
     def _hrp_weights(html: str) -> dict[str, float]:
-        table = html.split("Distribución del portafolio", 1)[1].split("</table>", 1)[0]
+        table = html.split('id="allocation-table"', 1)[1].split("</table>", 1)[0]
+        body = table.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
         rows = re.findall(
             r"<tr>\s*<td>([^<]+)</td>\s*<td>[^<]+</td>\s*<td>([\d.,]+)\s*%</td>",
-            table,
+            body,
         )
         return {ticker: float(value.replace(",", ".")) for ticker, value in rows}
 
