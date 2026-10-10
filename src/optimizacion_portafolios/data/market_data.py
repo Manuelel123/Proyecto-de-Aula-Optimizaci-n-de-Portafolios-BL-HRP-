@@ -1,5 +1,6 @@
 """Market data access: Tiingo prices with Yahoo Finance fallback and profiles."""
 
+from collections import OrderedDict
 from datetime import date, timedelta
 from functools import lru_cache
 import logging
@@ -24,8 +25,12 @@ from optimizacion_portafolios.data.tiingo_prices import (
 logger = logging.getLogger(__name__)
 _INFO_CACHE_TTL_SECONDS = 15 * 60
 _INFO_CACHE_MAX_SIZE = 512
+_PRICE_CACHE_TTL_SECONDS = 15 * 60
+_PRICE_CACHE_MAX_SIZE = 64
 _RATE_LIMIT_RETRIES = 2
 _info_lock = Lock()
+_price_lock = Lock()
+_price_cache: "OrderedDict[tuple, pd.DataFrame]" = OrderedDict()
 
 
 @lru_cache(maxsize=_INFO_CACHE_MAX_SIZE)
@@ -119,7 +124,46 @@ def download_prices(
 
     Tiingo is used when ``TIINGO_API_KEY`` is set; tickers it does not cover
     (or for which it returns no data) are downloaded from Yahoo Finance.
+
+    Results are cached for up to 15 minutes per ``(tickers, start, end)`` (same
+    ``cache_window`` scheme as the profile cache) and every call returns an
+    independent copy, so callers may mutate the frame freely. Empty results are
+    not cached, so a transient provider failure is retried on the next call.
     """
+    tickers = tuple(tickers)
+    if not tickers:
+        return pd.DataFrame()
+    cache_window = int(monotonic() // _PRICE_CACHE_TTL_SECONDS)
+    key = (tickers, start, end, cache_window)
+    with _price_lock:
+        cached = _price_cache.get(key)
+        if cached is not None:
+            _price_cache.move_to_end(key)
+            return cached.copy()
+    # Download outside the lock so slow requests do not serialize other users.
+    prices = _download_prices_uncached(tickers, start, end)
+    if not prices.empty:
+        with _price_lock:
+            _price_cache[key] = prices.copy()
+            _price_cache.move_to_end(key)
+            stale = [k for k in _price_cache if k[-1] != cache_window]
+            for old_key in stale:
+                del _price_cache[old_key]
+            while len(_price_cache) > _PRICE_CACHE_MAX_SIZE:
+                _price_cache.popitem(last=False)
+    return prices
+
+
+def clear_price_cache() -> None:
+    """Drop every cached price download (used by tests)."""
+    with _price_lock:
+        _price_cache.clear()
+
+
+def _download_prices_uncached(
+    tickers: tuple[str, ...], start: date, end: date
+) -> pd.DataFrame:
+    """Download prices from Tiingo/Yahoo without caching."""
     if not tickers:
         return pd.DataFrame()
     api_key = tiingo_api_key()
