@@ -28,20 +28,14 @@ _RATE_LIMIT_RETRIES = 2
 _info_lock = Lock()
 
 
-class TimeoutSession(requests.Session):
-    def request(self, *args, **kwargs):
-        kwargs.setdefault("timeout", 20)
-        return super().request(*args, **kwargs)
-
-
-_yahoo_session = TimeoutSession()
-
-
 @lru_cache(maxsize=_INFO_CACHE_MAX_SIZE)
 def _cached_ticker_info(ticker: str, cache_window: int) -> dict:
+    # Use yfinance's own curl_cffi session (it applies its own timeouts). A plain
+    # requests.Session disables browser impersonation and Yahoo then throttles or
+    # stalls profile lookups.
     for attempt in range(_RATE_LIMIT_RETRIES + 1):
         try:
-            return yf.Ticker(ticker, session=_yahoo_session).get_info()
+            return yf.Ticker(ticker).get_info()
         except YFRateLimitError:
             if attempt == _RATE_LIMIT_RETRIES:
                 raise
