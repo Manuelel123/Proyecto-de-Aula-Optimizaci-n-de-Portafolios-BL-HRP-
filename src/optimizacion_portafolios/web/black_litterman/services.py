@@ -16,7 +16,7 @@ from optimizacion_portafolios.models.black_litterman import (
     TRADING_DAYS,
     optimize_black_litterman,
 )
-from optimizacion_portafolios.web.common.charts import bar_chart, quantstats_charts
+from optimizacion_portafolios.web.common.legacy_charts import bar_chart, quantstats_charts
 from optimizacion_portafolios.web.common.tables import (
     dataframe_html,
     format_percent,

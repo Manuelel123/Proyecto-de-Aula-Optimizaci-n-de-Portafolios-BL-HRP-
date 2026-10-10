@@ -84,3 +84,45 @@ def parse_optional_bounded_float(
     return parse_bounded_float(
         field, "", minimum, maximum, numeric_error, range_error
     )
+
+
+def universes_payload(
+    universes: dict[str, dict[str, str]],
+    default_selection=None,
+) -> dict[str, dict]:
+    """Universe catalog for the client-side asset selector (embedded as JSON).
+
+    Format::
+
+        {"<universe name>": {
+            "assets": [{"ticker": "AAPL", "label": "Apple (AAPL)", "group": "Acciones"}, ...],
+            "default": ["AAPL", ...]   # tickers checked when nothing else applies
+        }}
+
+    ``default_selection(universe_name, tickers) -> list[str]`` decides the
+    default checked tickers (all of them when omitted).
+    """
+    from optimizacion_portafolios.data.catalogs import GRUPOS_ACTIVOS
+
+    def group_of(ticker: str) -> str:
+        return next(
+            (group for group, assets in GRUPOS_ACTIVOS.items() if ticker in assets.values()),
+            "Otros",
+        )
+
+    payload = {}
+    for universe_name, assets in universes.items():
+        tickers = list(assets.values())
+        labels = {ticker: label for label, ticker in assets.items()}
+        payload[universe_name] = {
+            "assets": [
+                {"ticker": ticker, "label": labels[ticker], "group": group_of(ticker)}
+                for ticker in tickers
+            ],
+            "default": (
+                list(default_selection(universe_name, tickers))
+                if default_selection
+                else tickers
+            ),
+        }
+    return payload

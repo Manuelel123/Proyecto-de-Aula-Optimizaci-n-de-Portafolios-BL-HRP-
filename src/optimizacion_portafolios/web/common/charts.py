@@ -1,255 +1,201 @@
-"""Server-side Matplotlib charts rendered as PNG data URIs."""
+"""Plotly figures serialized as JSON for client-side rendering.
 
-import base64
-from io import BytesIO
+Contract shared by every page (do not change names, signatures or return types):
+each public chart function returns ``Markup`` with the figure JSON (safe to embed
+in ``<script type="application/json">``) or ``None`` when there is not enough
+data. Pages render them with ``macros/charts.html::plotly_chart``. Theme-dependent
+colors (backgrounds, text, grid) are applied in the browser by static/js/charts.js
+from CSS variables, so figures keep transparent backgrounds.
 
-import matplotlib.pyplot as plt
+NOTE: the bodies below are minimal placeholders created to freeze the contract;
+the charts module replaces them with the full designs.
+"""
+
 import pandas as pd
-import quantstats as qs
-from cycler import cycler
-from matplotlib.colors import LinearSegmentedColormap
+import plotly.graph_objects as go
+from markupsafe import Markup
 
-# Brand palette shared with static/css/app.css: navy for data, gold for highlights.
-PRIMARY_COLOR = "#1d3a63"
-ACCENT_COLOR = "#c19a5b"
-INK_COLOR = "#0f1b2d"
-MUTED_COLOR = "#6b778a"
-GRID_COLOR = "#e3e7ee"
-SERIES_COLORS = (
-    "#1d3a63",
-    "#c19a5b",
-    "#2f7d6d",
-    "#8c3b4a",
-    "#5b7fb5",
-    "#7a6a55",
-    "#4c5b70",
-    "#d4a373",
-    "#3e8e9e",
-    "#9a7fb8",
-)
-CORRELATION_CMAP = LinearSegmentedColormap.from_list(
-    "atlas_diverging", ["#8c3b4a", "#f7f6f2", "#1d3a63"]
-)
+ROLLING_SHARPE_PERIOD = 126
 
-plt.rcParams.update(
-    {
-        "figure.facecolor": "white",
-        "axes.facecolor": "white",
-        "axes.edgecolor": GRID_COLOR,
-        "axes.labelcolor": MUTED_COLOR,
-        "axes.titlecolor": INK_COLOR,
-        "axes.titlesize": 12,
-        "axes.titleweight": "bold",
-        "axes.titlepad": 12,
-        "axes.labelsize": 10,
-        "axes.prop_cycle": cycler(color=SERIES_COLORS),
-        "axes.grid": False,
-        "grid.color": GRID_COLOR,
-        "grid.linewidth": 0.8,
-        "xtick.color": MUTED_COLOR,
-        "ytick.color": MUTED_COLOR,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "legend.fontsize": 9,
-        "legend.labelcolor": INK_COLOR,
+
+def figure_payload(figure: go.Figure) -> Markup:
+    """Serialize a figure to JSON escaped for an inline <script> block."""
+    text = figure.to_json(validate=False, remove_uids=True)
+    return Markup(
+        text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    )
+
+
+def _bar(values: pd.Series, orientation: str = "h") -> Markup | None:
+    values = values.dropna()
+    if values.empty:
+        return None
+    if orientation == "h":
+        trace = go.Bar(x=values.to_numpy(), y=[str(i) for i in values.index], orientation="h")
+    else:
+        trace = go.Bar(x=[str(i) for i in values.index], y=values.to_numpy())
+    return figure_payload(go.Figure(trace))
+
+
+def allocation_chart(
+    weights: pd.Series,
+    names: dict[str, str] | None = None,
+    *,
+    reference: float | None = None,
+    market_weights: pd.Series | None = None,
+    bounds: dict[str, tuple[float, float]] | None = None,
+) -> Markup | None:
+    """Horizontal bars of the optimal weights (supports negative weights).
+
+    ``reference``: vertical guide (e.g. 1/N for HRP). ``market_weights``: marker
+    per asset with the market-cap weight (Black-Litterman). ``bounds``: per-asset
+    (min, max) applied limits (HRP).
+    """
+    return _bar(weights.sort_values(ascending=False))
+
+
+def cumulative_returns_chart(portfolio: pd.Series, benchmark: pd.Series) -> Markup | None:
+    if portfolio.dropna().empty:
+        return None
+    figure = go.Figure()
+    for series in (portfolio, benchmark):
+        cumulative = (1 + series.dropna()).cumprod() - 1
+        figure.add_trace(go.Scatter(x=cumulative.index, y=cumulative.to_numpy(), name=str(series.name)))
+    return figure_payload(figure)
+
+
+def drawdown_chart(portfolio: pd.Series) -> Markup | None:
+    wealth = (1 + portfolio.dropna()).cumprod()
+    if wealth.empty:
+        return None
+    drawdown = wealth / wealth.cummax() - 1
+    return figure_payload(go.Figure(go.Scatter(x=drawdown.index, y=drawdown.to_numpy(), fill="tozeroy")))
+
+
+def monthly_returns_heatmap(portfolio: pd.Series) -> Markup | None:
+    monthly = (1 + portfolio.dropna()).resample("ME").prod() - 1
+    if monthly.empty:
+        return None
+    table = monthly.groupby([monthly.index.year, monthly.index.month]).first().unstack()
+    return figure_payload(
+        go.Figure(go.Heatmap(z=table.to_numpy(), x=list(table.columns), y=[str(y) for y in table.index], zmid=0))
+    )
+
+
+def rolling_sharpe_chart(
+    portfolio: pd.Series, benchmark: pd.Series, period: int = ROLLING_SHARPE_PERIOD
+) -> Markup | None:
+    if len(portfolio.dropna()) < period:
+        return None
+    figure = go.Figure()
+    for series in (portfolio, benchmark):
+        rolling = series.rolling(period)
+        sharpe = (rolling.mean() / rolling.std() * 252**0.5).dropna()
+        figure.add_trace(go.Scatter(x=sharpe.index, y=sharpe.to_numpy(), name=str(series.name)))
+    return figure_payload(figure)
+
+
+def returns_distribution_chart(portfolio: pd.Series, benchmark: pd.Series) -> Markup | None:
+    if portfolio.dropna().empty:
+        return None
+    figure = go.Figure()
+    for series in (portfolio, benchmark):
+        monthly = (1 + series.dropna()).resample("ME").prod() - 1
+        figure.add_trace(go.Histogram(x=monthly.to_numpy(), name=str(series.name), opacity=0.7))
+    return figure_payload(figure)
+
+
+def yearly_returns_chart(portfolio: pd.Series, benchmark: pd.Series) -> Markup | None:
+    if portfolio.dropna().empty:
+        return None
+    figure = go.Figure()
+    for series in (portfolio, benchmark):
+        yearly = (1 + series.dropna()).groupby(series.dropna().index.year).prod() - 1
+        figure.add_trace(go.Bar(x=[str(y) for y in yearly.index], y=yearly.to_numpy(), name=str(series.name)))
+    return figure_payload(figure)
+
+
+def historical_charts(
+    portfolio: pd.Series,
+    benchmark: pd.Series,
+    rolling_period: int = ROLLING_SHARPE_PERIOD,
+) -> tuple[dict[str, Markup], bool]:
+    """Charts for the "Análisis histórico vs benchmark" section.
+
+    Keys: cumulative, drawdown, monthly_heatmap, rolling_sharpe (only when
+    there is enough history), returns_distribution, yearly_returns. The
+    boolean says whether the rolling Sharpe chart could be built.
+    """
+    charts = {
+        "cumulative": cumulative_returns_chart(portfolio, benchmark),
+        "drawdown": drawdown_chart(portfolio),
+        "monthly_heatmap": monthly_returns_heatmap(portfolio),
+        "rolling_sharpe": rolling_sharpe_chart(portfolio, benchmark, rolling_period),
+        "returns_distribution": returns_distribution_chart(portfolio, benchmark),
+        "yearly_returns": yearly_returns_chart(portfolio, benchmark),
     }
-)
+    has_rolling_sharpe = charts["rolling_sharpe"] is not None
+    return {key: value for key, value in charts.items() if value is not None}, has_rolling_sharpe
 
 
-def figure_to_data_uri(figure) -> str:
-    buffer = BytesIO()
-    figure.savefig(buffer, format="png", dpi=144, bbox_inches="tight")
-    plt.close(figure)
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
-
-
-def line_chart(data: pd.Series | pd.DataFrame, title: str, ylabel: str) -> str:
-    figure, axis = plt.subplots(figsize=(10, 3.8))
-    data.plot(ax=axis, linewidth=1.4)
-    axis.set_title(title, loc="left", fontweight="bold")
-    axis.set_ylabel(ylabel)
-    axis.set_xlabel("")
-    axis.grid(axis="y", alpha=0.2)
-    axis.spines[["top", "right"]].set_visible(False)
-    if isinstance(data, pd.DataFrame):
-        axis.legend(frameon=False, ncol=min(4, len(data.columns)))
-    figure.tight_layout()
-    return figure_to_data_uri(figure)
-
-
-def bar_chart(data: pd.Series, title: str, ylabel: str) -> str:
-    figure, axis = plt.subplots(figsize=(9, max(3.5, len(data) * 0.32)))
-    ordered = data.sort_values()
-    ordered.plot.barh(ax=axis, color=PRIMARY_COLOR, width=0.68)
-    if len(ordered):
-        axis.patches[-1].set_color(ACCENT_COLOR)
-    axis.set_title(title, loc="left", fontweight="bold")
-    axis.set_xlabel(ylabel)
-    axis.set_ylabel("")
-    axis.spines[["top", "right", "left"]].set_visible(False)
-    axis.grid(axis="x", alpha=0.2)
-    figure.tight_layout()
-    return figure_to_data_uri(figure)
-
-
-def correlation_chart(correlation: pd.DataFrame) -> str:
-    figure, axis = plt.subplots(figsize=(max(6, len(correlation) * 0.55), 5.5))
-    image = axis.imshow(correlation, cmap=CORRELATION_CMAP, vmin=-1, vmax=1)
-    labels = list(correlation.columns)
-    axis.set_xticks(range(len(labels)), labels=labels, rotation=45, ha="right")
-    axis.set_yticks(range(len(labels)), labels=labels)
-    if len(labels) <= 18:
-        for row in range(len(labels)):
-            for column in range(len(labels)):
-                axis.text(
-                    column,
-                    row,
-                    f"{correlation.iloc[row, column]:.2f}",
-                    ha="center",
-                    va="center",
-                    color="white" if abs(correlation.iloc[row, column]) > 0.6 else INK_COLOR,
-                    fontsize=8,
-                )
-    colorbar = figure.colorbar(image, ax=axis, shrink=0.82, label="Correlación")
-    colorbar.outline.set_visible(False)
-    axis.set_title("Correlación cuasi-diagonal", loc="left", fontweight="bold")
-    figure.tight_layout()
-    return figure_to_data_uri(figure)
-
-
-def volatility_histogram(volatility: pd.Series, ticker: str, current: float) -> str:
-    """Distribution of monthly volatility for one asset, marking the current value."""
-    figure, axis = plt.subplots(figsize=(9, 3.5))
-    axis.hist(volatility.dropna() * 100, bins="auto", color=PRIMARY_COLOR, edgecolor="white")
-    if pd.notna(current):
-        axis.axvline(
-            current * 100,
-            color=ACCENT_COLOR,
-            linestyle="--",
-            linewidth=1.8,
-            label=f"Actual: {current:.2%}",
-        )
-        axis.legend(frameon=False)
-    axis.set_title(f"Distribución de volatilidad mensual · {ticker}", loc="left")
-    axis.set_xlabel("Volatilidad mensual (%)")
-    axis.set_ylabel("Número de meses")
-    axis.spines[["top", "right"]].set_visible(False)
-    axis.grid(axis="y", alpha=0.18)
-    figure.tight_layout()
-    return figure_to_data_uri(figure)
-
-
-def monthly_volatility_histograms(monthly_volatility: pd.DataFrame) -> str:
-    """One monthly-volatility histogram per asset, two per row."""
-    columns = 2
-    rows = (len(monthly_volatility.columns) + columns - 1) // columns
-    figure, axes = plt.subplots(rows, columns, figsize=(12, 3.3 * rows), squeeze=False)
-    for axis, ticker in zip(axes.flat, monthly_volatility.columns):
-        values = monthly_volatility[ticker].dropna() * 100
-        axis.hist(values, bins="auto", color=PRIMARY_COLOR, edgecolor="white")
-        axis.axvline(values.iloc[-1], color=ACCENT_COLOR, linestyle="--", linewidth=1.8)
-        axis.set_title(f"{ticker} · actual {values.iloc[-1]:.2f}%", loc="left")
-        axis.set_xlabel("Volatilidad mensual (%)")
-        axis.set_ylabel("Meses")
-        axis.grid(axis="y", alpha=0.2)
-        axis.spines[["top", "right"]].set_visible(False)
-    for axis in list(axes.flat)[len(monthly_volatility.columns) :]:
-        axis.set_visible(False)
-    figure.tight_layout()
-    return figure_to_data_uri(figure)
-
-
-def period_volatility_histograms(
-    annualized_volatility: pd.DataFrame,
-    period_volatility: pd.DataFrame,
-    period_label: str,
-) -> str:
-    """Annualized-volatility histograms per asset, annotated with the latest period."""
-    available = [
-        ticker
-        for ticker in annualized_volatility.columns
-        if annualized_volatility[ticker].notna().any()
-    ]
-    columns = 3
-    rows = (len(available) + columns - 1) // columns
-    figure, axes = plt.subplots(rows, columns, figsize=(15, 3.2 * rows), squeeze=False)
-    for axis, ticker in zip(axes.flat, available):
-        values = annualized_volatility[ticker].dropna() * 100
-        latest_period = period_volatility.loc[values.index[-1], ticker]
-        axis.hist(values, bins="auto", color=PRIMARY_COLOR, edgecolor="white")
-        axis.axvline(values.iloc[-1], color=ACCENT_COLOR, linestyle="--", linewidth=1.8)
-        axis.set_title(ticker, loc="left")
-        axis.set_xlabel("Volatilidad anualizada (%)")
-        axis.set_ylabel("Frecuencia")
-        axis.text(
-            0.97,
-            0.95,
-            f"Periodo: {latest_period:.2%}\nAnualizada: {values.iloc[-1] / 100:.2%}",
-            transform=axis.transAxes,
-            ha="right",
-            va="top",
-            fontsize=8,
-            color=INK_COLOR,
-            bbox={"boxstyle": "round", "facecolor": "white", "edgecolor": GRID_COLOR, "alpha": 0.9},
-        )
-        axis.spines[["top", "right"]].set_visible(False)
-        axis.grid(axis="y", alpha=0.18)
-    for axis in list(axes.flat)[len(available) :]:
-        axis.set_visible(False)
-    figure.suptitle(
-        f"Volatilidad histórica · {period_label}",
-        x=0.02,
-        ha="left",
-        color=INK_COLOR,
-        fontweight="bold",
+def correlation_heatmap(matrix: pd.DataFrame, title: str = "Correlación") -> Markup | None:
+    if matrix.empty:
+        return None
+    labels = [str(label) for label in matrix.columns]
+    return figure_payload(
+        go.Figure(go.Heatmap(z=matrix.to_numpy(), x=labels, y=labels, zmin=-1, zmid=0, zmax=1))
     )
-    figure.tight_layout()
-    return figure_to_data_uri(figure)
 
 
-def quantstats_charts(
-    portfolio_returns: pd.Series,
-    benchmark_returns: pd.Series,
-    rolling_period: int = 126,
-) -> tuple[dict[str, str], bool]:
-    """Render the QuantStats charts; rolling Sharpe only when history allows it."""
-    charts = {}
-    plots = (
-        (
-            "Rendimiento acumulado",
-            lambda: qs.plots.returns(
-                portfolio_returns,
-                benchmark=benchmark_returns,
-                figsize=(10, 5),
-                show=False,
-            ),
-        ),
-        (
-            "Drawdown",
-            lambda: qs.plots.drawdown(portfolio_returns, figsize=(10, 4), show=False),
-        ),
-        (
-            "Rendimientos mensuales",
-            lambda: qs.plots.monthly_heatmap(
-                portfolio_returns,
-                benchmark=benchmark_returns,
-                figsize=(10, 5),
-                show=False,
-            ),
-        ),
-    )
-    for title, create_plot in plots:
-        charts[title] = figure_to_data_uri(create_plot())
+def dendrogram_chart(clustering) -> Markup | None:
+    """Dendrogram of a fitted skfolio HierarchicalClustering estimator."""
+    if clustering is None:
+        return None
+    return figure_payload(clustering.plot_dendrogram(heatmap=False))
 
-    has_rolling_sharpe = len(portfolio_returns) >= rolling_period
-    if has_rolling_sharpe:
-        figure = qs.plots.rolling_sharpe(
-            portfolio_returns,
-            benchmark=benchmark_returns,
-            period=rolling_period,
-            figsize=(10, 4),
-            show=False,
+
+def contribution_chart(frame: pd.DataFrame, column: str) -> Markup | None:
+    if column not in frame:
+        return None
+    return _bar(frame[column].sort_values(ascending=False))
+
+
+def volatility_histogram_chart(
+    monthly_volatility: pd.DataFrame, current: pd.Series | None = None
+) -> Markup | None:
+    """Monthly-volatility histogram per asset, one visible at a time (selector)."""
+    if monthly_volatility.dropna(how="all").empty:
+        return None
+    figure = go.Figure()
+    for index, ticker in enumerate(monthly_volatility.columns):
+        figure.add_trace(
+            go.Histogram(x=monthly_volatility[ticker].dropna().to_numpy(), name=str(ticker), visible=index == 0)
         )
-        charts["Sharpe móvil"] = figure_to_data_uri(figure)
-    return charts, has_rolling_sharpe
+    return figure_payload(figure)
+
+
+def returns_box_chart(returns: pd.DataFrame) -> Markup | None:
+    if returns.dropna(how="all").empty:
+        return None
+    figure = go.Figure()
+    for ticker in returns.columns:
+        figure.add_trace(go.Box(y=returns[ticker].dropna().to_numpy(), name=str(ticker)))
+    return figure_payload(figure)
+
+
+def prior_posterior_chart(prior: pd.Series, views: pd.Series, posterior: pd.Series) -> Markup | None:
+    if posterior.dropna().empty:
+        return None
+    figure = go.Figure()
+    for name, series in (("Prior", prior), ("View", views), ("Posterior", posterior)):
+        figure.add_trace(go.Bar(x=[str(i) for i in series.index], y=series.to_numpy(), name=name))
+    return figure_payload(figure)
+
+
+def period_volatility_chart(
+    annualized: pd.DataFrame, period_volatility: pd.DataFrame, label: str
+) -> Markup | None:
+    """Latest annualized volatility per asset (bars) for the options view."""
+    if annualized.dropna(how="all").empty:
+        return None
+    return _bar(annualized.iloc[-1].sort_values(ascending=False))

@@ -1,0 +1,59 @@
+{#
+  Form components shared by the HRP, Black-Litterman and monitoring pages.
+  The macro signatures are a contract between modules: bodies may be enhanced
+  (markup, classes, data attributes), signatures and submitted field names may not.
+  Behaviour lives in static/js/forms.js and styles in static/css/forms.css.
+#}
+
+{# Universe <select name="universe"> plus the JSON catalog used to rebuild the
+   asset chips without reloading. ``payload`` comes from
+   web.common.forms.universes_payload(). #}
+{% macro universe_select(field_id, names, selected, payload) %}
+  <select id="{{ field_id }}" name="universe" data-universe-select>
+    {% for name in names %}<option value="{{ name }}" {{ 'selected' if name == selected else '' }}>{{ name }}</option>{% endfor %}
+  </select>
+  <script type="application/json" id="universes">{{ payload|tojson }}</script>
+{% endmacro %}
+
+{# Multi-select of tickers rendered as checkbox chips (works without JS). #}
+{% macro asset_selector(available, selected, labels=None, name="tickers", field_id="asset-selector") %}
+  <div class="asset-selector" id="{{ field_id }}" data-asset-selector data-name="{{ name }}">
+    <div class="asset-selector__options">
+      {% for ticker in available %}
+        <label class="chip" data-ticker="{{ ticker }}"{% if labels and labels.get(ticker) and labels[ticker] != ticker %} title="{{ labels[ticker] }}"{% endif %}>
+          <input type="checkbox" name="{{ name }}" value="{{ ticker }}" {{ 'checked' if ticker in selected else '' }}>
+          <span>{{ ticker }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+{% endmacro %}
+
+{# Free-form tickers outside the catalog; submitted as a comma-separated
+   ``custom_tickers`` field. #}
+{% macro custom_tickers_input(value="", field_id="custom_tickers", placeholder="AMZN, NVDA, ^VIX") %}
+  <input id="{{ field_id }}" name="custom_tickers" value="{{ value }}" placeholder="{{ placeholder }}" autocomplete="off" data-custom-tickers>
+{% endmacro %}
+
+{# Numeric input with a "%" suffix. Values are percentage points. #}
+{% macro percent_input(name, value="", field_id=None, min=None, max=None, placeholder=None, required=False) %}
+  <div class="input-affix">
+    <input id="{{ field_id or name }}" name="{{ name }}" type="number" value="{{ value }}" step="any" inputmode="decimal"{% if min is not none %} min="{{ min }}"{% endif %}{% if max is not none %} max="{{ max }}"{% endif %}{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if required %} required{% endif %}>
+    <span class="input-affix__suffix" aria-hidden="true">%</span>
+  </div>
+{% endmacro %}
+
+{# Contextual help: a small "?" button with an accessible tooltip. #}
+{% macro help_tip(text, label="Ayuda") %}
+  <span class="help-tip">
+    <button type="button" class="help-tip__button" aria-label="{{ label }}">?</button>
+    <span class="help-tip__bubble" role="tooltip">{{ text }}</span>
+  </span>
+{% endmacro %}
+
+{# Quick start-date presets that write into the date input ``target_id``. #}
+{% macro date_presets(target_id, years=(1, 2, 3, 5)) %}
+  <div class="date-presets" data-date-presets="{{ target_id }}">
+    {% for value in years %}<button type="button" class="date-presets__button" data-years="{{ value }}">{{ value }}A</button>{% endfor %}
+  </div>
+{% endmacro %}

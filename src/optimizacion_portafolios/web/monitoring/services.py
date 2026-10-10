@@ -18,7 +18,7 @@ from optimizacion_portafolios.data.market_data import (
     download_prices,
     fetch_fundamental_information,
 )
-from optimizacion_portafolios.web.common.charts import (
+from optimizacion_portafolios.web.common.legacy_charts import (
     line_chart,
     period_volatility_histograms,
     volatility_histogram,

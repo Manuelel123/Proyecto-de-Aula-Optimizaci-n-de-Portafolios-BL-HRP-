@@ -16,7 +16,7 @@ from optimizacion_portafolios.models.hrp import (
     calculate_hrp_contributions,
     optimize_hrp,
 )
-from optimizacion_portafolios.web.common.charts import (
+from optimizacion_portafolios.web.common.legacy_charts import (
     bar_chart,
     correlation_chart,
     line_chart,
