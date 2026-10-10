@@ -87,9 +87,17 @@ class WeightBounds:
 
 @dataclass(frozen=True)
 class HrpResult:
+    """Fitted HRP allocation.
+
+    ``clustering`` is the fitted skfolio ``HierarchicalClustering`` estimator
+    whose linkage produced the quasi-diagonal order (single linkage, no optimal
+    leaf ordering); it feeds the dendrogram chart.
+    """
+
     weights: pd.Series
     ordered_correlation: pd.DataFrame
     sortino_ratio: float
+    clustering: HierarchicalClustering | None = None
 
 
 def _build_optimizer(
@@ -142,6 +150,7 @@ def optimize_hrp(
         weights=weights.sort_values(ascending=False),
         ordered_correlation=returns.corr().loc[order, order],
         sortino_ratio=float(portfolio.annualized_sortino_ratio),
+        clustering=optimizer.seriation_estimator_.hierarchical_clustering_estimator_,
     )
 
 
@@ -151,6 +160,23 @@ def calculate_hrp(
     """Return HRP weights and the correlation matrix in quasi-diagonal order."""
     result = optimize_hrp(returns, bounds)
     return result.weights, result.ordered_correlation
+
+
+def calculate_risk_contributions(
+    returns: pd.DataFrame, weights: pd.Series
+) -> pd.Series:
+    """Share of portfolio variance per asset: RC_i = w_i (Σw)_i / w'Σw.
+
+    Uses the sample covariance of ``returns``; the shares add up to 1.
+    """
+    weights = weights.astype(float)
+    covariance = returns.loc[:, weights.index].cov()
+    marginal = covariance.dot(weights)
+    variance = float(weights.dot(marginal))
+    name = "Contribución al riesgo"
+    if not np.isfinite(variance) or variance <= 0:
+        return pd.Series(np.nan, index=weights.index, name=name)
+    return (weights * marginal / variance).rename(name)
 
 
 def calculate_hrp_contributions(
@@ -168,4 +194,5 @@ def calculate_hrp_contributions(
         if total_return != 0
         else 0
     )
+    summary["Contribución al riesgo"] = calculate_risk_contributions(returns, weights)
     return daily_contributions, summary
