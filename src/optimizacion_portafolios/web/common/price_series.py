@@ -15,15 +15,27 @@ def _script_safe(text: str) -> Markup:
 
 
 def _series_entry(ticker: str, name: str, prices: pd.Series) -> dict | None:
-    prices = prices.dropna()
-    prices = prices[prices.map(lambda value: isfinite(float(value)))]
-    if prices.empty:
+    """Columnar entry with strictly ascending, unique daily dates.
+
+    Lightweight Charts rejects unsorted or repeated times, so the index is
+    normalized to calendar days, sorted, and the last quote of a day is kept.
+    Non-numeric, infinite and non-positive prices are dropped.
+    """
+    values = pd.to_numeric(pd.Series(prices), errors="coerce").astype(float)
+    try:
+        values.index = pd.DatetimeIndex(pd.to_datetime(values.index)).tz_localize(None).normalize()
+    except (TypeError, ValueError):
+        return None
+    values = values[values.map(isfinite) & (values > 0)]
+    values = values[~values.index.isna()].sort_index()
+    values = values[~values.index.duplicated(keep="last")]
+    if values.empty:
         return None
     return {
         "ticker": ticker,
         "name": name,
-        "time": [pd.Timestamp(day).strftime("%Y-%m-%d") for day in prices.index],
-        "value": [round(float(value), 6) for value in prices.to_numpy()],
+        "time": [day.strftime("%Y-%m-%d") for day in values.index],
+        "value": [round(float(value), 6) for value in values.to_numpy()],
     }
 
 
@@ -48,13 +60,15 @@ def price_series_payload(
     series = [
         entry
         for ticker in raw_prices.columns
-        if (entry := _series_entry(str(ticker), names.get(ticker, str(ticker)), raw_prices[ticker]))
+        if (entry := _series_entry(str(ticker), str(names.get(ticker, ticker)), raw_prices[ticker]))
     ]
     if not series:
         return None
+    # A benchmark that is also one of the assets keeps both entries: the
+    # explorer overlays it in base 100 only when another asset is selected.
     benchmark_entry = None
     if benchmark is not None:
         label = str(benchmark.name) if benchmark.name is not None else "Benchmark"
-        benchmark_entry = _series_entry(label, names.get(label, label), benchmark)
+        benchmark_entry = _series_entry(label, str(names.get(label, label)), benchmark)
     payload = {"series": series, "benchmark": benchmark_entry}
     return _script_safe(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
