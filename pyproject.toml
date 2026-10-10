@@ -16,7 +16,9 @@ dependencies = [
     "quantstats>=0.0.77",
     "requests>=2.31",
     "scipy>=1.14.0,<1.17",
+    "skfolio>=1.8.0",
     "statsmodels>=0.14.4",
+    "tiingo>=0.16.1",
     "waitress>=3.0.2",
     "yfinance>=1.7.0",
 ]

@@ -63,7 +63,8 @@ tests/
   support.py                    precios sintéticos y cliente Flask con CSRF
   test_market_data.py           capa data
   test_analytics.py             capa analytics
-  test_models.py                capa models
+  test_hrp_model.py             modelo HRP
+  test_black_litterman_model.py modelo Black-Litterman
   test_web.py                   rutas HTTP de punta a punta
 src/optimizacion_portafolios/
   data/
@@ -101,7 +102,7 @@ Cada módulo web (`main`, `monitoring`, `hrp`, `black_litterman`) sigue la misma
 
 ## Convenciones para extender el proyecto
 
-- **Nuevo cálculo o modelo:** va en `analytics/` o `models/`, sin importar Flask, con sus pruebas en `tests/test_analytics.py` o `tests/test_models.py`.
+- **Nuevo cálculo o modelo:** va en `analytics/` o `models/`, sin importar Flask, con sus pruebas en `tests/test_analytics.py` o `tests/test_<modelo>_model.py`.
 - **Nueva fuente de datos:** va en `data/`. Las llamadas de red se simulan en las pruebas.
 - **Nueva página:** crea `web/<módulo>/` con `__init__.py`, `routes.py`, `services.py` y `templates/<módulo>/`, y registra el Blueprint en `web/__init__.py`.
 - **Gráficos y tablas:** reutiliza `web/common/charts.py` y `web/common/tables.py` antes de crear funciones nuevas.
