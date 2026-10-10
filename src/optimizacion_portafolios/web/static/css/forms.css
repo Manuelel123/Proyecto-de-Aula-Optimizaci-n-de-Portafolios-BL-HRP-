@@ -1,1 +1,723 @@
-/* Form components (asset chips, % inputs, help tips, date presets, ticker chips, view/limit tables). Owned by the forms module; uses tokens from app.css. */
+/*
+ * Form components (macros/forms.html + js/forms.js): asset chips, universe
+ * summary, custom ticker chips, % inputs, help tips, date presets, field errors
+ * and the HRP feasibility indicator. Uses only the design tokens defined in
+ * app.css (docs/diseno_visual.md), so dark mode follows the tokens.
+ */
+
+/* Elements toggled with the `hidden` attribute must stay hidden even when a
+   component rule sets `display`. */
+.asset-selector [hidden],
+.ticker-input [hidden],
+.date-presets[hidden],
+.field-error[hidden],
+.form-blocker[hidden] {
+  display: none !important;
+}
+
+/* ---------- Asset selector ---------- */
+.asset-selector {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.asset-selector__toolbar {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.asset-selector__search {
+  position: relative;
+}
+
+.asset-selector__search-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.asset-selector__search-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 36px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-md);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.asset-selector__search-input::placeholder { color: var(--text-3); }
+.asset-selector__search-input:hover { border-color: var(--text-3); }
+.asset-selector__search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.asset-selector__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.asset-selector__count {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-selector__count strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.asset-selector.is-insufficient .asset-selector__count strong { color: var(--danger); }
+
+.asset-selector__actions {
+  display: inline-flex;
+  gap: var(--sp-1);
+}
+
+.asset-selector__action {
+  min-height: 28px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.asset-selector__action:hover { background: var(--accent-subtle); color: var(--accent-hover); }
+.asset-selector__action:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.asset-selector__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-content: flex-start;
+}
+
+.asset-selector__options--grouped {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.asset-selector__options--scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-1) var(--sp-1) var(--sp-3);
+  margin: 0 calc(-1 * var(--sp-1));
+  /* Scroll shadows: the "local" covers hide the "scroll" shadows at the ends. */
+  background:
+    linear-gradient(var(--surface-1) 30%, transparent) top / 100% 24px no-repeat local,
+    linear-gradient(transparent, var(--surface-1) 70%) bottom / 100% 24px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, color-mix(in srgb, var(--text-1) 12%, transparent), transparent) top / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--text-1) 12%, transparent), transparent) bottom / 100% 10px no-repeat scroll;
+  scrollbar-width: thin;
+}
+
+.asset-group {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.asset-group__title {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.asset-group__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.asset-selector__empty {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- Chips ---------- */
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+/* Visually hidden checkbox (also covered by .visually-hidden in app.css). */
+.chip > input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+}
+
+.chip__check {
+  display: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.chip:hover {
+  border-color: var(--text-3);
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.chip:has(input:checked) {
+  border-color: var(--accent-border);
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.chip:has(input:checked) .chip__check { display: inline; }
+.chip:has(input:checked):hover { border-color: var(--accent); }
+
+.chip:has(input:focus-visible),
+.chip--add:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.chip:has(input:disabled) {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.chip--add {
+  border-style: dashed;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-ui);
+}
+
+.chip--add:hover { background: var(--accent-subtle); border-color: var(--accent-border); color: var(--accent-hover); }
+
+/* ---------- Universe summary ---------- */
+.universe-summary:empty { display: none; }
+
+/* ---------- Custom ticker chips ---------- */
+.ticker-input {
+  display: grid;
+  gap: 6px;
+}
+
+.ticker-input__box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  cursor: text;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.ticker-input__box:hover { border-color: var(--text-3); }
+.ticker-input__box:focus-within { border-color: var(--accent); box-shadow: var(--focus-ring); }
+.ticker-input__box.is-invalid { border-color: var(--danger); }
+.ticker-input__box.is-invalid:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent); }
+
+.ticker-input__chips {
+  display: contents;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticker-input__entry,
+.ticker-input__box > input {
+  flex: 1 1 8ch;
+  min-width: 8ch;
+  height: 30px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  text-transform: uppercase;
+}
+
+.ticker-input__entry::placeholder { color: var(--text-3); text-transform: none; font-family: var(--font-ui); }
+.ticker-input__entry:focus { outline: none; box-shadow: none; }
+
+.ticker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-full);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.ticker-chip.is-invalid {
+  border-color: var(--danger-border, var(--danger));
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.ticker-chip__error {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+}
+
+.ticker-chip__error::before { content: "· "; }
+
+.ticker-chip.is-duplicate { animation: atlas-chip-pulse var(--t-slow) var(--ease) 2; }
+
+.ticker-chip__remove {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: inherit;
+  font-size: var(--fs-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ticker-chip__remove:hover { background: color-mix(in srgb, currentColor 15%, transparent); }
+.ticker-chip__remove:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+@keyframes atlas-chip-pulse {
+  50% { box-shadow: 0 0 0 3px var(--accent-border); }
+}
+
+/* ---------- Input with "%" suffix ---------- */
+.input-affix {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  overflow: hidden;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.input-affix:hover { border-color: var(--text-3); }
+.input-affix:focus-within { border-color: var(--accent); box-shadow: var(--focus-ring); }
+
+.input-affix > input,
+.input-affix__input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+  box-shadow: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.input-affix > input:focus { outline: none; box-shadow: none; }
+.input-affix > input::placeholder { color: var(--text-3); }
+.input-affix > input::-webkit-outer-spin-button,
+.input-affix > input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.input-affix__suffix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.input-affix.is-invalid,
+.input-affix:has(input[aria-invalid="true"]) { border-color: var(--danger); }
+.input-affix.is-invalid:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent); }
+
+.input-affix:has(input:disabled) { background: var(--surface-2); }
+.input-affix:has(input:disabled) > input { color: var(--text-disabled); cursor: not-allowed; }
+
+/* Compact variant inside tables (per-asset limits, views). */
+.data-table .input-affix,
+[data-ticker-rows] .input-affix { height: 36px; min-width: 92px; }
+
+/* ---------- Field errors and blockers ---------- */
+input[aria-invalid="true"]:not(.input-affix__input):not(.ticker-input__entry) {
+  border-color: var(--danger);
+}
+
+.field-error,
+.form-blocker {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 0 0;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+.field-error::before,
+.form-blocker::before {
+  content: "!";
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  border-radius: var(--r-full);
+  background: var(--danger);
+  color: var(--surface-1);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.form-blocker {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- HRP feasibility indicator ----------
+   Low specificity (:where) so a page may also give it .notice classes; the
+   state classes set by forms.js win. */
+:where([data-feasibility]) {
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+
+[data-feasibility] { font-variant-numeric: tabular-nums; }
+:where([data-feasibility]):empty { display: none; }
+
+[data-feasibility].is-ok {
+  border-color: var(--success-border, var(--border));
+  border-left-color: var(--success);
+  background: var(--success-bg);
+  color: var(--text-1);
+}
+
+[data-feasibility].is-error {
+  border-color: var(--danger-border, var(--danger));
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* ---------- Editable per-asset tables (BL views, HRP limits) ---------- */
+.view-table,
+.limits-table {
+  font-size: var(--fs-sm);
+}
+
+.view-table th,
+.view-table td,
+.limits-table th,
+.limits-table td {
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+
+.view-table tbody th,
+.limits-table tbody th,
+.view-table__ticker {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-1);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.view-table__name {
+  max-width: 16ch;
+  overflow: hidden;
+  color: var(--text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-table__input,
+.limits-table td.num { min-width: 104px; }
+
+.view-table .input-affix,
+.limits-table .input-affix {
+  height: 34px;
+  min-width: 92px;
+}
+
+.view-table .input-affix > input,
+.limits-table .input-affix > input {
+  padding: 0 8px;
+  font-size: var(--fs-sm);
+}
+
+.view-table .input-affix__suffix,
+.limits-table .input-affix__suffix { padding: 0 8px; }
+
+.view-table .field-error,
+.limits-table .field-error { max-width: 22ch; }
+
+.view-table__confidence {
+  width: 6ch;
+  min-height: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-full);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font: 600 var(--fs-xs)/1.4 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  opacity: 1;
+  -webkit-text-fill-color: currentColor;
+  cursor: default;
+}
+
+.view-table tbody tr:hover,
+.limits-table tbody tr:hover { background: var(--surface-2); }
+
+.view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-3);
+}
+
+.view-actions > .form-row {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.view-actions .form-field { margin: 0; }
+
+/* ---------- Help tips ---------- */
+.help-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.help-tip__button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  background: var(--surface-1);
+  color: var(--text-3);
+  font: 600 11px/1 var(--font-ui);
+  cursor: help;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+/* Larger hit area without changing the visual size. */
+.help-tip__button::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.help-tip__button:hover { border-color: var(--accent); color: var(--accent); }
+.help-tip__button:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--accent); }
+
+.help-tip__bubble {
+  --arrow-x: 50%;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 60;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-inverse);
+  box-shadow: var(--shadow-lg);
+  color: var(--bg);
+  font: 400 var(--fs-xs)/1.45 var(--font-ui);
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease), visibility var(--t-fast) var(--ease);
+}
+
+.help-tip__bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: var(--arrow-x);
+  border: 6px solid transparent;
+  border-top-color: var(--surface-inverse);
+  transform: translateX(-50%);
+}
+
+.help-tip.is-fixed .help-tip__bubble {
+  position: fixed;
+  bottom: auto;
+  transform: none;
+}
+
+.help-tip.is-below .help-tip__bubble::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--surface-inverse);
+}
+
+@media (hover: hover) {
+  .help-tip:hover .help-tip__bubble { visibility: visible; opacity: 1; }
+}
+
+.help-tip__button:focus-visible + .help-tip__bubble,
+.help-tip.is-open .help-tip__bubble {
+  visibility: visible;
+  opacity: 1;
+}
+
+.help-tip.is-dismissed .help-tip__bubble {
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* ---------- Date presets ---------- */
+.date-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: var(--sp-2);
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.date-presets__button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.date-presets__button:hover { color: var(--text-1); background: var(--surface-3); }
+.date-presets__button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.date-presets__button[aria-pressed="true"] {
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+  color: var(--text-1);
+}
+
+input[type="date"] { accent-color: var(--accent); }
+
+/* ---------- Responsive and motion ---------- */
+@media (max-width: 767px) {
+  .chip,
+  .chip--add,
+  .asset-selector__action,
+  .date-presets__button { min-height: 40px; }
+  .asset-selector__options--scroll { max-height: 280px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip,
+  .asset-selector__search-input,
+  .asset-selector__action,
+  .input-affix,
+  .ticker-input__box,
+  .help-tip__button,
+  .help-tip__bubble,
+  .date-presets__button { transition: none; }
+  .ticker-chip.is-duplicate { animation: none; }
+}
