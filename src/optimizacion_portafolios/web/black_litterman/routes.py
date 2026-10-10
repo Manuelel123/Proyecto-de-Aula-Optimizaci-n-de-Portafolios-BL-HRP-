@@ -20,10 +20,13 @@ from optimizacion_portafolios.web.black_litterman.services import (
     OBJECTIVES,
     REPORT_FILENAME,
     ROLLING_SHARPE_PERIOD,
+    UNCONSTRAINED_OBJECTIVE,
+    VIEW_CONFIDENCE,
     run_black_litterman,
 )
 from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
+    normalize_ticker,
     parse_bounded_float,
     parse_start_date,
     selected_option,
@@ -34,6 +37,19 @@ logger = logging.getLogger(__name__)
 _DEFAULT_UNIVERSE = "Portafolio actual"
 _DEFAULT_VIEW = "8.0"
 _WINDOW_YEARS = 2
+
+
+def _valid_custom_tickers() -> tuple[list[str], list[str]]:
+    """Typed custom tickers split into (valid, invalid), preserving order."""
+    valid, invalid = [], []
+    for raw in request.form.get("custom_tickers", "").split(","):
+        if not raw.strip():
+            continue
+        try:
+            valid.append(normalize_ticker(raw))
+        except ValueError:
+            invalid.append(raw.strip())
+    return list(dict.fromkeys(valid)), invalid
 
 
 @bp.route("/black-litterman", methods=["GET", "POST"])
@@ -57,6 +73,13 @@ def black_litterman():
         selected = [ticker for ticker in selected if ticker in available_tickers]
     if not selected:
         selected = default_selection
+    custom_valid, custom_invalid = (
+        _valid_custom_tickers() if request.method == "POST" else ([], [])
+    )
+    if request.form.get("action") == "refresh" and custom_invalid:
+        flash("Símbolos no válidos ignorados: " + ", ".join(custom_invalid), "error")
+    # Every asset that enters the model (checked + custom) gets a visible view.
+    view_tickers = list(dict.fromkeys([*selected, *custom_valid]))
 
     benchmark_names = list(BENCHMARKS)
     benchmark_name = request.values.get("benchmark", benchmark_names[0])
@@ -70,13 +93,14 @@ def black_litterman():
     start_value = request.values.get("start_date", default_start.isoformat())
     views_values = {
         ticker: request.values.get(f"view_{ticker}", _DEFAULT_VIEW)
-        for ticker in selected
+        for ticker in view_tickers
     }
     result = None
 
     if request.method == "POST" and request.form.get("action") != "refresh":
         try:
             selected = selected_tickers()
+            view_tickers = selected
             custom = custom_tickers()
             allowed = set(ACTIVOS_HRP.values()) | custom
             invalid = [ticker for ticker in selected if ticker not in allowed]
@@ -101,6 +125,18 @@ def black_litterman():
                 "La tasa libre de riesgo debe estar entre 0% y 100%.",
             )
             risk_free_value = str(risk_free_rate_pct)
+            unseen = [
+                ticker for ticker in selected if f"view_{ticker}" not in request.form
+            ]
+            if unseen:
+                views_values.update(dict.fromkeys(unseen, _DEFAULT_VIEW))
+                raise ValueError(
+                    "Define la view anual de: "
+                    + ", ".join(unseen)
+                    + ". Se propuso "
+                    + _DEFAULT_VIEW
+                    + "%; revísala y vuelve a calcular."
+                )
             views = {}
             for ticker in selected:
                 view_pct = parse_bounded_float(
@@ -176,6 +212,9 @@ def black_litterman():
         universe_name=universe_name,
         available_tickers=available_tickers,
         selected_tickers=selected,
+        view_tickers=view_tickers,
+        view_confidence=VIEW_CONFIDENCE,
+        unconstrained_objective=UNCONSTRAINED_OBJECTIVE,
         benchmark_names=benchmark_names,
         benchmark_name=benchmark_name,
         objective_names=objective_names,
