@@ -7,10 +7,10 @@ ACTIVOS = {
     "Bitcoin (BTC-USD)": "BTC-USD",
 }
 INDICES = {
-    "SALUD": "XLV",
-    "FINANCIERO": "XLF",
-    "TÉCNOLOGICO": "XLK",
-    "ENERGÍA": "XLE",
+    "Sector salud (XLV)": "XLV",
+    "Sector financiero (XLF)": "XLF",
+    "Sector tecnología (XLK)": "XLK",
+    "Sector energía (XLE)": "XLE",
 }
 CRIPTOMONEDAS = {
     "Bitcoin (BTC-USD)": "BTC-USD",
@@ -26,58 +26,51 @@ COMMODITIES = {
     "Cobre (HG=F)": "HG=F",
 }
 PORTAFOLIO_IMAGEN = {
-    ticker: ticker
-    for ticker in (
-        "XLV",
-        "XLE",
-        "XLI",
-        "XLF",
-        "AAPL",
-        "JNJ",
-        "GILD",
-        "GLD",
-        "V",
-        "BAC",
-        "ELV",
-        "MSFT",
-        "LLY",
-        "XLK",
-        "XLU",
-        "TSLA",
-        "HOOD",
-        "HIMS",
-        "COIN",
-    )
+    "Sector salud (XLV)": "XLV",
+    "Sector energía (XLE)": "XLE",
+    "Sector industrial (XLI)": "XLI",
+    "Sector financiero (XLF)": "XLF",
+    "Apple (AAPL)": "AAPL",
+    "Johnson & Johnson (JNJ)": "JNJ",
+    "Gilead Sciences (GILD)": "GILD",
+    "SPDR Gold Shares (GLD)": "GLD",
+    "Visa (V)": "V",
+    "Bank of America (BAC)": "BAC",
+    "Elevance Health (ELV)": "ELV",
+    "Microsoft (MSFT)": "MSFT",
+    "Eli Lilly (LLY)": "LLY",
+    "Sector tecnología (XLK)": "XLK",
+    "Sector servicios públicos (XLU)": "XLU",
+    "Tesla (TSLA)": "TSLA",
+    "Robinhood Markets (HOOD)": "HOOD",
+    "Hims & Hers Health (HIMS)": "HIMS",
+    "Coinbase Global (COIN)": "COIN",
 }
 PORTAFOLIO_ACCIONES_IMAGEN = {
-    ticker: ticker
-    for ticker in (
-        "OPTX",
-        "FTV",
-        "JKS",
-        "SYNA",
-        "SXI",
-        "CRDO",
-        "CTS",
-        "OLED",
-        "HIMX",
-        "KN",
-        "ATEN",
-        "WOLF",
-        "AMD",
-        "XOM",
-        "NEE",
-        "OXY",
-        "APA",
-        "CVX",
-        "FRD",
-        "NVRI",
-        "UROY",
-        "MINEROS",
-        "GLD",
-    )
+    "Syntec Optics (OPTX)": "OPTX",
+    "Fortive (FTV)": "FTV",
+    "JinkoSolar (JKS)": "JKS",
+    "Synaptics (SYNA)": "SYNA",
+    "Standex International (SXI)": "SXI",
+    "Credo Technology (CRDO)": "CRDO",
+    "CTS Corporation (CTS)": "CTS",
+    "Universal Display (OLED)": "OLED",
+    "Himax Technologies (HIMX)": "HIMX",
+    "Knowles (KN)": "KN",
+    "A10 Networks (ATEN)": "ATEN",
+    "Wolfspeed (WOLF)": "WOLF",
+    "Advanced Micro Devices (AMD)": "AMD",
+    "Exxon Mobil (XOM)": "XOM",
+    "NextEra Energy (NEE)": "NEE",
+    "Occidental Petroleum (OXY)": "OXY",
+    "APA Corporation (APA)": "APA",
+    "Chevron (CVX)": "CVX",
+    "Friedman Industries (FRD)": "FRD",
+    "Enviri (NVRI)": "NVRI",
+    "Uranium Royalty (UROY)": "UROY",
+    "Mineros (MINEROS)": "MINEROS.CL",
+    "SPDR Gold Shares (GLD)": "GLD",
 }
-PORTAFOLIO_ACCIONES_IMAGEN["MINEROS"] = "MINEROS.CL"
 PORTAFOLIO_COLOMBIA = {
     ticker: f"{ticker}.CL"
     for ticker in (
@@ -187,4 +180,17 @@ PERIODOS_VOLATILIDAD = {
     "Mensual": "ME",
     "45 días": "45D",
     "Dos meses": "2ME",
+}
+# Display groups for the asset selector. A universe whose tickers all belong
+# to one group is shown ungrouped; otherwise each ticker takes the first
+# matching group (crypto goes before "Acciones" so BTC-USD is not a stock).
+GRUPOS_ACTIVOS = {
+    "Criptomonedas": CRIPTOMONEDAS,
+    "Acciones": ACTIVOS,
+    "Índices sectoriales": INDICES,
+    "Commodities": COMMODITIES,
+    "Portafolio actual": PORTAFOLIO_IMAGEN,
+    "Portafolio imagen": PORTAFOLIO_ACCIONES_IMAGEN,
+    "Colombia": PORTAFOLIO_COLOMBIA,
+    "Opciones": ACTIVOS_OPCIONES,
 }

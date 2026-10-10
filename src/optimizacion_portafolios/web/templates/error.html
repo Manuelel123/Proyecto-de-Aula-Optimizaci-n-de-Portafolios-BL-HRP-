@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Error {{ status }}{% endblock %}
 {% block content %}
-  <section class="empty-state">
-    <span class="page-kicker">ATLAS · {{ status }}</span>
-    <strong>{{ message }}</strong>
-    <p>Regresa al panel principal para continuar con el análisis.</p>
-    <a class="button button-primary" href="{{ url_for('main.index') }}">Ir al inicio</a>
+  <section class="error-page" aria-labelledby="error-title">
+    <span class="empty-state__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>
+    </span>
+    <p class="error-page__code">{{ status }}</p>
+    <h1 id="error-title" class="error-page__title">{{ 'Página no encontrada' if status == 404 else 'No pudimos procesar la solicitud' }}</h1>
+    <p class="error-page__text">{{ message }}</p>
+    <div class="error-page__actions">
+      <a class="button button-primary" href="{{ url_for('main.index') }}">Ir al inicio</a>
+      <a class="button button-secondary" href="{{ url_for('monitoring.monitoring') }}">Explorar mercado</a>
+    </div>
   </section>
 {% endblock %}

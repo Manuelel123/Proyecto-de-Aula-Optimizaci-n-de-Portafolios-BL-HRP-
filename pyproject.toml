@@ -12,6 +12,7 @@ dependencies = [
     "matplotlib>=3.9.0",
     "numpy>=2.0.0",
     "pandas>=2.0.0",
+    "plotly>=7.1,<8",
     "quantstats>=0.0.77",
     "requests>=2.31",
     "scipy>=1.14.0,<1.17",

@@ -1,41 +1,168 @@
 {% extends "base.html" %}
-{% block title %}Panel de inversiones{% endblock %}
+{% block title %}Laboratorio de portafolios{% endblock %}
+
+
 {% block content %}
-  <section class="hero">
-    <div class="hero-copy">
-      <p class="eyebrow">PLATAFORMA DE ANÁLISIS CUANTITATIVO</p>
-      <h1>Decisiones de inversión,<br><em>con mejor perspectiva.</em></h1>
-      <p class="hero-intro">Explora el mercado, entiende la distribución del riesgo y construye portafolios con metodologías cuantitativas.</p>
-      <a class="button button-light" href="{{ url_for('monitoring.monitoring') }}">Explorar mercado <span aria-hidden="true">↗</span></a>
+  {% set check_icon %}<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg>{% endset %}
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero__copy">
+      <p class="eyebrow">Laboratorio de portafolios cuantitativos</p>
+      <h1 id="hero-title" class="hero__title">Construye portafolios con <span class="text-accent">método</span>, no con intuición.</h1>
+      <p class="hero__lead">Explora el mercado, mide cómo se reparte el riesgo y calcula asignaciones con Hierarchical Risk Parity y Black-Litterman sobre datos históricos reales.</p>
+      <div class="hero__actions">
+        <a class="button button-primary" href="{{ url_for('monitoring.monitoring') }}">Explorar mercado <span class="arrow" aria-hidden="true">→</span></a>
+        <a class="button button-secondary" href="{{ url_for('hrp.hrp') }}">Optimizar con HRP</a>
+      </div>
+      <ul class="hero__note">
+        <li>{{ check_icon }}Sin registro</li>
+        <li>{{ check_icon }}Informe QuantStats descargable</li>
+        <li>{{ check_icon }}Modo claro y oscuro</li>
+      </ul>
     </div>
-    <div class="hero-ornament" aria-hidden="true">
-      <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
-      <div class="orbit-center"><span>AT</span><small>MARKET<br>INSIGHTS</small></div>
-      <div class="orbit-dot dot-one"></div><div class="orbit-dot dot-two"></div><div class="orbit-dot dot-three"></div>
-    </div>
-    <div class="hero-index">01 <span>/ 03</span></div>
+
+    {# Illustrative product preview: example values, not a live result. #}
+    {% set preview = [("AAPL", 24.1), ("MSFT", 19.6), ("XLV", 17.3), ("GC=F", 15.8), ("BTC-USD", 12.7), ("XLE", 10.5)] %}
+    {% set scale = 8.2 %}
+    {% set bar_x = 64 %}
+    <figure class="preview-card" aria-label="Vista previa ilustrativa de un resultado HRP con seis activos">
+      <div class="preview-card__header">
+        <div>
+          <p class="preview-card__title">Distribución del portafolio</p>
+          <p class="preview-card__subtitle">HRP · 6 activos · Benchmark SPY</p>
+        </div>
+        <span class="badge badge--neutral">Ejemplo</span>
+      </div>
+      <div class="preview-card__chart" aria-hidden="true">
+        <svg viewBox="0 0 320 186" focusable="false">
+          {% for ticker, weight in preview %}
+            {% set y = 6 + loop.index0 * 28 %}
+            <text class="preview-svg__label" x="0" y="{{ y + 13 }}">{{ ticker }}</text>
+            <rect class="preview-svg__track" x="{{ bar_x }}" y="{{ y }}" width="{{ '%.1f'|format(25 * scale) }}" height="18" rx="4"/>
+            <rect class="preview-svg__bar" x="{{ bar_x }}" y="{{ y }}" width="{{ '%.1f'|format(weight * scale) }}" height="18" rx="4"/>
+            <text class="preview-svg__value" x="{{ '%.1f'|format(bar_x + 25 * scale + 8) }}" y="{{ y + 13 }}">{{ '%.1f'|format(weight) }} %</text>
+          {% endfor %}
+          {% set ref_x = '%.1f'|format(bar_x + (100 / 6) * scale) %}
+          <line class="preview-svg__ref" x1="{{ ref_x }}" x2="{{ ref_x }}" y1="0" y2="172"/>
+          <text class="preview-svg__ref-label" x="{{ ref_x }}" y="184" text-anchor="middle">Peso equitativo 1/N</text>
+        </svg>
+      </div>
+      <div class="kpi-grid">
+        <div class="metric-card metric-card--compact">
+          <span class="metric-card__label">Volatilidad anual</span>
+          <span class="metric-card__value">14.2<span class="metric-card__unit">%</span></span>
+        </div>
+        <div class="metric-card metric-card--compact">
+          <span class="metric-card__label">Ratio de Sortino</span>
+          <span class="metric-card__value">1.38</span>
+        </div>
+      </div>
+    </figure>
   </section>
 
-  <section class="section-block">
-    <div class="section-heading">
-      <div><p class="eyebrow">ESPACIO DE TRABAJO</p><h2>Herramientas para tu estrategia</h2></div>
-      <p class="section-note">Un flujo integrado desde los datos hasta la asignación.</p>
+  <dl class="stats-strip" aria-label="Cobertura de la plataforma">
+    {% for stat in stats %}
+      <div class="stats-strip__item">
+        <dt>{{ stat.label }}</dt>
+        <dd>{{ stat.value }}</dd>
+      </div>
+    {% endfor %}
+  </dl>
+
+  <section class="section" aria-labelledby="modules-title">
+    <div class="section__header">
+      <p class="eyebrow">Módulos</p>
+      <h2 id="modules-title">Del dato de mercado a la asignación final</h2>
+      <p>Tres herramientas conectadas que comparten catálogos, datos y criterios de riesgo.</p>
     </div>
     <div class="module-grid">
       {% for module in modules %}
-        <a class="module-card" href="{{ module.href }}">
-          <div class="card-top"><span class="eyebrow">{{ module.eyebrow }}</span><span class="card-number">{{ module.icon }}</span></div>
-          <div><h3>{{ module.title }}</h3><p>{{ module.description }}</p></div>
-          <span class="card-link">Abrir módulo <b aria-hidden="true">↗</b></span>
+        <a class="module-card" href="{{ url_for(module.endpoint) }}" data-module="{{ module.key }}">
+          <div class="module-card__head">
+            <span class="module-card__icon" aria-hidden="true">
+              {% if module.key == "market" %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
+              {% elif module.key == "hrp" %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-5h6v5M8 15v-4h9v9M14 20v-4h6v4"/><path d="M12.5 11V5"/></svg>
+              {% else %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="12" r="3"/><path d="M8.5 7.8 15 11M8.5 16.2 15 13"/></svg>
+              {% endif %}
+            </span>
+            <span class="eyebrow">{{ module.eyebrow }}</span>
+          </div>
+          <div>
+            <h3 class="module-card__title">{{ module.title }}</h3>
+            <p class="module-card__description">{{ module.description }}</p>
+          </div>
+          <ul class="module-card__features">
+            {% for feature in module.features %}<li>{{ check_icon }}<span>{{ feature }}</span></li>{% endfor %}
+          </ul>
+          <span class="module-card__link">Abrir módulo <span class="arrow" aria-hidden="true">→</span></span>
         </a>
       {% endfor %}
     </div>
   </section>
 
-  <section class="overview-strip">
-    <div><span class="eyebrow">COBERTURA</span><strong>{{ asset_count }}</strong><span>activos e índices principales</span></div>
-    <div><span class="eyebrow">METODOLOGÍA</span><strong>{{ model_count }}</strong><span>modelos de optimización</span></div>
-    <div><span class="eyebrow">DATOS</span><strong>01</strong><span>fuente integrada de mercado</span></div>
-    <p>Diseñado para explorar datos, comparar escenarios y hacer explícitas las hipótesis de inversión.</p>
+  <section class="section" aria-labelledby="method-title">
+    <div class="section__header">
+      <p class="eyebrow">Metodología</p>
+      <h2 id="method-title">Dos enfoques complementarios</h2>
+      <p>Uno no necesita pronosticar retornos; el otro hace explícitas tus expectativas y las combina con el mercado.</p>
+    </div>
+    <div class="method-grid">
+      <article class="method-card">
+        <div>
+          <p class="eyebrow">Riesgo jerárquico</p>
+          <h3 class="method-card__title">Hierarchical Risk Parity</h3>
+        </div>
+        <div class="method-card__diagram" aria-hidden="true">
+          <svg viewBox="0 0 300 140" focusable="false">
+            <path class="diagram__line" d="M30 110V80h40v30M50 80V50h70v60M85 50V22M215 22v28M190 50h50M190 50v60M240 50v30M225 80h30v30M225 80v30"/>
+            <path class="diagram__line diagram__line--accent" d="M85 22h130"/>
+            {% for x, accent in [(30, false), (70, false), (120, false), (190, true), (225, true), (255, true)] %}
+              <circle class="diagram__leaf{{ ' diagram__leaf--accent' if accent else '' }}" cx="{{ x }}" cy="110" r="4.5"/>
+            {% endfor %}
+            {% for x, label in [(30, "XLK"), (70, "MSFT"), (120, "AAPL"), (190, "GC=F"), (225, "XLE"), (255, "BTC")] %}
+              <text class="diagram__text diagram__text--muted diagram__text--mono" x="{{ x }}" y="132" text-anchor="middle">{{ label }}</text>
+            {% endfor %}
+          </svg>
+        </div>
+        <p class="method-card__text">Agrupa los activos según la distancia derivada de su correlación y reparte el capital de arriba hacia abajo en el árbol, de modo que cada grupo aporte un riesgo comparable. Al no invertir la matriz de covarianza ni estimar retornos, produce asignaciones más estables.</p>
+        <ol class="method-card__steps">
+          <li>Distancia por correlación y agrupamiento jerárquico</li>
+          <li>Ordenamiento cuasi-diagonal de la matriz</li>
+          <li>Bisección recursiva por varianza inversa</li>
+        </ol>
+      </article>
+
+      <article class="method-card">
+        <div>
+          <p class="eyebrow">Equilibrio + views</p>
+          <h3 class="method-card__title">Black-Litterman</h3>
+        </div>
+        <div class="method-card__diagram" aria-hidden="true">
+          <svg viewBox="0 0 300 140" focusable="false">
+            <rect class="diagram__node" x="8" y="14" width="112" height="44" rx="8"/>
+            <text class="diagram__text" x="64" y="33" text-anchor="middle">Prior</text>
+            <text class="diagram__text diagram__text--muted" x="64" y="48" text-anchor="middle">equilibrio del mercado</text>
+            <rect class="diagram__node" x="8" y="82" width="112" height="44" rx="8"/>
+            <text class="diagram__text" x="64" y="101" text-anchor="middle">Views</text>
+            <text class="diagram__text diagram__text--muted" x="64" y="116" text-anchor="middle">tus expectativas</text>
+            <path class="diagram__line" d="M120 36h40q12 0 12 12v14M120 104h40q12 0 12-12V78"/>
+            <path class="diagram__line diagram__line--accent" d="M172 70h26"/>
+            <path class="diagram__arrowhead" d="m207 70-9-5v10z"/>
+            <rect class="diagram__node diagram__node--accent" x="208" y="46" width="84" height="48" rx="8"/>
+            <text class="diagram__text diagram__text--accent" x="250" y="67" text-anchor="middle">Posterior</text>
+            <text class="diagram__text diagram__text--muted" x="250" y="82" text-anchor="middle">μ y Σ ajustados</text>
+          </svg>
+        </div>
+        <p class="method-card__text">Parte de los retornos implícitos en la capitalización del mercado y los ajusta con tus views, ponderadas por su confianza. El resultado es una estimación posterior coherente que evita las asignaciones extremas de la optimización media-varianza clásica.</p>
+        <ol class="method-card__steps">
+          <li>Retornos de equilibrio con aversión al riesgo δ</li>
+          <li>Views anuales con confianza por el método de Idzorek</li>
+          <li>Optimización sobre la distribución posterior</li>
+        </ol>
+      </article>
+    </div>
+    <p class="method-note">Referencias: López de Prado, M. (2016), <cite>Building Diversified Portfolios that Outperform Out of Sample</cite>; Black, F. y Litterman, R. (1992), <cite>Global Portfolio Optimization</cite>; Idzorek, T. (2005), <cite>A Step-by-Step Guide to the Black-Litterman Model</cite>. Implementación con skfolio y métricas con QuantStats.</p>
   </section>
 {% endblock %}

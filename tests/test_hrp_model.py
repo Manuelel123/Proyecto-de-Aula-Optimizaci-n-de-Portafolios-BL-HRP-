@@ -11,6 +11,7 @@ from optimizacion_portafolios.models.hrp import (
     WeightBounds,
     calculate_hrp,
     calculate_hrp_contributions,
+    calculate_risk_contributions,
     optimize_hrp,
 )
 from support import make_prices
@@ -117,6 +118,31 @@ class HrpTests(unittest.TestCase):
         )
         expected = portfolio.mean() / downside * np.sqrt(252)
         self.assertAlmostEqual(result.sortino_ratio, expected)
+
+    def test_risk_contributions_add_up_to_one(self) -> None:
+        weights, _ = calculate_hrp(self.returns)
+        shares = calculate_risk_contributions(self.returns, weights)
+        self.assertAlmostEqual(shares.sum(), 1.0)
+        covariance = self.returns.cov().loc[weights.index, weights.index]
+        variance = weights @ covariance @ weights
+        expected = weights * (covariance @ weights) / variance
+        pd.testing.assert_series_equal(shares, expected, check_names=False)
+        _, summary = calculate_hrp_contributions(self.returns, weights)
+        self.assertAlmostEqual(summary["Contribución al riesgo"].sum(), 1.0)
+
+    def test_fitted_clustering_is_exposed(self) -> None:
+        result = optimize_hrp(self.returns)
+        self.assertIsNotNone(result.clustering)
+        linkage_matrix = result.clustering.linkage_matrix_
+        self.assertEqual(linkage_matrix.shape, (len(TICKERS) - 1, 4))
+        corr = self.returns.corr()
+        distance = np.sqrt(np.clip((1 - corr) / 2, 0, 1))
+        expected = linkage(squareform(distance, checks=False), "single")
+        np.testing.assert_allclose(linkage_matrix[:, 2], expected[:, 2], atol=1e-9)
+        self.assertEqual(
+            list(result.ordered_correlation.index),
+            [self.returns.columns[i] for i in leaves_list(linkage_matrix)],
+        )
 
 
 def _cluster_variance(covariance: pd.DataFrame, assets: list[str]) -> float:

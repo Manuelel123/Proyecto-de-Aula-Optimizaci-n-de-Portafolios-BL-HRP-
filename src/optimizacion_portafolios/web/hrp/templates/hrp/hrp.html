@@ -1,81 +1,321 @@
 {% extends "base.html" %}
+{% from "macros/forms.html" import universe_select, asset_selector, custom_tickers_input, percent_input, help_tip, date_presets %}
+{% from "macros/charts.html" import plotly_chart, price_explorer %}
 {% block title %}Optimización HRP{% endblock %}
+
+{# One row of the per-asset limits table; also used inside <template id="limit-row">. #}
+{% macro limit_row(ticker, min_value="", max_value="") %}
+  <tr data-ticker="{{ ticker }}">
+    <th scope="row">{{ ticker }}</th>
+    <td class="num"><label class="visually-hidden" for="min_{{ ticker }}">{{ ticker }} · mínimo (%)</label>{{ percent_input("min_" ~ ticker, min_value, min=0, max=100, placeholder=min_weight) }}</td>
+    <td class="num"><label class="visually-hidden" for="max_{{ ticker }}">{{ ticker }} · máximo (%)</label>{{ percent_input("max_" ~ ticker, max_value, min=0, max=100, placeholder=max_weight) }}</td>
+  </tr>
+{% endmacro %}
+
+{% set loading_steps = ["Descargando precios", "Estimando correlaciones", "Clustering jerárquico", "Asignando pesos", "Calculando métricas"] %}
+
 {% block content %}
-  <section class="page-heading">
-    <div><span class="page-kicker">ASIGNACIÓN · RIESGO JERÁRQUICO</span><h1>Optimización HRP</h1><p>Distribuye el capital a partir de la estructura de correlación y riesgo de los activos.</p></div>
-  </section>
-  <div class="content-grid">
-    <aside class="panel">
-      <h2 class="panel-title">Configura tu portafolio</h2>
-      <form method="post" class="form-stack">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Optimización · Riesgo jerárquico</span>
+      <h1>Optimización HRP</h1>
+      <p class="lead">Distribuye el capital a partir de la estructura de correlación y riesgo de los activos.</p>
+    </div>
+  </header>
+
+  <div class="analysis-layout">
+    <aside class="param-panel" aria-label="Parámetros del portafolio HRP">
+      <form method="post" id="hrp-form" class="form-stack" data-loading-title="Optimizando portafolio HRP" data-loading-steps='{{ loading_steps|tojson }}'>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="form-field"><label for="universe">Universo</label><select id="universe" name="universe">{% for name in universe_names %}<option value="{{ name }}" {{ 'selected' if name == universe_name else '' }}>{{ name }}</option>{% endfor %}</select></div>
-        <button class="button button-secondary" type="submit" name="action" value="refresh">Actualizar lista de activos</button>
-        <div class="form-field"><span class="field-label">Activos seleccionados</span><div class="check-grid">
-          {% for ticker in available_tickers %}<label><input type="checkbox" name="tickers" value="{{ ticker }}" {{ 'checked' if ticker in selected_tickers else '' }}> {{ ticker }}</label>{% endfor %}
-        </div></div>
-        <div class="form-field"><label for="custom_tickers">Otros tickers</label><input id="custom_tickers" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}" placeholder="AMZN, NVDA, ^VIX"><span class="help-text">Símbolos de Yahoo Finance separados por comas.</span></div>
-        <div class="form-field"><label for="benchmark">Benchmark del análisis</label><select id="benchmark" name="benchmark">{% for name in benchmark_names %}<option value="{{ name }}" {{ 'selected' if name == benchmark_name else '' }}>{{ name }}</option>{% endfor %}</select></div>
-        <div class="form-field"><label for="custom_benchmark">Benchmark personalizado (opcional)</label><input id="custom_benchmark" name="custom_benchmark" value="{{ custom_benchmark }}" placeholder="^COLCAP, SPY o QQQ"></div>
-        <div class="form-field"><label for="start_date">Fecha inicial</label><input id="start_date" name="start_date" type="date" value="{{ default_start }}" max="{{ today }}" required></div>
-        <hr class="section-divider">
-        <h3 class="panel-title">Límites de peso</h3>
-        <div class="form-row">
-          <div class="form-field"><label for="min_weight">Peso mínimo por activo (%)</label><input id="min_weight" name="min_weight" type="number" min="0" max="100" step="any" value="{{ min_weight }}" required></div>
-          <div class="form-field"><label for="max_weight">Peso máximo por activo (%)</label><input id="max_weight" name="max_weight" type="number" min="0" max="100" step="any" value="{{ max_weight }}" required></div>
+        <div class="param-panel__header">
+          <h2 class="card__title">Configura tu portafolio</h2>
         </div>
-        <span class="help-text">La suma de los mínimos no puede superar el 100 % y la suma de los máximos debe ser al menos 100 %.</span>
-        <details{{ ' open' if has_asset_limits else '' }}>
-          <summary class="field-label">Límites por activo (opcional)</summary>
-          <p class="help-text">Deja un campo vacío para usar el límite global. Los límites por activo tienen prioridad sobre los globales.</p>
-          {% for ticker in selected_tickers %}
-            <div class="form-row">
-              <div class="form-field"><label for="min_{{ ticker }}">{{ ticker }} · mínimo (%)</label><input id="min_{{ ticker }}" name="min_{{ ticker }}" type="number" min="0" max="100" step="any" value="{{ asset_limits[ticker].min }}" placeholder="{{ min_weight }}"></div>
-              <div class="form-field"><label for="max_{{ ticker }}">{{ ticker }} · máximo (%)</label><input id="max_{{ ticker }}" name="max_{{ ticker }}" type="number" min="0" max="100" step="any" value="{{ asset_limits[ticker].max }}" placeholder="{{ max_weight }}"></div>
+        <div class="param-panel__body">
+          <fieldset class="step">
+            <legend><span class="step__number">1</span> Universo y activos {{ help_tip("HRP agrupa los activos por similitud de correlación y reparte el riesgo de forma jerárquica. Mejor con 5 o más activos poco correlacionados.", "Qué es HRP") }}</legend>
+            <div class="form-field">
+              <label for="universe">Universo</label>
+              {{ universe_select("universe", universe_names, universe_name, universes) }}
             </div>
-          {% endfor %}
-        </details>
-        <button class="button button-primary" type="submit" name="action" value="optimize">Calcular portafolio HRP <span aria-hidden="true">↗</span></button>
+            <button class="button button-secondary button-sm js-hidden" type="submit" name="action" value="refresh">Actualizar lista de activos</button>
+            <div class="form-field">
+              <span class="field-label">Activos seleccionados</span>
+              <div data-min-selected="2">
+                {{ asset_selector(available_tickers, selected_tickers, labels=asset_labels) }}
+              </div>
+            </div>
+            <details class="advanced"{{ ' open' if custom_tickers_value else '' }}>
+              <summary>+ Añadir tickers fuera del catálogo</summary>
+              <div class="form-field">
+                <label for="custom_tickers">Otros tickers</label>
+                {{ custom_tickers_input(custom_tickers_value) }}
+              </div>
+            </details>
+          </fieldset>
+
+          <fieldset class="step">
+            <legend><span class="step__number">2</span> Periodo y referencia</legend>
+            <div class="form-field">
+              <label for="start_date">Fecha inicial {{ help_tip("Más historia da correlaciones más estables, pero pesa más el pasado lejano.", "Ayuda sobre la fecha inicial") }}</label>
+              <input id="start_date" name="start_date" type="date" value="{{ default_start }}" max="{{ today }}" required>
+              {{ date_presets("start_date") }}
+            </div>
+            <div class="form-field">
+              <label for="benchmark">Benchmark {{ help_tip("Solo se usa para comparar el desempeño histórico; no cambia los pesos HRP.", "Ayuda sobre el benchmark") }}</label>
+              <select id="benchmark" name="benchmark">{% for name in benchmark_names %}<option value="{{ name }}" {{ 'selected' if name == benchmark_name else '' }}>{{ name }}</option>{% endfor %}</select>
+            </div>
+            <details class="advanced"{{ ' open' if custom_benchmark else '' }}>
+              <summary>Usar otro benchmark</summary>
+              <div class="form-field">
+                <label for="custom_benchmark">Benchmark personalizado</label>
+                <input id="custom_benchmark" name="custom_benchmark" value="{{ custom_benchmark }}" placeholder="^COLCAP, SPY o QQQ" autocomplete="off">
+                <span class="help-text">Si lo indicas, reemplaza al benchmark de la lista.</span>
+              </div>
+            </details>
+          </fieldset>
+
+          <fieldset class="step">
+            <legend><span class="step__number">3</span> Restricciones de peso</legend>
+            <details class="advanced"{{ ' open' if limits_open else '' }} data-weight-limits>
+              <summary>Opciones avanzadas{% if limits_open %} <span class="badge">Límites activos</span>{% endif %}</summary>
+              <div class="form-row">
+                <div class="form-field"><label for="min_weight">Mínimo global</label>{{ percent_input("min_weight", min_weight, min=0, max=100, required=True) }}</div>
+                <div class="form-field"><label for="max_weight">Máximo global</label>{{ percent_input("max_weight", max_weight, min=0, max=100, required=True) }}</div>
+              </div>
+              <p class="notice notice--info" data-feasibility role="status" aria-live="polite">La suma de los mínimos no puede superar el 100 % y la suma de los máximos debe ser al menos 100 %.</p>
+              <div class="form-field">
+                <span class="field-label">Límites por activo {{ help_tip("Vacío = usa el límite global. Los límites por activo tienen prioridad.", "Ayuda sobre límites por activo") }}</span>
+                <div class="data-table-wrap">
+                  <table class="data-table limits-table">
+                    <thead><tr><th scope="col">Ticker</th><th scope="col" class="num">Mín. %</th><th scope="col" class="num">Máx. %</th></tr></thead>
+                    <tbody data-ticker-rows="limit-row">
+                      {% for ticker in selected_tickers %}{{ limit_row(ticker, asset_limits[ticker].min, asset_limits[ticker].max) }}{% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                <template id="limit-row">{{ limit_row("__TICKER__") }}</template>
+              </div>
+            </details>
+          </fieldset>
+        </div>
+        <div class="param-panel__footer">
+          <p class="help-text" data-form-summary><span data-summary-count>{{ selected_tickers|length }}</span> activos · {{ custom_benchmark or benchmark_name }} · desde {{ default_start }}</p>
+          <button class="button button-primary" type="submit" name="action" value="optimize">Calcular portafolio HRP</button>
+        </div>
       </form>
     </aside>
 
-    <section class="result-column">
+    <section class="results" data-loading-target aria-live="polite">
       {% if result %}
-        <div class="result-grid">
-          <div class="metric-card"><span>Pesos asignados</span><strong>{{ result.selected_tickers|length }}</strong></div>
-          <div class="metric-card"><span>Observaciones de los activos</span><strong>{{ result.observations }}</strong></div>
-          <div class="metric-card"><span>Suma de pesos</span><strong>{{ '%.2f'|format(result.weight_sum * 100) }}%</strong></div>
+        <div class="result-context">
+          <p><strong>Resultado HRP</strong> · {{ result.start }} — {{ result.end }} · {{ result.selected_tickers|length }} activos · Benchmark {{ result.benchmark }}</p>
+          <div class="result-context__actions">
+            <form method="post" class="report-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="custom_benchmark" value="{{ custom_benchmark }}"><input type="hidden" name="start_date" value="{{ default_start }}"><input type="hidden" name="custom_tickers" value="{{ custom_tickers_value }}"><input type="hidden" name="min_weight" value="{{ min_weight }}"><input type="hidden" name="max_weight" value="{{ max_weight }}">
+              {% for ticker in result.selected_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="min_{{ ticker }}" value="{{ request.form.get('min_' ~ ticker, '') }}"><input type="hidden" name="max_{{ ticker }}" value="{{ request.form.get('max_' ~ ticker, '') }}">{% endfor %}
+              <button class="button button-secondary button-sm" type="submit" name="action" value="download_report"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Descargar informe QuantStats</button>
+            </form>
+          </div>
         </div>
-        <div class="result-grid">
-          <div class="metric-card"><span>Ratio de Sortino anualizado</span><strong>{{ '%.3f'|format(result.sortino_ratio) }}</strong><span>skfolio · umbral 0 % · √252 · {{ result.observations }} retornos de la optimización</span></div>
-          <div class="metric-card"><span>Peso mínimo asignado</span><strong>{{ '%.2f'|format(result.min_assigned_weight * 100) }}%</strong><span>Límite global: {{ min_weight }} %</span></div>
-          <div class="metric-card"><span>Peso máximo asignado</span><strong>{{ '%.2f'|format(result.max_assigned_weight * 100) }}%</strong><span>Límite global: {{ max_weight }} %</span></div>
+        {% if result.missing %}<div class="notice notice--warning" role="status">Yahoo Finance no devolvió datos para: {{ result.missing|join(', ') }}. Se optimizó con los activos restantes.</div>{% endif %}
+
+        <div class="kpi-grid">
+          <div class="metric-card">
+            <span class="metric-card__label">Ratio de Sortino anualizado {{ help_tip("Retorno medio diario dividido por la desviación de las caídas bajo 0 %, anualizado con √252 (skfolio, estimador muestral).", "Qué es el ratio de Sortino") }}</span>
+            <strong class="metric-card__value">{{ '%.3f'|format(result.sortino_ratio) }}</strong>
+            <span class="metric-card__context">skfolio · {{ result.observations }} retornos</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-card__label">Activos con peso</span>
+            <strong class="metric-card__value">{{ result.selected_tickers|length }}</strong>
+            <span class="metric-card__context">Peso equitativo 1/N: {{ '%.2f'|format(result.equal_weight * 100) }}%</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-card__label">Peso máximo asignado</span>
+            <strong class="metric-card__value">{{ '%.2f'|format(result.max_assigned_weight * 100) }}<small>%</small></strong>
+            <span class="metric-card__context">{{ result.max_weight_ticker }} · límite global {{ max_weight }} %</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-card__label">Peso mínimo asignado</span>
+            <strong class="metric-card__value">{{ '%.2f'|format(result.min_assigned_weight * 100) }}<small>%</small></strong>
+            <span class="metric-card__context">{{ result.min_weight_ticker }} · límite global {{ min_weight }} %</span>
+          </div>
         </div>
-        {% if result.missing %}<div class="notice">Yahoo Finance no devolvió datos para: {{ result.missing|join(', ') }}.</div>{% endif %}
-        <div class="result-panel">
-          <span class="page-kicker">RESULTADO HRP · {{ result.start }} — {{ result.end }}</span>
-          <h2>Distribución del portafolio</h2>
-          <div class="chart-grid"><div><img class="chart-image" src="{{ result.charts.Pesos }}" alt="Pesos HRP por activo"></div><div class="data-table-wrap">{{ result.tables.weights|safe }}</div></div>
+
+        <article class="card allocation-card" id="allocation">
+          <header class="card__header">
+            <div>
+              <h2 class="card__title">Distribución del portafolio</h2>
+              <p class="card__subtitle">Pesos óptimos HRP ordenados de mayor a menor · línea punteada = peso equitativo (1/N){% if result.has_limits %} · franjas = límites aplicados{% endif %}</p>
+            </div>
+            <div class="card__actions">
+              <button type="button" class="button button-ghost button-sm" data-csv-download="allocation-table" data-csv-filename="pesos_hrp.csv" hidden>Descargar CSV</button>
+            </div>
+          </header>
+          <div class="card__body">
+            <div class="allocation-card__chart">
+              {{ plotly_chart("allocation", result.charts.allocation, "Pesos HRP por activo", height=[28 * result.allocation_rows|length + 80, 240]|max) }}
+            </div>
+            <div class="allocation-card__table data-table-wrap">
+              <table class="data-table" id="allocation-table">
+                <thead><tr><th scope="col">Ticker</th><th scope="col">Activo</th><th scope="col" class="num">Peso óptimo</th>{% if result.has_limits %}<th scope="col" class="num">Límite aplicado (mín–máx)</th>{% endif %}</tr></thead>
+                <tbody>
+                  {% for row in result.allocation_rows %}
+                    <tr><td>{{ row.ticker }}</td><td>{{ row.name }}</td><td>{{ row.weight_text }}</td>{% if result.has_limits %}<td class="num">{{ row.limit_text }}{% if row.at_limit %} <span class="badge" title="El peso quedó en un límite">en límite</span>{% endif %}</td>{% endif %}</tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot><tr><th scope="row">Total</th><td></td><td class="num">{{ '%.2f'|format(result.weight_sum * 100) }}%</td>{% if result.has_limits %}<td></td>{% endif %}</tr></tfoot>
+              </table>
+            </div>
+          </div>
+        </article>
+
+        <div class="analysis-toolbar">
+          <h2 class="analysis-toolbar__title">Análisis del portafolio</h2>
+          <button type="button" class="button button-ghost button-sm" data-expand-all>Expandir todo</button>
+          <button type="button" class="button button-ghost button-sm" data-collapse-all>Contraer todo</button>
         </div>
-        <div class="result-panel"><h2>Estructura del portafolio</h2>        <div class="chart-grid"><div class="chart-card"><h3>Precios ajustados</h3><img class="chart-image" src="{{ result.charts['Evolución de precios'] }}" alt="Precios históricos"></div><div class="chart-card"><h3>Evolución unitaria</h3><img class="chart-image" src="{{ result.charts['Evolución unitaria'] }}" alt="Evolución unitaria de activos"></div><div class="chart-card"><h3>Retornos por activo</h3><img class="chart-image" src="{{ result.charts['Retornos por activo'] }}" alt="Retornos históricos por activo"></div><div class="chart-card"><h3>Retorno del portafolio</h3><img class="chart-image" src="{{ result.charts['Retorno del portafolio'] }}" alt="Retornos diarios HRP"></div></div><div class="chart-card"><h3>Correlación cuasi-diagonal</h3><img class="chart-image" src="{{ result.charts.Correlación }}" alt="Matriz de correlación"></div>
-          {% if result.charts['Volatilidad mensual'] %}<div class="chart-card"><h3>Distribución de volatilidad mensual</h3><img class="chart-image" src="{{ result.charts['Volatilidad mensual'] }}" alt="Histogramas de volatilidad mensual"></div>{% endif %}
-        </div>
-        <div class="result-panel"><h2>Contribución por activo</h2><div class="data-table-wrap">{{ result.tables.contributions|safe }}</div></div>
-        <div class="result-panel"><h2>Métricas del portafolio</h2><p class="help-text">Calculadas con QuantStats sobre los {{ result.common_observations }} días comunes con el benchmark. El Sortino de QuantStats usa la semidesviación poblacional bajo 0 %; la tarjeta superior usa la muestral de skfolio sobre todos los retornos de la optimización, por lo que pueden diferir levemente.</p><div class="data-table-wrap">{{ result.tables.metrics|safe }}</div></div>
-        <div class="result-panel">
-          <h2>Análisis histórico · {{ result.benchmark }}</h2>
-          <p>{{ result.common_observations }} retornos comunes con el benchmark.</p>
-          {% if not result.has_rolling_sharpe %}<div class="notice">El gráfico de Sharpe móvil requiere al menos 126 retornos alineados.</div>{% endif %}
-          <div class="chart-grid">{% for name, image in result.charts.items() %}{% if name not in ['Pesos', 'Evolución de precios', 'Retornos por activo', 'Retorno del portafolio', 'Evolución unitaria', 'Correlación', 'Volatilidad mensual'] %}<div class="chart-card"><h3>{{ name }}</h3><img class="chart-image" src="{{ image }}" alt="{{ name }}"></div>{% endif %}{% endfor %}</div>
-          <form method="post" class="form-stack" style="margin-top:16px">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="custom_benchmark" value="{{ custom_benchmark }}"><input type="hidden" name="start_date" value="{{ default_start }}"><input type="hidden" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}"><input type="hidden" name="min_weight" value="{{ min_weight }}"><input type="hidden" name="max_weight" value="{{ max_weight }}">
-            {% for ticker in result.selected_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="min_{{ ticker }}" value="{{ request.form.get('min_' ~ ticker, '') }}"><input type="hidden" name="max_{{ ticker }}" value="{{ request.form.get('max_' ~ ticker, '') }}">{% endfor %}
-            <button class="button button-secondary" type="submit" name="action" value="download_report">Descargar informe QuantStats</button>
-          </form>
-        </div>
+
+        <details class="analysis-section" data-section="risk">
+          <summary><span class="analysis-section__title">Riesgo y desempeño</span><span class="analysis-section__meta">Sortino, pesos extremos y métricas QuantStats</span></summary>
+          <div class="analysis-section__body">
+            <div class="kpi-grid">
+              <div class="metric-card metric-card--compact"><span class="metric-card__label">Observaciones de los activos</span><strong class="metric-card__value">{{ result.observations }}</strong></div>
+              <div class="metric-card metric-card--compact"><span class="metric-card__label">Días comunes con el benchmark</span><strong class="metric-card__value">{{ result.common_observations }}</strong></div>
+              <div class="metric-card metric-card--compact"><span class="metric-card__label">Suma de pesos</span><strong class="metric-card__value">{{ '%.2f'|format(result.weight_sum * 100) }}%</strong></div>
+              {% if result.top_risk_ticker %}<div class="metric-card metric-card--compact"><span class="metric-card__label">Mayor aporte al riesgo</span><strong class="metric-card__value">{{ result.top_risk_ticker }}</strong><span class="metric-card__context">{{ '%.2f'|format(result.top_risk_share * 100) }}% de la varianza</span></div>{% endif %}
+            </div>
+            <p class="help-text">Métricas de QuantStats sobre los {{ result.common_observations }} días comunes con el benchmark. El Sortino de QuantStats usa la semidesviación poblacional bajo 0 %; el KPI superior usa la muestral de skfolio sobre todos los retornos de la optimización, por lo que pueden diferir levemente.</p>
+            <div class="data-table-wrap">{{ result.tables.metrics|safe }}</div>
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="history">
+          <summary><span class="analysis-section__title">Análisis histórico · {{ result.benchmark }}</span><span class="analysis-section__meta">{{ result.common_observations }} retornos comunes · acumulado, drawdown, mensual y anual</span></summary>
+          <div class="analysis-section__body">
+            {% if not result.has_rolling_sharpe %}<div class="notice notice--warning" role="status">El Sharpe móvil requiere al menos {{ rolling_sharpe_period }} retornos alineados; los demás resultados HRP están disponibles.</div>{% endif %}
+            <div class="chart-grid">
+              {{ plotly_chart("cumulative", result.charts.cumulative, "Rendimiento acumulado", subtitle="Portafolio HRP vs " ~ result.benchmark) }}
+              {{ plotly_chart("drawdown", result.charts.drawdown, "Drawdown del portafolio") }}
+              {{ plotly_chart("monthly_heatmap", result.charts.monthly_heatmap, "Rendimientos mensuales") }}
+              {{ plotly_chart("rolling_sharpe", result.charts.rolling_sharpe, "Sharpe móvil (" ~ rolling_sharpe_period ~ " días)") }}
+              {{ plotly_chart("returns_distribution", result.charts.returns_distribution, "Distribución de retornos mensuales") }}
+              {{ plotly_chart("yearly_returns", result.charts.yearly_returns, "Retornos anuales") }}
+            </div>
+            <p class="help-text">El informe completo de QuantStats está disponible con «Descargar informe QuantStats» en la barra de resultado.</p>
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="correlation">
+          <summary><span class="analysis-section__title">Correlación y clusters</span><span class="analysis-section__meta">Matriz cuasi-diagonal y dendrograma</span></summary>
+          <div class="analysis-section__body">
+            <div class="chart-grid">
+              {{ plotly_chart("correlation", result.charts.correlation, "Correlación cuasi-diagonal", height=[22 * result.selected_tickers|length + 120, 520]|min, subtitle="Activos ordenados como los agrupa HRP") }}
+              {{ plotly_chart("dendrogram", result.charts.dendrogram, "Dendrograma", subtitle="Enlace simple sobre la distancia angular de Pearson; el dibujo puede reordenar hojas (orden óptimo) aunque el modelo no lo usa") }}
+            </div>
+            <details class="advanced">
+              <summary>Ver valores</summary>
+              <div class="data-table-wrap">{{ result.tables.correlation|safe }}</div>
+            </details>
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="contribution">
+          <summary><span class="analysis-section__title">Contribución por activo</span><span class="analysis-section__meta">Aporte al riesgo y al retorno del portafolio</span></summary>
+          <div class="analysis-section__body">
+            <div class="chart-grid">
+              {{ plotly_chart("risk_contribution", result.charts.risk_contribution, "Contribución al riesgo", subtitle="RCᵢ = wᵢ(Σw)ᵢ / w'Σw · suma 100 %") }}
+              {{ plotly_chart("return_contribution", result.charts.return_contribution, "Participación del retorno") }}
+            </div>
+            <div class="data-table-wrap">{{ result.tables.contributions|safe }}</div>
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="volatility">
+          <summary><span class="analysis-section__title">Volatilidad de los activos</span><span class="analysis-section__meta">Volatilidad mensual y retornos diarios por activo</span></summary>
+          <div class="analysis-section__body">
+            <div class="chart-grid">
+              {{ plotly_chart("monthly_volatility", result.charts.monthly_volatility, "Distribución de volatilidad mensual", subtitle="Línea discontinua = último mes") }}
+              {{ plotly_chart("returns_box", result.charts.returns_box, "Retornos diarios por activo") }}
+            </div>
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="prices">
+          <summary><span class="analysis-section__title">Evolución de precios</span><span class="analysis-section__meta">Precio por activo o base 100 frente al benchmark</span></summary>
+          <div class="analysis-section__body">
+            {{ price_explorer("hrp", result.prices_payload) }}
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="data">
+          <summary><span class="analysis-section__title">Datos y supuestos</span><span class="analysis-section__meta">Periodo, observaciones y método</span></summary>
+          <div class="analysis-section__body">
+            <dl class="assumptions">
+              <dt>Periodo efectivo</dt><dd>{{ result.start }} — {{ result.end }}</dd>
+              <dt>Observaciones de la optimización</dt><dd>{{ result.observations }} retornos diarios</dd>
+              <dt>Días comunes con el benchmark</dt><dd>{{ result.common_observations }}</dd>
+              <dt>Activos sin datos</dt><dd>{{ result.missing|join(', ') if result.missing else 'Ninguno' }}</dd>
+              <dt>Límites de peso</dt><dd>{% if result.has_limits %}Global {{ min_weight }} % – {{ max_weight }} %{% if has_asset_limits %}, con límites por activo (ver tabla de distribución){% endif %}{% else %}Sin límites (0 % – 100 %){% endif %}</dd>
+              <dt>Método</dt><dd>Hierarchical Risk Parity (skfolio): enlace simple sobre la distancia angular de Pearson, orden de hojas del dendrograma (sin orden óptimo), bisección recursiva con varianza inversa.</dd>
+            </dl>
+          </div>
+        </details>
       {% else %}
-        <div class="empty-state"><strong>Optimiza tu selección</strong><p>Elige dos o más activos y un benchmark para calcular pesos, riesgo y desempeño histórico.</p></div>
+        <div class="empty-state">
+          <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M12 7v4M12 11l-6 5M12 11l6 5"/></svg></span>
+          <h2>Optimiza tu selección</h2>
+          <p>Elige dos o más activos y un benchmark para calcular pesos, riesgo y desempeño histórico.</p>
+          <ol class="empty-state__steps">
+            <li>Elige activos</li>
+            <li>Ajusta límites</li>
+            <li>Calcula</li>
+          </ol>
+        </div>
       {% endif %}
     </section>
   </div>
+{% endblock %}
+
+{% block page_scripts %}
+  {% include "macros/chart_scripts.html" %}
+  <script>
+    // HRP page helpers not covered by forms.js/charts.js: selection count in the
+    // panel footer and CSV export of the allocation table. (Weight-limit
+    // feasibility is handled by forms.js through [data-weight-limits].)
+    (() => {
+      const form = document.getElementById("hrp-form");
+      if (!form) return;
+      const counter = form.querySelector("[data-summary-count]");
+      const update = (event) => {
+        if (!counter) return;
+        const tickers = event && event.detail && event.detail.tickers;
+        counter.textContent = tickers
+          ? tickers.length
+          : form.querySelectorAll('input[name="tickers"]:checked').length;
+      };
+      document.addEventListener("atlas:selectionchange", update);
+      update();
+
+      document.querySelectorAll("[data-csv-download]").forEach((button) => {
+        const table = document.getElementById(button.dataset.csvDownload);
+        if (!table) return;
+        button.hidden = false;
+        button.addEventListener("click", () => {
+          const quote = (text) => '"' + text.trim().replace(/"/g, '""') + '"';
+          const lines = Array.from(table.querySelectorAll("thead tr, tbody tr"), (row) =>
+            Array.from(row.cells, (cell) => quote(cell.textContent)).join(",")
+          );
+          const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = button.dataset.csvFilename || "datos.csv";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(link.href);
+        });
+      });
+    })();
+  </script>
 {% endblock %}

@@ -16,6 +16,7 @@ from yfinance.exceptions import YFRateLimitError
 from optimizacion_portafolios.data import tiingo_prices
 from optimizacion_portafolios.data.market_data import (
     _cached_ticker_info,
+    clear_price_cache,
     download_prices,
     fetch_fundamental_information,
     fetch_market_cap_usd,
@@ -61,8 +62,12 @@ def _yahoo_close(index, prices_by_ticker):
 
 
 class MarketDataTests(unittest.TestCase):
+    def setUp(self) -> None:
+        clear_price_cache()
+
     def tearDown(self) -> None:
         _cached_ticker_info.cache_clear()
+        clear_price_cache()
 
     @_without_tiingo_key()
     @patch(_YF_DOWNLOAD)
@@ -97,6 +102,68 @@ class MarketDataTests(unittest.TestCase):
         self.assertIn("TIINGO_API_KEY", logs.output[0])
         client.assert_not_called()
         self.assertEqual(download.call_args.args[0], ["AAPL"])
+
+    @_without_tiingo_key()
+    @patch(_YF_DOWNLOAD)
+    def test_download_prices_cache_avoids_second_download(self, download):
+        index = pd.bdate_range("2025-01-01", periods=2)
+        download.return_value = _yahoo_close(index, {"AAPL": [1.0, 2.0]})
+        start, end = date(2025, 1, 1), date(2025, 1, 2)
+
+        first = download_prices(("AAPL",), start, end)
+        second = download_prices(("AAPL",), start, end)
+
+        self.assertEqual(download.call_count, 1)
+        pd.testing.assert_frame_equal(first, second)
+        download_prices(("AAPL",), start, date(2025, 1, 3))
+        self.assertEqual(download.call_count, 2)
+
+    @_without_tiingo_key()
+    @patch(_YF_DOWNLOAD)
+    def test_download_prices_cache_returns_independent_copies(self, download):
+        index = pd.bdate_range("2025-01-01", periods=2)
+        download.return_value = _yahoo_close(index, {"AAPL": [1.0, 2.0]})
+        start, end = date(2025, 1, 1), date(2025, 1, 2)
+
+        first = download_prices(("AAPL",), start, end)
+        first.iloc[0, 0] = -99.0
+        first["EXTRA"] = 0.0
+        second = download_prices(("AAPL",), start, end)
+        second.iloc[1, 0] = -77.0
+        third = download_prices(("AAPL",), start, end)
+
+        self.assertEqual(download.call_count, 1)
+        self.assertEqual(list(third.columns), ["AAPL"])
+        self.assertEqual(third["AAPL"].tolist(), [1.0, 2.0])
+
+    @_without_tiingo_key()
+    @patch("optimizacion_portafolios.data.market_data.monotonic")
+    @patch(_YF_DOWNLOAD)
+    def test_download_prices_cache_expires_with_window(self, download, clock):
+        index = pd.bdate_range("2025-01-01", periods=2)
+        download.return_value = _yahoo_close(index, {"AAPL": [1.0, 2.0]})
+        start, end = date(2025, 1, 1), date(2025, 1, 2)
+
+        clock.return_value = 10.0
+        download_prices(("AAPL",), start, end)
+        clock.return_value = 10.0 + 14 * 60
+        download_prices(("AAPL",), start, end)
+        self.assertEqual(download.call_count, 1)
+
+        clock.return_value = 10.0 + 15 * 60
+        download_prices(("AAPL",), start, end)
+        self.assertEqual(download.call_count, 2)
+
+    @_without_tiingo_key()
+    @patch(_YF_DOWNLOAD)
+    def test_download_prices_does_not_cache_empty_results(self, download):
+        download.return_value = pd.DataFrame()
+        start, end = date(2025, 1, 1), date(2025, 1, 2)
+
+        self.assertTrue(download_prices(("AAPL",), start, end).empty)
+        self.assertTrue(download_prices(("AAPL",), start, end).empty)
+
+        self.assertEqual(download.call_count, 2)
 
     def test_price_source_routes_unsupported_tickers_to_yahoo(self):
         expected = {

@@ -1,126 +1,248 @@
 {% extends "base.html" %}
+{% from "macros/forms.html" import universe_select, asset_selector, custom_tickers_input, help_tip, date_presets %}
+{% from "macros/charts.html" import plotly_chart, price_explorer %}
 {% block title %}Monitoreo de activos{% endblock %}
+
+{% macro date_step(number) %}
+  <fieldset class="step">
+    <legend><span class="step__number">{{ number }}</span> Periodo</legend>
+    <div class="form-field">
+      <label for="start_date">Fecha inicial {{ help_tip("Más historia da estadísticas más estables, pero tarda más en descargar.") }}</label>
+      {{ date_presets("start_date") }}
+      <input id="start_date" name="start_date" type="date" value="{{ default_start }}" max="{{ today }}" required>
+    </div>
+  </fieldset>
+{% endmacro %}
+
+{% macro custom_field() %}
+  <div class="form-field">
+    <label for="custom_tickers">Tickers fuera del catálogo</label>
+    {{ custom_tickers_input(custom_tickers) }}
+  </div>
+{% endmacro %}
+
+{% macro section(key, title, meta) %}
+  <details class="analysis-section" data-section="{{ key }}">
+    <summary>
+      <span class="analysis-section__title">{{ title }}</span>
+      <span class="analysis-section__meta">{{ meta }}</span>
+    </summary>
+    <div class="analysis-section__body">{{ caller() }}</div>
+  </details>
+{% endmacro %}
+
 {% block content %}
-  <section class="page-heading">
-    <div><span class="page-kicker">MERCADO · DATOS HISTÓRICOS</span><h1>Monitoreo de activos</h1><p>Explora precios, retornos, volatilidad y fundamentos de los activos en tus listas.</p></div>
-  </section>
-  <nav class="tabs" aria-label="Secciones de monitoreo">
-    <a class="{{ 'active' if view == 'options' else '' }}" href="{{ url_for('monitoring.monitoring', view='options') }}">Universo de opciones</a>
-    <a class="{{ 'active' if view == 'portfolio' else '' }}" href="{{ url_for('monitoring.monitoring', view='portfolio') }}">Seguimiento de portafolio</a>
-    <a class="{{ 'active' if view == 'fundamental' else '' }}" href="{{ url_for('monitoring.monitoring', view='fundamental', portfolio=portfolio_name) }}">Análisis fundamental</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Mercado · Datos históricos</span>
+      <h1>Monitoreo de activos</h1>
+      <p class="lead">Explora precios, retornos, volatilidad y fundamentos de los activos que sigues.</p>
+    </div>
+  </header>
+
+  <nav class="segmented" aria-label="Vistas de monitoreo">
+    {% for key, label in (('portfolio', 'Portafolio'), ('options', 'Opciones financieras'), ('fundamental', 'Análisis fundamental')) %}
+      <a href="{{ url_for('monitoring.monitoring', view=key) }}"{% if view == key %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
   </nav>
 
-  <div class="content-grid">
-    <aside>
-      <section class="panel">
-        <h2 class="panel-title">Parámetros del análisis</h2>
-        <form method="post" class="form-stack">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="view" value="{{ view }}">
-          {% if view != 'options' %}
-            <div class="form-field">
-              <label for="portfolio">Portafolio</label>
-              <select id="portfolio" name="portfolio">
-                {% for name in portfolio_names %}<option value="{{ name }}" {{ 'selected' if name == portfolio_name else '' }}>{{ name }}</option>{% endfor %}
-              </select>
-            </div>
-            <button class="button button-secondary" type="submit" name="action" value="refresh">Actualizar lista del portafolio</button>
-          {% endif %}
+  <div class="analysis-layout">
+    <aside class="param-panel">
+      {% if view == 'fundamental' %}
+        {% set loading_title = "Consultando perfil de la compañía" %}
+        {% set loading_steps = ["Consultando Yahoo Finance", "Descargando precios del último año", "Preparando indicadores"] %}
+      {% else %}
+        {% set loading_title = "Analizando activos" %}
+        {% set loading_steps = ["Descargando precios", "Calculando retornos", "Estimando volatilidad", "Preparando estadísticas"] %}
+      {% endif %}
+      <form method="post" data-loading-title="{{ loading_title }}" data-loading-steps='{{ loading_steps|tojson }}'>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="view" value="{{ view }}">
+        <div class="param-panel__header">
+          <h2>{{ 'Compañía' if view == 'fundamental' else 'Parámetros del análisis' }}</h2>
+        </div>
+        <div class="param-panel__body">
           {% if view == 'fundamental' %}
-            <div class="form-field">
-              <label for="ticker">Compañía o instrumento</label>
-              <select id="ticker" name="ticker">
-                {% for ticker in portfolio_tickers %}<option value="{{ ticker }}" {{ 'selected' if ticker == selected_ticker else '' }}>{{ ticker }}</option>{% endfor %}
-              </select>
-              <span class="help-text">Consulta valoración, rentabilidad, márgenes y descripción.</span>
-            </div>
-          {% else %}
-            <div class="form-field">
-              <span class="field-label">Activos del universo</span>
-              <div class="check-grid">
-                {% set chosen = request.form.getlist('tickers') if request.method == 'POST' else (option_tickers if view == 'options' else portfolio_tickers) %}
-                {% for ticker in (option_tickers if view == 'options' else portfolio_tickers) %}
-                  <label><input type="checkbox" name="tickers" value="{{ ticker }}" {{ 'checked' if ticker in chosen else '' }}> {{ ticker }}</label>
-                {% endfor %}
-              </div>
-            </div>
-            <div class="form-field">
-              <label for="custom_tickers">Otros tickers</label>
-              <input id="custom_tickers" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}" placeholder="AMZN, NVDA, ^VIX">
-              <span class="help-text">Símbolos separados por comas.</span>
-            </div>
-            <div class="form-field">
-              <label for="start_date">Fecha inicial</label>
-              <input id="start_date" name="start_date" type="date" value="{{ default_start }}" max="{{ today }}" required>
-            </div>
-            {% if view == 'portfolio' %}
+            <fieldset class="step">
+              <legend><span class="step__number">1</span> Compañía</legend>
               <div class="form-field">
-                <label for="volatility_ticker">Activo para la distribución de volatilidad</label>
-                <select id="volatility_ticker" name="volatility_ticker">
-                  {% for ticker in (result.volatility_tickers if result and result.volatility_tickers else portfolio_tickers) %}
-                    <option value="{{ ticker }}" {{ 'selected' if ticker == selected_volatility_ticker else '' }}>{{ ticker }}</option>
+                <label for="ticker">Compañía o instrumento</label>
+                <select id="ticker" name="ticker">
+                  {% for group in company_groups %}
+                    <optgroup label="{{ group.name }}">
+                      {% for option in group.options %}<option value="{{ option.ticker }}" {{ 'selected' if option.ticker == selected_ticker else '' }}>{{ option.label }}</option>{% endfor %}
+                    </optgroup>
                   {% endfor %}
                 </select>
+                <span class="help-text">Valoración, rentabilidad, márgenes y descripción del negocio.</span>
               </div>
-            {% endif %}
-            {% if view == 'options' %}
+            </fieldset>
+          {% elif view == 'options' %}
+            <fieldset class="step">
+              <legend><span class="step__number">1</span> Activos</legend>
               <div class="form-field">
-                <label for="period">Periodo para la volatilidad</label>
+                <span class="field-label">Universo de opciones ({{ available_tickers|length }})</span>
+                <div data-min-selected="1">
+                  {{ asset_selector(available_tickers, checked_tickers) }}
+                </div>
+              </div>
+              {{ custom_field() }}
+            </fieldset>
+            <fieldset class="step">
+              <legend><span class="step__number">2</span> Periodo y volatilidad</legend>
+              <div class="form-field">
+                <label for="start_date">Fecha inicial</label>
+                {{ date_presets("start_date") }}
+                <input id="start_date" name="start_date" type="date" value="{{ default_start }}" max="{{ today }}" required>
+              </div>
+              <div class="form-field">
+                <label for="period">Periodo para la volatilidad {{ help_tip("La volatilidad se calcula sobre ventanas completas del periodo y se anualiza con 252 sesiones.") }}</label>
                 <select id="period" name="period">
                   {% for name in period_names %}<option value="{{ name }}" {{ 'selected' if name == period else '' }}>{{ name }}</option>{% endfor %}
                 </select>
               </div>
-            {% endif %}
+            </fieldset>
+          {% else %}
+            <fieldset class="step">
+              <legend><span class="step__number">1</span> Portafolio y activos</legend>
+              <div class="form-field">
+                <label for="portfolio">Portafolio</label>
+                {{ universe_select("portfolio", portfolio_names, portfolio_name, universes_payload) }}
+                <button class="button button-secondary button-sm js-hidden" type="submit" name="action" value="refresh">Actualizar lista del portafolio</button>
+              </div>
+              <div class="form-field">
+                <span class="field-label">Activos</span>
+                <div data-min-selected="1">
+                  {{ asset_selector(available_tickers, checked_tickers) }}
+                </div>
+              </div>
+              {{ custom_field() }}
+            </fieldset>
+            {{ date_step(2) }}
           {% endif %}
+        </div>
+        <div class="param-panel__footer">
           <button class="button button-primary" type="submit" name="action" value="analyze">
-            {{ 'Consultar información' if view == 'fundamental' else 'Analizar activos' }} <span aria-hidden="true">↗</span>
+            {{ 'Consultar información' if view == 'fundamental' else 'Analizar activos' }}
           </button>
-        </form>
-      </section>
-      {% if view == 'options' %}
-        <p class="footer-note">La volatilidad se calcula sobre ventanas completas. La anualización usa 252 sesiones.</p>
-      {% endif %}
+        </div>
+      </form>
     </aside>
 
-    <section class="result-column">
-      {% if result and view == 'fundamental' %}
-        <div class="result-panel">
-          <span class="page-kicker">PERFIL DE COMPAÑÍA · {{ result.fundamental.ticker }}</span>
-          <h2>{{ result.fundamental.name }}</h2>
-          <p>{{ result.fundamental.sector }} · {{ result.fundamental.industry }} · {{ result.fundamental.country }}</p>
-          <div class="result-grid">
-            {% for metric in result.fundamental.indicators %}
-              <div class="metric-card"><span>{{ metric.label }}</span><strong>{{ metric.value }}</strong></div>
-            {% endfor %}
+    <section class="results" data-loading-target>
+      {% if result and result.fundamental %}
+        {% set company = result.fundamental %}
+        <article class="card company-header">
+          <div class="card__body">
+            <span class="eyebrow">Perfil de compañía</span>
+            <h2 class="company-header__name">{{ company.name }} <code class="company-header__ticker">{{ company.ticker }}</code></h2>
+            <p class="company-header__meta"><span class="badge">{{ company.sector }}</span> {{ company.industry }} · {{ company.country }}</p>
+            <p class="company-header__price">
+              <strong class="metric-card__value">{{ company.price }}</strong>
+              {% if company.change %}
+                <span class="badge {{ 'is-positive' if company.change.direction == 'up' else 'is-negative' }}">{{ '▲' if company.change.direction == 'up' else '▼' }} {{ company.change.value }}</span>
+                <span class="metric-card__context">vs. cierre anterior</span>
+              {% endif %}
+            </p>
           </div>
-          <div class="metric-card"><span>Rango de precio · 52 semanas</span><strong>{{ result.fundamental.annual_range }}</strong></div>
+        </article>
+        <div class="kpi-grid">
+          {% for metric in company.indicators %}
+            <div class="metric-card metric-card--compact"><span class="metric-card__label">{{ metric.label }}</span><strong class="metric-card__value">{{ metric.value }}</strong></div>
+          {% endfor %}
+          <div class="metric-card metric-card--compact"><span class="metric-card__label">Rango de precio · 52 semanas</span><strong class="metric-card__value">{{ company.annual_range }}</strong></div>
         </div>
-        <div class="result-panel"><h2>Indicadores financieros</h2><div class="data-table-wrap">{{ result.fundamental.table|safe }}</div></div>
-        {% if result.fundamental.summary %}<div class="result-panel"><h2>Descripción de la compañía</h2><p>{{ result.fundamental.summary }}</p></div>{% endif %}
+        {{ price_explorer("fundamental", company.prices_payload, "Precio del último año") }}
+        <article class="card">
+          <header class="card__header"><h2 class="card__title">Indicadores financieros</h2></header>
+          <div class="card__body"><div class="data-table-wrap">{{ company.table|safe }}</div></div>
+        </article>
+        {% if company.summary %}
+          <article class="card">
+            <header class="card__header"><h2 class="card__title">Descripción de la compañía</h2></header>
+            <div class="card__body"><p>{{ company.summary }}</p></div>
+          </article>
+        {% endif %}
       {% elif result %}
-        {% if result.missing %}<div class="notice">Yahoo Finance no devolvió datos para: {{ result.missing|join(', ') }}.</div>{% endif %}
-        <div class="result-panel">
-          <span class="page-kicker">RESULTADO DEL MONITOREO</span>
-          <h2>{{ result.start }} — {{ result.end }}</h2>
-          <p>{{ result.observations }} observaciones · {{ result.tickers|length }} activos en el análisis</p>
-          <div class="tabs" aria-label="Resultados">
-            {% for key, label in [('prices','Precios'), ('returns','Retornos'), ('expected','Retornos esperados'), ('volatility','Volatilidad'), ('statistics','Estadísticas')] %}
-              {% if key in result.tables %}<a href="#{{ key }}">{{ label }}</a>{% endif %}
-            {% endfor %}
+        <div class="result-context">
+          <span><strong>Monitoreo · {{ 'Opciones financieras' if result.view == 'options' else 'Portafolio' }}</strong> · {{ result.start }} — {{ result.end }} · {{ result.tickers|length }} activos · {{ result.observations }} observaciones</span>
+        </div>
+        {% if result.missing %}<div class="notice notice--warning" role="status">Sin datos para: {{ result.missing|join(', ') }}.</div>{% endif %}
+
+        <article class="card">
+          <header class="card__header">
+            <h2 class="card__title">Evolución de precios ajustados</h2>
+            <p class="card__subtitle">Precios de cierre ajustados por activo, sin rellenar días sin cotización.</p>
+          </header>
+          <div class="card__body">
+            {{ price_explorer("monitoring", result.prices_payload) }}
+            <details>
+              <summary>Ver datos recientes</summary>
+              <div class="data-table-wrap">{{ result.tables.prices|safe }}</div>
+            </details>
           </div>
+        </article>
+
+        <div class="analysis-toolbar">
+          <button type="button" class="button button-ghost button-sm" data-expand-all>Expandir todo</button>
+          <button type="button" class="button button-ghost button-sm" data-collapse-all>Contraer todo</button>
         </div>
-        <div id="prices" class="result-panel"><h2>Evolución de precios ajustados</h2><img class="chart-image" src="{{ result.charts.prices }}" alt="Gráfico de precios históricos"><details><summary>Ver datos recientes</summary><div class="data-table-wrap">{{ result.tables.prices|safe }}</div></details></div>
-        <div id="returns" class="result-panel"><h2>Retornos diarios</h2><img class="chart-image" src="{{ result.charts.returns }}" alt="Gráfico de retornos históricos"><details><summary>Ver retornos recientes</summary><div class="data-table-wrap">{{ result.tables.returns|safe }}</div></details></div>
-        <div id="expected" class="result-panel"><h2>Retornos esperados anualizados</h2><div class="data-table-wrap">{{ result.tables.expected|safe }}</div><p class="footer-note">Estimaciones con precios ajustados y frecuencia de 252 días. EMA usa un span de 500 días.</p></div>
-        <div id="volatility" class="result-panel"><h2>Volatilidad</h2>
-          {% if result.charts.volatility %}<img class="chart-image" src="{{ result.charts.volatility }}" alt="Distribución de volatilidad">{% endif %}
-          <div class="data-table-wrap">{{ result.tables.volatility|safe }}</div>
-          {% if result.volatility_tickers %}<p class="footer-note">Volatilidad mensual realizada con una ventana de 21 sesiones.</p>{% endif %}
-        </div>
-        <div id="statistics" class="result-panel"><h2>Resumen de rendimiento y riesgo</h2><div class="data-table-wrap">{{ result.tables.statistics|safe }}</div></div>
+
+        {% call section("returns", "Retornos", "Distribución de retornos diarios por activo") %}
+          {{ plotly_chart("returns_box", result.charts.returns_box, "Retornos diarios por activo", height=380) }}
+          <details>
+            <summary>Ver datos · últimos retornos diarios</summary>
+            <div class="data-table-wrap">{{ result.tables.returns|safe }}</div>
+          </details>
+        {% endcall %}
+
+        {% call section("expected", "Retornos esperados", "Media histórica, CAPM y EMA anualizados") %}
+          <div class="data-table-wrap">{{ result.tables.expected|safe }}</div>
+          <p class="help-text">Estimaciones con precios ajustados y 252 sesiones por año. EMA usa un span de 500 días.</p>
+        {% endcall %}
+
+        {% if result.view == 'options' %}
+          {% call section("volatility", "Volatilidad", "Volatilidad histórica (VH) " ~ result.period|lower) %}
+            {% if result.charts.period_volatility %}
+              <div class="chart-grid">
+                {{ plotly_chart("period_volatility", result.charts.period_volatility, "VH anualizada actual por activo", height=420) }}
+                {{ plotly_chart("period_volatility_distribution", result.charts.period_volatility_distribution, "Distribución de la VH anualizada", subtitle="Elige el activo en el selector del gráfico") }}
+              </div>
+            {% endif %}
+            {% if result.tables.volatility %}
+              <div class="data-table-wrap">{{ result.tables.volatility|safe }}</div>
+            {% endif %}
+            <p class="help-text">La volatilidad se calcula sobre ventanas completas. La anualización usa 252 sesiones.</p>
+          {% endcall %}
+        {% else %}
+          {% call section("volatility", "Volatilidad", "Volatilidad mensual realizada y nivel actual") %}
+            {{ plotly_chart("monthly_volatility", result.charts.monthly_volatility, "Distribución de la volatilidad mensual", subtitle="Elige el activo en el selector del gráfico; la línea marca el nivel actual") }}
+            <div class="data-table-wrap">{{ result.tables.volatility|safe }}</div>
+            <p class="help-text">Volatilidad mensual realizada con una ventana de 21 sesiones.</p>
+          {% endcall %}
+        {% endif %}
+
+        {% call section("statistics", "Estadísticas clave", "Rendimiento y riesgo por activo") %}
+          <div class="data-table-wrap">{{ result.tables.statistics|safe }}</div>
+        {% endcall %}
       {% else %}
-        <div class="empty-state"><strong>Comienza con una selección</strong><p>Configura los parámetros y ejecuta el análisis para cargar datos de mercado y estadísticas.</p></div>
+        <div class="empty-state">
+          <span class="empty-state__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></span>
+          {% if view == 'fundamental' %}
+            <strong>Consulta el perfil de una compañía</strong>
+            <p>Revisa valoración, márgenes y la evolución del precio en el último año.</p>
+            <ol class="empty-state__steps"><li>Elige la compañía</li><li>Consulta Yahoo Finance</li><li>Revisa indicadores y precio</li></ol>
+          {% else %}
+            <strong>Comienza con una selección</strong>
+            <p>Configura los parámetros y ejecuta el análisis para cargar precios, retornos y volatilidad.</p>
+            <ol class="empty-state__steps"><li>Elige los activos</li><li>Ajusta el periodo</li><li>Analiza</li></ol>
+          {% endif %}
+        </div>
       {% endif %}
     </section>
   </div>
+{% endblock %}
+
+{% block page_scripts %}
+  {% include "macros/chart_scripts.html" %}
 {% endblock %}

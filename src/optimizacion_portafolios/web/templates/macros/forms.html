@@ -1,0 +1,142 @@
+{#
+  Form components shared by the HRP, Black-Litterman and monitoring pages.
+  The macro signatures are a contract between modules: bodies may be enhanced
+  (markup, classes, data attributes), signatures and submitted field names may not.
+  Behaviour lives in static/js/forms.js (its header documents every hook) and
+  styles in static/css/forms.css. Everything works without JavaScript: the
+  controls are plain inputs submitted by the normal POST; JS-only helpers
+  (search, bulk buttons, presets) are rendered with ``hidden`` and revealed by JS.
+
+  Usage:  {% import "macros/forms.html" as forms %}
+#}
+
+{# Short secondary text of a catalog label: "Apple (AAPL)" -> "Apple";
+   empty when the label adds nothing to the ticker. #}
+{% macro _short_label(label, ticker) -%}
+  {%- set text = (label or "")|replace("(" ~ ticker ~ ")", "")|trim -%}
+  {%- if text and text != ticker %}{{ text }}{% endif -%}
+{%- endmacro %}
+
+{# One asset chip: visually hidden checkbox inside a <label>. #}
+{% macro _chip(ticker, checked, name, full_label) -%}
+  {%- set short = _short_label(full_label, ticker) -%}
+  <label class="chip" data-ticker="{{ ticker }}"{% if short %} data-label="{{ full_label }}" title="{{ full_label }}"{% endif %}>
+    <input type="checkbox" class="chip__input visually-hidden" name="{{ name }}" value="{{ ticker }}" {{ 'checked' if checked else '' }}>
+    <span class="chip__check" aria-hidden="true">✓</span>
+    <span class="chip__ticker">{{ ticker }}</span>
+    {%- if short %}<span class="visually-hidden">, {{ short }}</span>{% endif %}
+  </label>
+{%- endmacro %}
+
+{# Universe <select name="universe"> plus the JSON catalog (#universes) used by
+   forms.js to rebuild the asset chips without reloading. ``payload`` comes from
+   web.common.forms.universes_payload(). The page keeps its
+   <button name="action" value="refresh" class="js-hidden"> as no-JS fallback. #}
+{% macro universe_select(field_id, names, selected, payload) %}
+  {%- set catalog = payload or {} -%}
+  {%- set entry = catalog.get(selected) -%}
+  <select id="{{ field_id }}" name="universe" data-universe-select aria-describedby="{{ field_id }}-summary">
+    {% for name in names %}<option value="{{ name }}" {{ 'selected' if name == selected else '' }}>{{ name }}</option>{% endfor %}
+  </select>
+  <p class="help-text universe-summary" id="{{ field_id }}-summary" data-universe-summary>
+    {%- if entry -%}
+      {%- set groups = entry.assets|map(attribute="group")|unique|list -%}
+      {{ entry.assets|length }} activos{% if groups|length > 1 %} · {{ groups[:3]|join(", ") }}{% if groups|length > 3 %} y {{ groups|length - 3 }} más{% endif %}{% endif %}
+    {%- endif -%}
+  </p>
+  <script type="application/json" id="universes">{{ catalog|tojson }}</script>
+{% endmacro %}
+
+{# Multi-select of tickers rendered as accessible checkbox chips (works without JS).
+   - ``labels``: optional {ticker: label}; tooltip text, read by screen readers, searchable.
+   - ``groups``: optional {ticker: group} (web.common.forms.asset_groups); with two or
+     more distinct groups the chips get group headings. Without it, forms.js groups the
+     chips from #universes when the payload of the selected universe matches.
+   - ``min_selected``: optional int; forms.js disables the form's primary button while
+     fewer tickers (checked + valid custom) are selected. #}
+{% macro asset_selector(available, selected, labels=None, name="tickers", field_id="asset-selector", groups=None, min_selected=None) %}
+  {%- set tickers = available|unique|list -%}
+  {%- set checked_count = tickers|select("in", selected)|list|length -%}
+  {%- set ns = namespace(groups=[]) -%}
+  {%- if groups -%}
+    {%- for ticker in tickers -%}
+      {%- set group = groups.get(ticker, "Otros") -%}
+      {%- if group not in ns.groups %}{% set ns.groups = ns.groups + [group] %}{% endif -%}
+    {%- endfor -%}
+  {%- endif -%}
+  {%- set grouped = ns.groups|length > 1 -%}
+  <div class="asset-selector" id="{{ field_id }}" data-asset-selector data-name="{{ name }}"{% if grouped %} data-grouped{% endif %}{% if min_selected %} data-min-selected="{{ min_selected }}"{% endif %}>
+    <div class="asset-selector__toolbar">
+      <div class="asset-selector__search" data-asset-search-wrap hidden>
+        <svg class="asset-selector__search-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="search" class="asset-selector__search-input" placeholder="Buscar ticker…" aria-label="Buscar activo por ticker o nombre" aria-controls="{{ field_id }}-options" autocomplete="off" spellcheck="false" data-asset-search>
+      </div>
+      <div class="asset-selector__meta">
+        <p class="asset-selector__count" data-asset-count aria-live="polite"><strong data-count-selected>{{ checked_count }}</strong> de <span data-count-total>{{ tickers|length }}</span> seleccionados<span data-count-custom></span></p>
+        <div class="asset-selector__actions" data-asset-actions hidden>
+          <button type="button" class="asset-selector__action" data-select="all" title="Marca los activos visibles">Todos</button>
+          <button type="button" class="asset-selector__action" data-select="none" title="Desmarca los activos visibles">Ninguno</button>
+          <button type="button" class="asset-selector__action" data-select="invert" title="Invierte la selección de los activos visibles">Invertir</button>
+        </div>
+      </div>
+    </div>
+    <div class="asset-selector__options{% if grouped %} asset-selector__options--grouped{% endif %}{% if tickers|length > 24 %} asset-selector__options--scroll{% endif %}" id="{{ field_id }}-options" role="group" aria-label="Activos disponibles">
+      {%- if grouped -%}
+        {%- for group in ns.groups %}
+        <div class="asset-group" role="group" aria-labelledby="{{ field_id }}-group-{{ loop.index }}">
+          <p class="asset-group__title" id="{{ field_id }}-group-{{ loop.index }}">{{ group }}</p>
+          <div class="asset-group__chips">
+            {%- for ticker in tickers if groups.get(ticker, "Otros") == group %}
+            {{ _chip(ticker, ticker in selected, name, labels.get(ticker) if labels else none) }}
+            {%- endfor %}
+          </div>
+        </div>
+        {%- endfor -%}
+      {%- else -%}
+        {%- for ticker in tickers %}
+        {{ _chip(ticker, ticker in selected, name, labels.get(ticker) if labels else none) }}
+        {%- endfor -%}
+      {%- endif %}
+    </div>
+    <p class="asset-selector__empty" data-asset-empty hidden></p>
+  </div>
+{% endmacro %}
+
+{# Free-form tickers outside the catalog, submitted as the comma-separated
+   ``custom_tickers`` field. forms.js turns it into removable chips (Enter, comma or
+   paste) and keeps the real value in a hidden ``custom_tickers`` input. #}
+{% macro custom_tickers_input(value="", field_id="custom_tickers", placeholder="AMZN, NVDA, ^VIX") %}
+  <div class="ticker-input" data-custom-tickers-wrap>
+    <input id="{{ field_id }}" name="custom_tickers" value="{{ value }}" placeholder="{{ placeholder }}" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="{{ field_id }}-help" data-custom-tickers>
+    <p class="help-text" id="{{ field_id }}-help">Usa símbolos de Yahoo Finance: AMZN, BTC-USD, GC=F, ^GSPC, ECOPETROL.CL. Sepáralos con comas.</p>
+    <p class="field-error" id="{{ field_id }}-error" data-custom-tickers-error aria-live="polite" hidden></p>
+  </div>
+{% endmacro %}
+
+{# Numeric input with a "%" suffix. Values are percentage points. Attribute order
+   ``id, name, type`` is relied upon by page tests. #}
+{% macro percent_input(name, value="", field_id=None, min=None, max=None, placeholder=None, required=False) %}
+  <div class="input-affix">
+    <input id="{{ field_id or name }}" name="{{ name }}" type="number" value="{{ value }}" step="any" inputmode="decimal" class="input-affix__input"{% if min is not none %} min="{{ min }}"{% endif %}{% if max is not none %} max="{{ max }}"{% endif %}{% if placeholder is not none and placeholder != "" %} placeholder="{{ placeholder }}"{% endif %}{% if required %} required{% endif %}>
+    <span class="input-affix__suffix" aria-hidden="true">%</span>
+  </div>
+{% endmacro %}
+
+{# Contextual help: a small "?" button described by a tooltip (hover, keyboard
+   focus or tap; Esc closes). #}
+{% macro help_tip(text, label="Ayuda") %}
+  {%- set tip_id = "tip-" ~ (range(100000000)|random) -%}
+  <span class="help-tip" data-help-tip>
+    <button type="button" class="help-tip__button" aria-label="{{ label }}" aria-describedby="{{ tip_id }}">?</button>
+    <span class="help-tip__bubble" role="tooltip" id="{{ tip_id }}">{{ text }}</span>
+  </span>
+{% endmacro %}
+
+{# Quick start-date presets that write into the date input ``target_id``
+   ("Personalizada" focuses the input). Hidden until forms.js runs. #}
+{% macro date_presets(target_id, years=(1, 2, 3, 5)) %}
+  <div class="date-presets" data-date-presets="{{ target_id }}" role="group" aria-label="Periodos rápidos" hidden>
+    {% for value in years %}<button type="button" class="date-presets__button" data-years="{{ value }}" aria-pressed="false">{{ value }}A<span class="visually-hidden"> (desde hace {{ value }} {{ 'año' if value == 1 else 'años' }})</span></button>{% endfor %}
+    <button type="button" class="date-presets__button" data-custom-date aria-pressed="false">Personalizada</button>
+  </div>
+{% endmacro %}

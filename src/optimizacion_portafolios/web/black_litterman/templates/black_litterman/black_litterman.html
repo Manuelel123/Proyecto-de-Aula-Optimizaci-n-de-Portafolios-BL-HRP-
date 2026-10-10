@@ -1,68 +1,399 @@
 {% extends "base.html" %}
+{% from "macros/forms.html" import universe_select, asset_selector, custom_tickers_input, percent_input, help_tip %}
+{% from "macros/charts.html" import plotly_chart, price_explorer %}
 {% block title %}Black-Litterman{% endblock %}
+
+{# One editable row of the views table; also rendered inside <template id="view-row">. #}
+{% macro view_row(ticker, value, name="", equilibrium=None) %}
+  <tr data-ticker="{{ ticker }}">
+    <th scope="row" class="view-table__ticker">{{ ticker }}</th>
+    <td class="view-table__name" data-asset-name>{{ name if name and name != ticker else '' }}</td>
+    <td class="view-table__input">
+      <label class="visually-hidden" for="view_{{ ticker }}">View anual de {{ ticker }} (%)</label>
+      {{ percent_input("view_" ~ ticker, value=value, field_id="view_" ~ ticker, min=-100, max=1000, required=True) }}
+    </td>
+    <td class="num" data-equilibrium="{{ '%.2f'|format(equilibrium) if equilibrium is not none else '' }}">{{ '%.2f%%'|format(equilibrium) if equilibrium is not none else '—' }}</td>
+    <td><input class="badge view-table__confidence" value="{{ '%.0f'|format(view_confidence * 100) }}%" disabled aria-label="Confianza de la view"></td>
+  </tr>
+{% endmacro %}
+
 {% block content %}
-  <section class="page-heading">
-    <div><span class="page-kicker">ASIGNACIÓN · VIEWS DE MERCADO</span><h1>Black-Litterman</h1><p>Combina retornos implícitos de equilibrio con expectativas explícitas para cada activo.</p></div>
-  </section>
-  <div class="content-grid">
-    <aside class="panel">
-      <h2 class="panel-title">Hipótesis del modelo</h2>
-      <form method="post" class="form-stack">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Asignación · Views de mercado</span>
+      <h1>Black-Litterman</h1>
+      <p class="lead">Combina los retornos implícitos de equilibrio del mercado con tus expectativas anuales para cada activo.</p>
+    </div>
+  </header>
+
+  <div class="analysis-layout">
+    <aside class="param-panel" aria-labelledby="bl-panel-title">
+      <form method="post" id="bl-form" class="param-panel__form"
+            data-loading-title="Calculando portafolio Black-Litterman"
+            data-loading-steps='{{ loading_steps|tojson }}'>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="form-field"><label for="universe">Universo</label><select id="universe" name="universe">{% for name in universe_names %}<option value="{{ name }}" {{ 'selected' if name == universe_name else '' }}>{{ name }}</option>{% endfor %}</select></div>
-        <button class="button button-secondary" type="submit" name="action" value="refresh">Actualizar lista de activos</button>
-        <div class="form-field"><span class="field-label">Activos del portafolio</span><div class="check-grid">{% for ticker in available_tickers %}<label><input type="checkbox" name="tickers" value="{{ ticker }}" {{ 'checked' if ticker in selected_tickers else '' }}> {{ ticker }}</label>{% endfor %}</div></div>
-        <div class="form-field"><label for="custom_tickers">Otros tickers</label><input id="custom_tickers" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}" placeholder="AMZN, NVDA"><span class="help-text">Pulsa «Actualizar lista de activos» para definir su view antes de calcular.</span></div>
-        <div class="form-field"><label for="objective">Objetivo</label><select id="objective" name="objective">{% for name in objective_names %}<option value="{{ name }}" {{ 'selected' if name == objective_name else '' }}>{{ name }}</option>{% endfor %}</select>
-        <span class="help-text">Optimización MeanRisk de skfolio sobre los momentos posteriores. Todos los objetivos son long-only y suman 100%, salvo la utilidad sin restricción.</span></div>
-        {% if objective_name == unconstrained_objective %}<div class="notice">Este objetivo no tiene restricción long-only: un peso individual puede ser negativo o superar el 100%; la suma total sigue siendo 100%.</div>{% endif %}
-        <div class="form-field"><label for="risk_free_rate">Tasa libre de riesgo anual (%)</label><input id="risk_free_rate" name="risk_free_rate" type="number" min="0" max="100" step="0.25" value="{{ risk_free_value }}" required></div>
-        <div class="form-field"><label for="benchmark">Benchmark de mercado</label><select id="benchmark" name="benchmark">{% for name in benchmark_names %}<option value="{{ name }}" {{ 'selected' if name == benchmark_name else '' }}>{{ name }}</option>{% endfor %}</select><span class="help-text">Se usa para estimar la aversión al riesgo del mercado.</span></div>
-        <div class="form-field"><label for="start_date">Inicio de ventana fija de dos años</label><input id="start_date" type="date" value="{{ default_start }}" max="{{ today }}" disabled><input type="hidden" name="start_date" value="{{ default_start }}"></div>
-        <hr class="section-divider">
-        <h3 class="panel-title">Views anuales por activo</h3>
-        <p class="help-text">Indica el retorno esperado anual de cada activo, incluidos los tickers personalizados. Todas las views usan una confianza del {{ '%.0f'|format(view_confidence * 100) }}% (método de Idzorek).</p>
-        {% for ticker in view_tickers %}
-          <div class="form-row">
-            <div class="form-field"><label for="view_{{ ticker }}">{{ ticker }} · retorno anual (%)</label><input id="view_{{ ticker }}" name="view_{{ ticker }}" type="number" min="-100" max="1000" step="0.5" value="{{ views_values.get(ticker, '8.0') }}" required></div>
-            <div class="form-field"><label>Confianza</label><input value="{{ '%.0f'|format(view_confidence * 100) }}%" disabled></div>
-          </div>
-        {% endfor %}
-        <button class="button button-primary" type="submit" name="action" value="optimize">Calcular portafolio <span aria-hidden="true">↗</span></button>
+        <div class="param-panel__header">
+          <h2 id="bl-panel-title">Hipótesis del modelo</h2>
+        </div>
+        <div class="param-panel__body">
+          <fieldset class="step">
+            <legend><span class="step__number">1</span> Universo y activos</legend>
+            <div class="form-field">
+              <label for="universe">Universo</label>
+              {{ universe_select("universe", universe_names, universe_name, universes) }}
+              <button class="button button-secondary button-sm js-hidden" type="submit" name="action" value="refresh">Actualizar lista de activos</button>
+            </div>
+            <div class="form-field" data-min-selected="2">
+              <span class="field-label">Activos del portafolio</span>
+              {{ asset_selector(available_tickers, selected_tickers, labels=asset_labels) }}
+            </div>
+            <div class="form-field">
+              <label for="custom_tickers">Otros tickers</label>
+              {{ custom_tickers_input(value=custom_tickers_value) }}
+            </div>
+          </fieldset>
+
+          <fieldset class="step">
+            <legend><span class="step__number">2</span> Objetivo y mercado</legend>
+            <div class="form-field">
+              <label for="objective">Objetivo</label>
+              <select id="objective" name="objective" data-objective-select aria-describedby="objective-help">
+                {% for group, names in objective_groups %}
+                  <optgroup label="{{ group }}">
+                    {% for name in names %}<option value="{{ name }}" data-help="{{ objective_help[name] }}" {{ 'selected' if name == objective_name else '' }}>{{ name }}</option>{% endfor %}
+                  </optgroup>
+                {% endfor %}
+              </select>
+              <span class="help-text" id="objective-help" data-objective-help>{{ objective_help[objective_name] }}</span>
+            </div>
+            <div class="notice notice--warning" data-unconstrained-notice data-objective="{{ unconstrained_objective }}" {{ '' if objective_name == unconstrained_objective else 'hidden' }}>
+              Este objetivo no tiene restricción long-only: un peso individual puede ser negativo o superar el 100 %; la suma total sigue siendo 100 %.
+            </div>
+            <div class="form-stack">
+              <div class="form-field">
+                <label for="risk_free_rate">Tasa libre de riesgo anual {{ help_tip("Usa la tasa de un bono del Tesoro a corto plazo (T-Bill 3M), en la misma moneda que los activos.") }}</label>
+                {{ percent_input("risk_free_rate", value=risk_free_value, field_id="risk_free_rate", min=0, max=100, required=True) }}
+              </div>
+              <div class="form-field">
+                <label for="benchmark">Benchmark {{ help_tip("Estima la aversión al riesgo δ = (E[rm] − rf)/Var(rm) y sirve de referencia histórica.") }}</label>
+                <select id="benchmark" name="benchmark" data-benchmark-select>{% for name in benchmark_names %}<option value="{{ name }}" {{ 'selected' if name == benchmark_name else '' }}>{{ name }}</option>{% endfor %}</select>
+              </div>
+            </div>
+            <p class="help-text"><span class="badge">Ventana fija: {{ window_years }} años ({{ window_start }} – hoy)</span></p>
+          </fieldset>
+
+          <fieldset class="step">
+            <legend><span class="step__number">3</span> Views anuales</legend>
+            <p class="help-text">Tu view es el retorno total anual que esperas. Si coincide con el de equilibrio, el activo queda neutral y no inclina el portafolio.</p>
+            <div class="data-table-wrap">
+              <table class="data-table view-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Ticker</th>
+                    <th scope="col">Activo</th>
+                    <th scope="col">View anual (%)</th>
+                    <th scope="col" class="num">Equilibrio</th>
+                    <th scope="col">Confianza {{ help_tip("Confianza fija del 95 % (método de Idzorek).") }}</th>
+                  </tr>
+                </thead>
+                <tbody data-ticker-rows="view-row">
+                  {% for ticker in view_tickers %}{{ view_row(ticker, views_values.get(ticker, default_view), catalog_labels.get(ticker, ''), equilibrium.get(ticker)) }}{% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <template id="view-row">{{ view_row("__TICKER__", default_view) }}</template>
+            <script type="application/json" id="bl-asset-names">{{ catalog_labels|tojson }}</script>
+            <script type="application/json" id="bl-equilibrium">{{ equilibrium|tojson }}</script>
+            <div class="view-actions">
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="view-bulk">Mismo valor para todas</label>
+                  <div class="input-affix">
+                    <input id="view-bulk" type="number" step="any" inputmode="decimal" min="-100" max="1000" value="{{ default_view }}">
+                    <span class="input-affix__suffix" aria-hidden="true">%</span>
+                  </div>
+                </div>
+                <div class="form-field">
+                  <span class="field-label" aria-hidden="true">&nbsp;</span>
+                  <button type="button" class="button button-secondary button-sm" data-views-apply>Aplicar a todas</button>
+                </div>
+              </div>
+              <button type="button" class="button button-ghost button-sm" data-views-equilibrium {{ '' if equilibrium else 'disabled' }} title="{{ 'Copia el retorno de equilibrio del último cálculo' if equilibrium else 'Disponible tras calcular el portafolio' }}">Usar retornos de equilibrio</button>
+              <button type="button" class="button button-ghost button-sm" data-views-reset>Restablecer {{ default_view|float|round|int }} %</button>
+            </div>
+          </fieldset>
+        </div>
+        <div class="param-panel__footer">
+          <p class="help-text" data-bl-summary><span data-bl-count>{{ view_tickers|length }}</span> activos · <span data-bl-benchmark>{{ benchmark_ticker }}</span> · {{ window_start }} → hoy</p>
+          <button class="button button-primary" type="submit" name="action" value="optimize">Calcular portafolio Black-Litterman</button>
+        </div>
       </form>
     </aside>
-    <section class="result-column">
+
+    <section class="results" data-loading-target aria-live="polite">
       {% if result %}
-        <div class="result-grid">
-          <div class="metric-card"><span>Retorno esperado anual</span><strong>{{ '%.2f'|format(result.expected_return * 100) }}%</strong></div>
-          <div class="metric-card"><span>Volatilidad anual</span><strong>{{ '%.2f'|format(result.volatility * 100) }}%</strong></div>
-          <div class="metric-card"><span>Ratio de Sharpe esperado (modelo)</span><strong>{{ '%.3f'|format(result.sharpe) }}</strong></div>
+        <div class="result-context">
+          <p>
+            <strong>Resultado Black-Litterman</strong>
+            · {{ result.window.start }} — {{ result.window.end }}
+            · {{ result.n_assets }} activos
+            · {{ objective_name }}
+            · Benchmark {{ benchmark_ticker }}
+          </p>
+          {% if result.history %}
+            <div class="result-context__actions">
+              <form method="post" class="report-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="objective" value="{{ objective_name }}"><input type="hidden" name="risk_free_rate" value="{{ risk_free_value }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="custom_tickers" value="{{ custom_tickers_value }}">
+                {% for ticker in view_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="view_{{ ticker }}" value="{{ views_values.get(ticker, default_view) }}">{% endfor %}
+                <button class="button button-secondary button-sm" type="submit" name="action" value="download_report"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Descargar informe QuantStats</button>
+              </form>
+            </div>
+          {% endif %}
         </div>
-        <div class="result-grid">
-          <div class="metric-card"><span>Ratio de Sortino esperado (modelo)</span><strong>{{ '%.3f'|format(result.sortino) }}</strong></div>
-          <div class="metric-card"><span>Aversión al riesgo δ del mercado</span><strong>{{ '%.2f'|format(result.risk_aversion) }}</strong></div>
-          <div class="metric-card"><span>Confianza de las views · τ</span><strong>{{ '%.0f'|format(view_confidence * 100) }}% · {{ result.tau }}</strong></div>
+        {% if result.excluded_tickers %}<div class="notice notice--warning">Se excluyeron activos sin precios disponibles: {{ result.excluded_tickers|join(', ') }}.</div>{% endif %}
+        {% if result.has_negative_weights %}<div class="notice notice--info">El objetivo sin restricción long-only produjo posiciones cortas (pesos negativos).</div>{% endif %}
+
+        <div class="kpi-grid">
+          <div class="metric-card metric-card--compact"><span class="metric-card__label">Retorno esperado anual</span><span class="metric-card__value">{{ '%.2f'|format(result.expected_return * 100) }}%</span><span class="metric-card__context">Posterior BL</span></div>
+          <div class="metric-card metric-card--compact"><span class="metric-card__label">Volatilidad anual</span><span class="metric-card__value">{{ '%.2f'|format(result.volatility * 100) }}%</span><span class="metric-card__context">Momentos posteriores</span></div>
+          <div class="metric-card metric-card--compact"><span class="metric-card__label">Sharpe esperado</span><span class="metric-card__value">{{ '%.3f'|format(result.sharpe) }}</span><span class="metric-card__context">rf {{ '%.2f'|format(result.risk_free_rate * 100) }}%</span></div>
+          <div class="metric-card metric-card--compact"><span class="metric-card__label">Sortino esperado</span><span class="metric-card__value">{{ '%.3f'|format(result.sortino) }}</span><span class="metric-card__context">Modelo</span></div>
         </div>
-        <p class="help-text">Métricas esperadas según los momentos posteriores de Black-Litterman (skfolio), anualizadas con {{ result.trading_days }} días. El Sortino usa la semidesviación de los retornos históricos recentrados en el retorno posterior.</p>
-        {% if result.excluded_tickers %}<div class="notice">Se excluyeron activos sin datos: {{ result.excluded_tickers|join(', ') }}.</div>{% endif %}
-        <div class="result-panel"><span class="page-kicker">RESULTADO · BLACK-LITTERMAN</span><h2>Asignación del portafolio</h2><p>Suma de pesos: {{ '%.2f'|format(result.weights_sum * 100) }}%</p><img class="chart-image" src="{{ result.weights_chart }}" alt="Pesos Black-Litterman"><div class="data-table-wrap">{{ result.results_table|safe }}</div></div>
-        <div class="result-panel"><h2>Covarianza posterior</h2><p>Anualizada.</p><div class="data-table-wrap">{{ result.covariance_table|safe }}</div></div>
-        {% if result.history %}
-          <div class="result-panel">
-            <h2>Análisis histórico · QuantStats</h2><p>{{ result.history.observations }} observaciones comunes con el benchmark. Estas métricas, incluidos Sharpe y Sortino, son históricas (realizadas con los pesos actuales), no esperadas.</p>
-            <div class="data-table-wrap">{{ result.history.metrics|safe }}</div>
-            {% if not result.history.has_rolling_sharpe %}<div class="notice">El Sharpe móvil requiere al menos 126 retornos comunes; los demás gráficos están disponibles.</div>{% endif %}
-            <div class="chart-grid">{% for name, image in result.history.charts.items() %}<div class="chart-card"><h3>{{ name }}</h3><img class="chart-image" src="{{ image }}" alt="{{ name }}"></div>{% endfor %}</div>
-            <form method="post" class="form-stack" style="margin-top:16px">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="objective" value="{{ objective_name }}"><input type="hidden" name="risk_free_rate" value="{{ risk_free_value }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="start_date" value="{{ default_start }}"><input type="hidden" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}">
-              {% for ticker in view_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="view_{{ ticker }}" value="{{ views_values.get(ticker, '8.0') }}">{% endfor %}
-              <button class="button button-secondary" type="submit" name="action" value="download_report">Descargar informe QuantStats</button>
-            </form>
+
+        <article class="card allocation-card">
+          <div class="card__header">
+            <div>
+              <h2 class="card__title">Distribución del portafolio</h2>
+              <p class="card__subtitle">Peso Black-Litterman frente al peso de mercado (capitalización) · suma {{ '%.2f'|format(result.weights_sum * 100) }}%</p>
+            </div>
+            <div class="card__actions">
+              <a class="button button-ghost button-sm" download="{{ csv_filename }}" href="data:text/csv;charset=utf-8,{{ ('﻿' ~ result.allocation_csv)|urlencode }}">Descargar CSV</a>
+            </div>
           </div>
+          <div class="card__body">
+            <div class="allocation-card__chart">
+              {{ plotly_chart("allocation", result.charts.allocation, "Pesos Black-Litterman vs mercado", height=28 * result.n_assets + 80) }}
+            </div>
+            <div class="allocation-card__table data-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr><th scope="col">Ticker</th><th scope="col">Activo</th><th scope="col" class="num">Peso BL</th><th scope="col" class="num">Peso de mercado</th><th scope="col" class="num">Inclinación (pp)</th><th scope="col" class="num">View anual</th><th scope="col" class="num">Retorno posterior</th></tr>
+                </thead>
+                <tbody>
+                  {% for row in result.allocation_rows %}
+                    <tr>
+                      <td>{{ row.ticker }}</td><td>{{ row.name }}</td>
+                      <td class="num{{ ' is-negative' if row.weight < 0 else '' }}">{{ row.weight_text }}</td>
+                      <td class="num">{{ row.market_weight_text }}</td>
+                      <td class="num{{ ' is-negative' if row.tilt < 0 else '' }}">{{ row.tilt_text }}</td>
+                      <td class="num{{ ' is-negative' if row.view < 0 else '' }}">{{ row.view_text }}</td>
+                      <td class="num{{ ' is-negative' if row.posterior < 0 else '' }}">{{ row.posterior_text }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot>
+                  <tr><th scope="row" colspan="2">Total</th><td class="num">{{ '%.2f'|format(result.weights_sum * 100) }}%</td><td class="num">{{ '%.2f'|format(result.market_weights_sum * 100) }}%</td><td class="num">0.00</td><td class="num">—</td><td class="num" title="Retorno esperado del portafolio (w'μ)">{{ '%.2f'|format(result.expected_return * 100) }}%</td></tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </article>
+
+        <div class="analysis-toolbar">
+          <button type="button" class="button button-ghost button-sm" data-expand-all>Expandir todo</button>
+          <button type="button" class="button button-ghost button-sm" data-collapse-all>Contraer todo</button>
+        </div>
+
+        <details class="analysis-section" data-section="metrics">
+          <summary><span class="analysis-section__title">Métricas esperadas del modelo</span><span class="analysis-section__meta">Retorno, volatilidad, Sharpe, Sortino · δ {{ '%.2f'|format(result.risk_aversion) }} · τ {{ result.tau }}</span></summary>
+          <div class="analysis-section__body">
+            <div class="kpi-grid">
+              <div class="metric-card"><span class="metric-card__label">Retorno esperado anual</span><span class="metric-card__value">{{ '%.2f'|format(result.expected_return * 100) }}%</span></div>
+              <div class="metric-card"><span class="metric-card__label">Volatilidad anual</span><span class="metric-card__value">{{ '%.2f'|format(result.volatility * 100) }}%</span></div>
+              <div class="metric-card"><span class="metric-card__label">Ratio de Sharpe esperado (modelo)</span><span class="metric-card__value">{{ '%.3f'|format(result.sharpe) }}</span></div>
+              <div class="metric-card"><span class="metric-card__label">Ratio de Sortino esperado (modelo) {{ help_tip("Usa la semidesviación de los retornos históricos recentrados en el retorno posterior.") }}</span><span class="metric-card__value">{{ '%.3f'|format(result.sortino) }}</span></div>
+              <div class="metric-card"><span class="metric-card__label">Aversión al riesgo δ del mercado {{ help_tip("δ = (E[rm] − rf)/Var(rm), estimada con el benchmark.") }}</span><span class="metric-card__value">{{ '%.2f'|format(result.risk_aversion) }}</span></div>
+              <div class="metric-card"><span class="metric-card__label">Confianza de las views · τ {{ help_tip("τ escala la incertidumbre del prior; la confianza se traduce en Ω con el método de Idzorek.") }}</span><span class="metric-card__value">{{ '%.0f'|format(result.view_confidence * 100) }}% · {{ result.tau }}</span></div>
+            </div>
+            <p class="help-text">Métricas esperadas según los momentos posteriores de Black-Litterman (skfolio), anualizadas con {{ result.trading_days }} días.</p>
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="prior-posterior">
+          <summary><span class="analysis-section__title">Del equilibrio a la posterior</span><span class="analysis-section__meta">Prior → view → posterior por activo</span></summary>
+          <div class="analysis-section__body">
+            {{ plotly_chart("prior_posterior", result.charts.prior_posterior, "Retorno prior, view y posterior", height=360) }}
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead><tr><th scope="col">Ticker</th><th scope="col">Activo</th><th scope="col" class="num">Retorno prior (equilibrio)</th><th scope="col" class="num">View anual</th><th scope="col" class="num">Confianza</th><th scope="col" class="num">Retorno posterior</th><th scope="col" class="num">Cambio (pp)</th></tr></thead>
+                <tbody>
+                  {% for row in result.prior_rows %}
+                    <tr><td>{{ row.ticker }}</td><td>{{ row.name }}</td><td class="num">{{ row.prior_text }}</td><td class="num">{{ row.view_text }}</td><td class="num">{{ row.confidence_text }}</td><td class="num">{{ row.posterior_text }}</td><td class="num{{ ' is-negative' if row.shift < 0 else '' }}">{{ row.shift_text }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="analysis-section" data-section="posterior-covariance">
+          <summary><span class="analysis-section__title">Covarianza posterior</span><span class="analysis-section__meta">Correlación derivada · valores anualizados</span></summary>
+          <div class="analysis-section__body">
+            {{ plotly_chart("posterior_correlation", result.charts.posterior_correlation, "Correlación posterior", height=[360, 40 * result.n_assets + 120]|max) }}
+            <details class="advanced">
+              <summary>Ver valores (covarianza anualizada)</summary>
+              <div class="data-table-wrap">{{ result.covariance_table|safe }}</div>
+            </details>
+          </div>
+        </details>
+
+        {% if result.history %}
+          <details class="analysis-section" data-section="history">
+            <summary><span class="analysis-section__title">Análisis histórico · {{ benchmark_ticker }}</span><span class="analysis-section__meta">{{ result.history.observations }} observaciones · {{ result.history.start }} — {{ result.history.end }}</span></summary>
+            <div class="analysis-section__body">
+              <p class="help-text">Estas métricas, incluidos Sharpe y Sortino, son históricas (realizadas con los pesos actuales), no esperadas.</p>
+              <div class="data-table-wrap">{{ result.history.metrics|safe }}</div>
+              {% if not result.history.has_rolling_sharpe %}<div class="notice notice--info">El Sharpe móvil requiere al menos 126 retornos comunes; los demás gráficos están disponibles.</div>{% endif %}
+              {% set charts = result.history.charts %}
+              <div class="chart-grid">
+                {{ plotly_chart("cumulative", charts.get("cumulative"), "Rendimiento acumulado") }}
+                {{ plotly_chart("drawdown", charts.get("drawdown"), "Drawdown") }}
+                {{ plotly_chart("monthly_heatmap", charts.get("monthly_heatmap"), "Rendimientos mensuales") }}
+                {{ plotly_chart("rolling_sharpe", charts.get("rolling_sharpe"), "Sharpe móvil (126 días)") }}
+                {{ plotly_chart("returns_distribution", charts.get("returns_distribution"), "Distribución de retornos mensuales") }}
+                {{ plotly_chart("yearly_returns", charts.get("yearly_returns"), "Retornos anuales") }}
+              </div>
+            </div>
+          </details>
         {% endif %}
+
+        {% if result.prices_payload %}
+          <details class="analysis-section" data-section="prices">
+            <summary><span class="analysis-section__title">Evolución de precios</span><span class="analysis-section__meta">Precio o base 100 frente a {{ benchmark_ticker }}</span></summary>
+            <div class="analysis-section__body">
+              {{ price_explorer("bl", result.prices_payload, "Evolución de precios") }}
+            </div>
+          </details>
+        {% endif %}
+
+        <details class="analysis-section" data-section="assumptions">
+          <summary><span class="analysis-section__title">Supuestos del modelo</span><span class="analysis-section__meta">δ, τ, confianza, capitalizaciones y ventana</span></summary>
+          <div class="analysis-section__body">
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <tbody>
+                  <tr><th scope="row">Objetivo</th><td>{{ objective_name }}</td></tr>
+                  <tr><th scope="row">Ventana</th><td>Fija de {{ result.window.years }} años: {{ result.window.start }} — {{ result.window.end }} (datos {{ result.window.effective_start }} — {{ result.window.effective_end }}, {{ result.window.observations }} retornos diarios)</td></tr>
+                  <tr><th scope="row">Tasa libre de riesgo</th><td>{{ '%.2f'|format(result.risk_free_rate * 100) }}% anual</td></tr>
+                  <tr><th scope="row">Aversión al riesgo δ</th><td>{{ '%.4f'|format(result.risk_aversion) }} (benchmark {{ benchmark_ticker }})</td></tr>
+                  <tr><th scope="row">τ</th><td>{{ result.tau }}</td></tr>
+                  <tr><th scope="row">Confianza de las views</th><td>{{ '%.0f'|format(result.view_confidence * 100) }}% (método de Idzorek)</td></tr>
+                  <tr><th scope="row">Covarianza</th><td>Ledoit-Wolf sobre retornos diarios, anualizada con {{ result.trading_days }} días</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead><tr><th scope="col">Ticker</th><th scope="col">Activo</th><th scope="col" class="num">Capitalización / activos netos (USD)</th><th scope="col" class="num">Peso de mercado</th><th scope="col" class="num">Confianza</th></tr></thead>
+                <tbody>
+                  {% for row in result.assumption_rows %}
+                    <tr><td>{{ row.ticker }}</td><td>{{ row.name }}</td><td class="num">{{ row.market_cap_text }}</td><td class="num">{{ row.market_weight_text }}</td><td class="num">{{ row.confidence_text }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
       {% else %}
-        <div class="empty-state"><strong>Define tus expectativas</strong><p>Selecciona dos o más activos, ajusta sus views y configura la tasa libre de riesgo para calcular los pesos del modelo.</p></div>
+        <div class="empty-state">
+          <strong>Define tus expectativas</strong>
+          <p>Calcula un portafolio que parte del equilibrio de mercado y se inclina hacia tus views.</p>
+          <ol class="empty-state__steps">
+            <li>Elige un universo y al menos dos activos.</li>
+            <li>Escoge el objetivo, la tasa libre de riesgo y el benchmark.</li>
+            <li>Escribe tu view anual para cada activo y pulsa «Calcular portafolio Black-Litterman».</li>
+          </ol>
+        </div>
       {% endif %}
     </section>
   </div>
+{% endblock %}
+
+{% block page_scripts %}
+  {% include "macros/chart_scripts.html" %}
+  <script>
+    (() => {
+      const form = document.getElementById("bl-form");
+      if (!form) return;
+      const readJson = (id) => {
+        try { return JSON.parse(document.getElementById(id).textContent) || {}; } catch (error) { return {}; }
+      };
+      const names = readJson("bl-asset-names");
+      const equilibrium = readJson("bl-equilibrium");
+      const rows = form.querySelector("[data-ticker-rows]");
+      const viewInputs = () => rows ? rows.querySelectorAll('input[name^="view_"]') : [];
+
+      // Objective description and the long-only notice follow the select instantly.
+      const objective = form.querySelector("[data-objective-select]");
+      const help = form.querySelector("[data-objective-help]");
+      const notice = form.querySelector("[data-unconstrained-notice]");
+      const syncObjective = () => {
+        const option = objective.selectedOptions[0];
+        if (help && option) help.textContent = option.dataset.help || "";
+        if (notice) notice.hidden = objective.value !== notice.dataset.objective;
+      };
+      if (objective) { objective.addEventListener("change", syncObjective); syncObjective(); }
+
+      // Rows cloned from <template id="view-row"> get the asset name and equilibrium.
+      const decorateRows = () => {
+        if (!rows) return;
+        rows.querySelectorAll("tr[data-ticker]").forEach((row) => {
+          const ticker = row.dataset.ticker;
+          const nameCell = row.querySelector("[data-asset-name]");
+          if (nameCell && !nameCell.textContent.trim() && names[ticker] && names[ticker] !== ticker) {
+            nameCell.textContent = names[ticker];
+          }
+          const eqCell = row.querySelector("[data-equilibrium]");
+          if (eqCell && !eqCell.dataset.equilibrium && equilibrium[ticker] !== undefined) {
+            eqCell.dataset.equilibrium = Number(equilibrium[ticker]).toFixed(2);
+            eqCell.textContent = Number(equilibrium[ticker]).toFixed(2) + "%";
+          }
+        });
+        const count = form.querySelector("[data-bl-count]");
+        if (count) count.textContent = rows.querySelectorAll("tr[data-ticker]").length;
+      };
+      if (rows) new MutationObserver(decorateRows).observe(rows, { childList: true });
+      decorateRows();
+
+      const benchmark = form.querySelector("[data-benchmark-select]");
+      const benchmarkLabel = form.querySelector("[data-bl-benchmark]");
+      if (benchmark && benchmarkLabel) {
+        benchmark.addEventListener("change", () => {
+          const match = benchmark.value.match(/\(([^)]+)\)\s*$/);
+          benchmarkLabel.textContent = match ? match[1] : benchmark.value;
+        });
+      }
+
+      const setAll = (valueFor) => {
+        viewInputs().forEach((input) => {
+          const value = valueFor(input);
+          if (value === null || value === undefined || value === "") return;
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      };
+      const apply = form.querySelector("[data-views-apply]");
+      const bulk = document.getElementById("view-bulk");
+      if (apply && bulk) apply.addEventListener("click", () => {
+        if (bulk.value !== "" && bulk.checkValidity()) setAll(() => bulk.value); else bulk.reportValidity();
+      });
+      const reset = form.querySelector("[data-views-reset]");
+      if (reset) reset.addEventListener("click", () => setAll(() => "{{ default_view }}"));
+      const useEquilibrium = form.querySelector("[data-views-equilibrium]");
+      if (useEquilibrium) useEquilibrium.addEventListener("click", () => setAll((input) => {
+        const cell = input.closest("tr").querySelector("[data-equilibrium]");
+        return cell ? cell.dataset.equilibrium : null;
+      }));
+    })();
+  </script>
 {% endblock %}

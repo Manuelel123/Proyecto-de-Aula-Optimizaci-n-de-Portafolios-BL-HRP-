@@ -1,0 +1,57 @@
+{#
+  Chart components. ``payload`` values are Markup produced by
+  web.common.charts (Plotly figure JSON) and web.common.price_series
+  (Lightweight Charts series JSON); both are already escaped for <script>.
+  Signatures are a contract (only optional parameters may be added).
+  Behaviour lives in static/js/charts.js and styles in static/css/charts.css.
+
+  Optional hook: a <select data-plotly-control="chart-<key>"> anywhere on the
+  page drives the in-figure selector of that chart (option value = ticker).
+#}
+
+{# Plotly figure rendered client-side (lazily when inside a closed section).
+   ``height`` is the space reserved before rendering; figures whose height
+   depends on the data (bars per asset, heatmaps) resize the container. #}
+{% macro plotly_chart(key, payload, title, height=360, subtitle=None) %}
+  {% if payload %}
+    <figure class="chart-card">
+      <figcaption class="chart-card__caption">
+        <span class="chart-card__title">{{ title }}</span>
+        {% if subtitle %}<span class="chart-card__subtitle">{{ subtitle }}</span>{% endif %}
+      </figcaption>
+      <div class="plotly-chart" data-plotly="chart-{{ key }}" style="min-height:{{ height }}px" role="img" aria-label="{{ title }}"></div>
+      <script type="application/json" id="chart-{{ key }}">{{ payload }}</script>
+      <noscript><p class="help-text">Activa JavaScript para ver el gráfico; los valores exactos están en la tabla.</p></noscript>
+    </figure>
+  {% endif %}
+{% endmacro %}
+
+{# Lightweight Charts price explorer with asset selector, range buttons and
+   base-100 comparison against the benchmark. ``selected`` (optional) is the
+   ticker shown first. #}
+{% macro price_explorer(key, payload, title="Evolución de precios", selected=None) %}
+  {% if payload %}
+    <section class="price-explorer" data-price-explorer="prices-{{ key }}" aria-label="{{ title }}">
+      <div class="price-explorer__toolbar">
+        <label class="price-explorer__asset">
+          <span class="visually-hidden">Activo</span>
+          <select data-price-asset{% if selected %} data-selected="{{ selected }}"{% endif %}></select>
+        </label>
+        <div class="price-explorer__ranges" role="group" aria-label="Rango temporal">
+          {% for label, value in (("1M", "1M"), ("3M", "3M"), ("6M", "6M"), ("YTD", "YTD"), ("1A", "1Y"), ("Máx", "ALL")) %}
+            <button type="button" class="price-explorer__range{{ ' is-active' if value == 'ALL' else '' }}" data-range="{{ value }}" aria-pressed="{{ 'true' if value == 'ALL' else 'false' }}">{{ label }}</button>
+          {% endfor %}
+        </div>
+        <label class="price-explorer__mode">
+          <input type="checkbox" data-price-base100> Base 100 vs benchmark
+        </label>
+      </div>
+      <div class="price-explorer__stage">
+        <div class="price-explorer__legend" data-price-legend></div>
+        <div class="price-explorer__canvas" data-price-canvas role="img" aria-label="{{ title }}"></div>
+      </div>
+      <script type="application/json" id="prices-{{ key }}">{{ payload }}</script>
+      <noscript><p class="help-text">Activa JavaScript para ver la evolución de precios.</p></noscript>
+    </section>
+  {% endif %}
+{% endmacro %}
