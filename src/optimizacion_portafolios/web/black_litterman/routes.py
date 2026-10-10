@@ -17,26 +17,34 @@ from optimizacion_portafolios.data.catalogs import (
 )
 from optimizacion_portafolios.web.black_litterman import bp
 from optimizacion_portafolios.web.black_litterman.services import (
+    CSV_FILENAME,
+    CURRENT_PORTFOLIO,
+    DEFAULT_VIEW,
+    LOADING_STEPS,
+    OBJECTIVE_GROUPS,
+    OBJECTIVE_HELP,
     OBJECTIVES,
     REPORT_FILENAME,
     ROLLING_SHARPE_PERIOD,
     UNCONSTRAINED_OBJECTIVE,
     VIEW_CONFIDENCE,
+    WINDOW_YEARS,
+    default_selection,
+    display_date,
     run_black_litterman,
 )
 from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
     normalize_ticker,
     parse_bounded_float,
-    parse_start_date,
     selected_option,
     selected_tickers,
+    universes_payload,
 )
 
 logger = logging.getLogger(__name__)
-_DEFAULT_UNIVERSE = "Portafolio actual"
-_DEFAULT_VIEW = "8.0"
-_WINDOW_YEARS = 2
+# Every known ticker -> readable label ("Apple (AAPL)"); unknown tickers show as-is.
+_CATALOG_LABELS = {ticker: label for label, ticker in ACTIVOS_HRP.items()}
 
 
 def _valid_custom_tickers() -> tuple[list[str], list[str]]:
@@ -55,24 +63,21 @@ def _valid_custom_tickers() -> tuple[list[str], list[str]]:
 @bp.route("/black-litterman", methods=["GET", "POST"])
 def black_litterman():
     today = date.today()
-    default_start = date_years_ago(today, _WINDOW_YEARS)
+    # The model always uses a fixed two-year window; a submitted start_date is ignored.
+    window_start = date_years_ago(today, WINDOW_YEARS)
     universe_names = list(UNIVERSOS_BLACK_LITTERMAN)
-    universe_name = request.values.get("universe", _DEFAULT_UNIVERSE)
+    universe_name = request.values.get("universe", CURRENT_PORTFOLIO)
     if universe_name not in UNIVERSOS_BLACK_LITTERMAN:
         flash("Selecciona un universo de activos válido.", "error")
-        universe_name = _DEFAULT_UNIVERSE
+        universe_name = CURRENT_PORTFOLIO
     universe = UNIVERSOS_BLACK_LITTERMAN[universe_name]
+    universe_labels = {ticker: label for label, ticker in universe.items()}
     available_tickers = list(universe.values())
     selected = request.form.getlist("tickers") if request.method == "POST" else []
-    default_selection = (
-        available_tickers
-        if universe_name == _DEFAULT_UNIVERSE
-        else available_tickers[:4]
-    )
     if request.method == "POST" and request.form.get("action") == "refresh":
         selected = [ticker for ticker in selected if ticker in available_tickers]
     if not selected:
-        selected = default_selection
+        selected = default_selection(universe_name, available_tickers)
     custom_valid, custom_invalid = (
         _valid_custom_tickers() if request.method == "POST" else ([], [])
     )
@@ -90,9 +95,8 @@ def black_litterman():
     if objective_name not in OBJECTIVES:
         objective_name = objective_names[0]
     risk_free_value = request.values.get("risk_free_rate", "2.0")
-    start_value = request.values.get("start_date", default_start.isoformat())
     views_values = {
-        ticker: request.values.get(f"view_{ticker}", _DEFAULT_VIEW)
+        ticker: request.values.get(f"view_{ticker}", DEFAULT_VIEW)
         for ticker in view_tickers
     }
     result = None
@@ -129,19 +133,19 @@ def black_litterman():
                 ticker for ticker in selected if f"view_{ticker}" not in request.form
             ]
             if unseen:
-                views_values.update(dict.fromkeys(unseen, _DEFAULT_VIEW))
+                views_values.update(dict.fromkeys(unseen, DEFAULT_VIEW))
                 raise ValueError(
                     "Define la view anual de: "
                     + ", ".join(unseen)
                     + ". Se propuso "
-                    + _DEFAULT_VIEW
+                    + DEFAULT_VIEW
                     + "%; revísala y vuelve a calcular."
                 )
             views = {}
             for ticker in selected:
                 view_pct = parse_bounded_float(
                     f"view_{ticker}",
-                    _DEFAULT_VIEW,
+                    DEFAULT_VIEW,
                     -100,
                     1000,
                     f"La view anual de {ticker} debe ser numérica.",
@@ -149,9 +153,7 @@ def black_litterman():
                 )
                 views[ticker] = view_pct / 100
                 views_values[ticker] = str(view_pct)
-            start_date = parse_start_date("start_date", default_start)
-            names = {ticker: label for label, ticker in universe.items()}
-            names.update({ticker: ticker for ticker in custom})
+            names = {**_CATALOG_LABELS, **universe_labels}
             try:
                 result = run_black_litterman(
                     selected,
@@ -159,9 +161,10 @@ def black_litterman():
                     objective_name,
                     risk_free_rate_pct / 100,
                     BENCHMARKS[benchmark_name],
-                    start_date,
+                    window_start,
                     names,
                     request.form.get("action") == "download_report",
+                    benchmark_label=benchmark_name,
                 )
             except (requests.RequestException, TimeoutError, YFException) as error:
                 logger.exception(
@@ -182,12 +185,6 @@ def black_litterman():
                     as_attachment=True,
                     download_name=REPORT_FILENAME,
                 )
-            if result["missing_prices"]:
-                flash(
-                    "Se excluyeron activos sin precios disponibles: "
-                    + ", ".join(result["missing_prices"]),
-                    "warning",
-                )
             history = result["history"]
             if history and not history["has_rolling_sharpe"]:
                 flash(
@@ -202,24 +199,37 @@ def black_litterman():
                     "warning",
                 )
         except (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError) as error:
+            result = None
             flash(str(error), "error")
 
     return render_template(
         "black_litterman/black_litterman.html",
-        today=today.isoformat(),
-        default_start=start_value,
+        window_start=display_date(window_start),
+        window_years=WINDOW_YEARS,
         universe_names=universe_names,
         universe_name=universe_name,
+        universes=universes_payload(
+            UNIVERSOS_BLACK_LITTERMAN, default_selection=default_selection
+        ),
         available_tickers=available_tickers,
+        asset_labels=universe_labels,
+        catalog_labels={**_CATALOG_LABELS, **universe_labels},
         selected_tickers=selected,
+        custom_tickers_value=request.form.get("custom_tickers", ""),
         view_tickers=view_tickers,
         view_confidence=VIEW_CONFIDENCE,
+        default_view=DEFAULT_VIEW,
         unconstrained_objective=UNCONSTRAINED_OBJECTIVE,
         benchmark_names=benchmark_names,
         benchmark_name=benchmark_name,
-        objective_names=objective_names,
+        benchmark_ticker=BENCHMARKS[benchmark_name],
+        objective_groups=OBJECTIVE_GROUPS,
+        objective_help=OBJECTIVE_HELP,
         objective_name=objective_name,
         risk_free_value=risk_free_value,
         views_values=views_values,
+        equilibrium=result["prior_returns"] if result else {},
+        loading_steps=list(LOADING_STEPS),
+        csv_filename=CSV_FILENAME,
         result=result,
     )

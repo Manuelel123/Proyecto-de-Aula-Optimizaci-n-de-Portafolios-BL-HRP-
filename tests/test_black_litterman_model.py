@@ -134,6 +134,19 @@ class BlackLittermanTests(unittest.TestCase):
         sharpe_portfolio = self.optimize("max_sharpe")
         self.assertGreaterEqual(result.sortino, sharpe_portfolio.sortino - 1e-3)
 
+    def test_posterior_correlation_matches_covariance(self) -> None:
+        result = self.optimize()
+        correlation = result.posterior_correlation
+        covariance = result.posterior_covariance
+        self.assertEqual(list(correlation.index), list(TICKERS))
+        np.testing.assert_allclose(np.diag(correlation), 1.0)
+        np.testing.assert_allclose(correlation, correlation.T, atol=1e-12)
+        self.assertTrue(((correlation >= -1) & (correlation <= 1)).all().all())
+        expected = covariance.loc["AAPL", "MSFT"] / np.sqrt(
+            covariance.loc["AAPL", "AAPL"] * covariance.loc["MSFT", "MSFT"]
+        )
+        self.assertAlmostEqual(correlation.loc["AAPL", "MSFT"], expected, places=12)
+
     def test_requires_one_view_per_asset(self) -> None:
         with self.assertRaisesRegex(ValueError, "una view para cada activo"):
             self.optimize(views={"AAPL": 0.08})
