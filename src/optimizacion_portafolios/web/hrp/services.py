@@ -12,8 +12,9 @@ from optimizacion_portafolios.analytics.performance import (
 from optimizacion_portafolios.analytics.volatility import calculate_monthly_volatility
 from optimizacion_portafolios.data.market_data import download_prices
 from optimizacion_portafolios.models.hrp import (
-    calculate_hrp,
+    WeightBounds,
     calculate_hrp_contributions,
+    optimize_hrp,
 )
 from optimizacion_portafolios.web.common.charts import (
     bar_chart,
@@ -31,6 +32,11 @@ from optimizacion_portafolios.web.common.tables import (
 ROLLING_SHARPE_PERIOD = 126
 REPORT_FILENAME = "reporte_quantstats_hrp.html"
 _PORTFOLIO_COLUMN = "Portafolio HRP"
+_QUANTSTATS_SORTINO = "Ratio de Sortino"
+_QUANTSTATS_SORTINO_LABEL = (
+    "Ratio de Sortino (QuantStats · días comunes con el benchmark)"
+)
+
 
 
 @dataclass(frozen=True)
@@ -39,12 +45,15 @@ class HrpRun:
     returns: pd.DataFrame
     weights: pd.Series
     ordered_correlation: pd.DataFrame
+    sortino_ratio: float
     portfolio_returns: pd.Series
     benchmark_returns: pd.Series
     missing: list[str]
 
 
-def _optimize(tickers: list[str], benchmark: str, start_date: date) -> HrpRun:
+def _optimize(
+    tickers: list[str], benchmark: str, start_date: date, bounds: WeightBounds
+) -> HrpRun:
     today = date.today()
     prices = download_prices(tuple(tickers), start_date, today)
     prices = prices.dropna(axis="columns", how="all").ffill().dropna()
@@ -57,7 +66,8 @@ def _optimize(tickers: list[str], benchmark: str, start_date: date) -> HrpRun:
     if len(returns) < 2:
         raise ValueError("Se necesitan más observaciones para optimizar HRP.")
 
-    weights, ordered_correlation = calculate_hrp(returns)
+    hrp = optimize_hrp(returns, bounds.restricted_to(list(returns.columns)))
+    weights = hrp.weights
     benchmark_prices = download_prices((benchmark,), start_date, today)
     if benchmark_prices.empty or benchmark not in benchmark_prices:
         raise ValueError(
@@ -78,7 +88,8 @@ def _optimize(tickers: list[str], benchmark: str, start_date: date) -> HrpRun:
         prices=prices,
         returns=returns,
         weights=weights,
-        ordered_correlation=ordered_correlation,
+        ordered_correlation=hrp.ordered_correlation,
+        sortino_ratio=hrp.sortino_ratio,
         portfolio_returns=aligned[_PORTFOLIO_COLUMN],
         benchmark_returns=aligned[benchmark],
         missing=missing,
@@ -86,10 +97,13 @@ def _optimize(tickers: list[str], benchmark: str, start_date: date) -> HrpRun:
 
 
 def build_hrp_report(
-    tickers: list[str], benchmark: str, start_date: date
+    tickers: list[str],
+    benchmark: str,
+    start_date: date,
+    bounds: WeightBounds | None = None,
 ) -> tuple[bytes, list[str]]:
     """Return the QuantStats HTML tearsheet and the tickers without data."""
-    run = _optimize(tickers, benchmark, start_date)
+    run = _optimize(tickers, benchmark, start_date, bounds or WeightBounds())
     report = generate_tearsheet(
         run.portfolio_returns,
         run.benchmark_returns,
@@ -99,9 +113,14 @@ def build_hrp_report(
     return report, run.missing
 
 
-def run_hrp(tickers: list[str], benchmark: str, start_date: date) -> dict:
+def run_hrp(
+    tickers: list[str],
+    benchmark: str,
+    start_date: date,
+    bounds: WeightBounds | None = None,
+) -> dict:
     """Optimize the portfolio and return everything the HRP page renders."""
-    run = _optimize(tickers, benchmark, start_date)
+    run = _optimize(tickers, benchmark, start_date, bounds or WeightBounds())
     prices, returns, weights = run.prices, run.returns, run.weights
 
     weights_frame = pd.DataFrame(
@@ -151,7 +170,9 @@ def run_hrp(tickers: list[str], benchmark: str, start_date: date) -> dict:
                 {column: format_percent for column in contributions.columns},
             ),
             "metrics": metrics_html(
-                calculate_quantstats_metrics(run.portfolio_returns)
+                calculate_quantstats_metrics(run.portfolio_returns).rename(
+                    index={_QUANTSTATS_SORTINO: _QUANTSTATS_SORTINO_LABEL}
+                )
             ),
             "correlation": dataframe_html(
                 run.ordered_correlation,
@@ -166,6 +187,9 @@ def run_hrp(tickers: list[str], benchmark: str, start_date: date) -> dict:
         "observations": len(returns),
         "common_observations": len(run.portfolio_returns),
         "weight_sum": float(weights.sum()),
+        "min_assigned_weight": float(weights.min()),
+        "max_assigned_weight": float(weights.max()),
+        "sortino_ratio": run.sortino_ratio,
         "missing": run.missing,
         "has_rolling_sharpe": has_rolling_sharpe,
         "selected_tickers": list(prices.columns),

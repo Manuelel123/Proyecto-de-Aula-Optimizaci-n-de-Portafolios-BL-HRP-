@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from optimizacion_portafolios.analytics.statistics import (
+    calculate_expected_returns,
     calculate_statistics,
     date_years_ago,
 )
@@ -30,6 +31,36 @@ class StatisticsTests(unittest.TestCase):
         self.assertAlmostEqual(statistics.loc["A", "Retorno total"], 0.10)
         self.assertAlmostEqual(statistics.loc["A", "Máxima caída"], -0.25)
         self.assertAlmostEqual(statistics.loc["A", "Último precio"], 110.0)
+
+    def test_expected_returns_compound_historical_and_ema_means(self) -> None:
+        prices = make_prices(("A", "B"), rows=120)
+        prices["EMPTY"] = np.nan
+        prices.iloc[:5, 1] = np.nan  # later listing: shorter history for B
+        expected = calculate_expected_returns(prices)
+        self.assertEqual(list(expected.index), ["A", "B"])
+        for ticker in ("A", "B"):
+            series = prices[ticker].dropna()
+            returns = series.pct_change().dropna()
+            cagr = (series.iloc[-1] / series.iloc[0]) ** (252 / len(returns)) - 1
+            self.assertAlmostEqual(
+                expected.loc[ticker, "Retorno histórico esperado"], cagr
+            )
+        returns = prices["A"].pct_change().dropna()
+        weights = (1 - 2 / 501) ** np.arange(len(returns))[::-1]
+        ema = (returns * weights).sum() / weights.sum()
+        self.assertAlmostEqual(
+            expected.loc["A", "Retorno esperado EMA"], (1 + ema) ** 252 - 1
+        )
+
+    def test_expected_returns_of_constant_growth(self) -> None:
+        daily = 0.001
+        prices = pd.DataFrame(
+            {"A": 100 * (1 + daily) ** np.arange(50)},
+            index=pd.bdate_range("2025-01-01", periods=50),
+        )
+        expected = calculate_expected_returns(prices).loc["A"]
+        self.assertAlmostEqual(expected["Retorno histórico esperado"], 1.001**252 - 1)
+        self.assertAlmostEqual(expected["Retorno esperado EMA"], 1.001**252 - 1)
 
 
 class VolatilityTests(unittest.TestCase):

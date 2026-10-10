@@ -18,6 +18,8 @@ from optimizacion_portafolios.data.catalogs import (
 from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
     normalize_ticker,
+    parse_bounded_float,
+    parse_optional_bounded_float,
     parse_start_date,
     selected_option,
     selected_tickers,
@@ -26,12 +28,51 @@ from optimizacion_portafolios.web.hrp import bp
 from optimizacion_portafolios.web.hrp.services import (
     REPORT_FILENAME,
     ROLLING_SHARPE_PERIOD,
+    WeightBounds,
     build_hrp_report,
     run_hrp,
 )
 
 logger = logging.getLogger(__name__)
 _DEFAULT_UNIVERSE = "Portafolio actual"
+_DEFAULT_MIN_WEIGHT = "0"
+_DEFAULT_MAX_WEIGHT = "100"
+
+
+def _percent_field(field: str, label: str, default: str) -> float:
+    return parse_bounded_float(
+        field,
+        default,
+        0.0,
+        100.0,
+        f"El {label} debe ser numérico.",
+        f"El {label} debe estar entre 0 % y 100 %.",
+    ) / 100
+
+
+def _asset_limits(prefix: str, label: str, tickers: list[str]) -> dict[str, float]:
+    limits = {}
+    for ticker in tickers:
+        value = parse_optional_bounded_float(
+            f"{prefix}_{ticker}",
+            0.0,
+            100.0,
+            f"El {label} de {ticker} debe ser numérico.",
+            f"El {label} de {ticker} debe estar entre 0 % y 100 %.",
+        )
+        if value is not None:
+            limits[ticker] = value / 100
+    return limits
+
+
+def _weight_bounds(tickers: list[str]) -> WeightBounds:
+    """Global and per-asset weight limits typed in percent (empty = global)."""
+    return WeightBounds(
+        min_weight=_percent_field("min_weight", "peso mínimo", _DEFAULT_MIN_WEIGHT),
+        max_weight=_percent_field("max_weight", "peso máximo", _DEFAULT_MAX_WEIGHT),
+        asset_min_weights=_asset_limits("min", "peso mínimo", tickers),
+        asset_max_weights=_asset_limits("max", "peso máximo", tickers),
+    )
 
 
 @bp.route("/hrp", methods=["GET", "POST"])
@@ -76,14 +117,15 @@ def hrp():
                 else BENCHMARKS[benchmark_name]
             )
             start_date = parse_start_date("start_date", default_start)
+            bounds = _weight_bounds(selected)
             download_requested = request.form.get("action") == "download_report"
             try:
                 if download_requested:
                     report, missing = build_hrp_report(
-                        selected, benchmark_ticker, start_date
+                        selected, benchmark_ticker, start_date, bounds
                     )
                 else:
-                    result = run_hrp(selected, benchmark_ticker, start_date)
+                    result = run_hrp(selected, benchmark_ticker, start_date, bounds)
                     missing = result["missing"]
             except (requests.RequestException, TimeoutError, YFException) as error:
                 logger.exception("Yahoo Finance request failed during HRP optimization")
@@ -109,6 +151,13 @@ def hrp():
         except (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError) as error:
             flash(str(error), "error")
 
+    asset_limits = {
+        ticker: {
+            "min": request.form.get(f"min_{ticker}", "").strip(),
+            "max": request.form.get(f"max_{ticker}", "").strip(),
+        }
+        for ticker in selected
+    }
     return render_template(
         "hrp/hrp.html",
         today=today.isoformat(),
@@ -120,5 +169,11 @@ def hrp():
         benchmark_names=benchmark_names,
         benchmark_name=benchmark_name,
         custom_benchmark=custom_benchmark,
+        min_weight=request.values.get("min_weight", _DEFAULT_MIN_WEIGHT),
+        max_weight=request.values.get("max_weight", _DEFAULT_MAX_WEIGHT),
+        asset_limits=asset_limits,
+        has_asset_limits=any(
+            limits["min"] or limits["max"] for limits in asset_limits.values()
+        ),
         result=result,
     )

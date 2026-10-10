@@ -69,3 +69,18 @@ def selected_option(field: str, choices: dict, default: str) -> str:
     if value not in choices:
         raise ValueError("La opción seleccionada no es válida.")
     return value
+
+
+def parse_optional_bounded_float(
+    field: str,
+    minimum: float,
+    maximum: float,
+    numeric_error: str,
+    range_error: str,
+) -> float | None:
+    """Like ``parse_bounded_float`` but an empty or missing field returns ``None``."""
+    if not request.form.get(field, "").strip():
+        return None
+    return parse_bounded_float(
+        field, "", minimum, maximum, numeric_error, range_error
+    )
