@@ -188,11 +188,13 @@ PERIODOS_VOLATILIDAD = {
     "45 días": "45D",
     "Dos meses": "2ME",
 }
-# Display groups for the asset selector (first matching group wins).
+# Display groups for the asset selector. A universe whose tickers all belong
+# to one group is shown ungrouped; otherwise each ticker takes the first
+# matching group (crypto goes before "Acciones" so BTC-USD is not a stock).
 GRUPOS_ACTIVOS = {
+    "Criptomonedas": CRIPTOMONEDAS,
     "Acciones": ACTIVOS,
     "Índices sectoriales": INDICES,
-    "Criptomonedas": CRIPTOMONEDAS,
     "Commodities": COMMODITIES,
     "Portafolio actual": PORTAFOLIO_IMAGEN,
     "Portafolio imagen": PORTAFOLIO_ACCIONES_IMAGEN,
