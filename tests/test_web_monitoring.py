@@ -9,6 +9,8 @@ from yfinance.exceptions import YFRateLimitError
 
 from support import WebTestCase, make_prices
 
+_TICKER_CHECKBOX = re.compile(r'<input type="checkbox"[^>]*name="tickers"')
+
 _SERVICES = "optimizacion_portafolios.web.monitoring.services"
 
 
@@ -126,8 +128,9 @@ class MonitoringPageTests(WebTestCase):
             with self.subTest(view=view):
                 html = self.client.get(f"/monitoring?view={view}").data.decode()
                 self.assertIn('class="segmented"', html)
+                tabs = html.split('class="segmented"', 1)[1].split("</nav>", 1)[0]
                 current = re.findall(
-                    r'<a href="[^"]*" aria-current="page">([^<]+)</a>', html
+                    r'<a href="[^"]*" aria-current="page">([^<]+)</a>', tabs
                 )
                 self.assertEqual(current, [label])
                 self.assertIn('class="analysis-layout"', html)
@@ -141,7 +144,7 @@ class MonitoringPageTests(WebTestCase):
         self.assertIn("data-universe-select", portfolio)
         self.assertIn('data-min-selected="1"', portfolio)
         options = self.client.get("/monitoring?view=options").data.decode()
-        self.assertEqual(options.count('<input type="checkbox" name="tickers"'), 38)
+        self.assertEqual(len(_TICKER_CHECKBOX.findall(options)), 38)
         self.assertIn('data-date-presets="start_date"', options)
 
     def test_refresh_switches_portfolio_assets(self) -> None:
@@ -154,7 +157,7 @@ class MonitoringPageTests(WebTestCase):
         )
         html = response.data.decode()
         selector = html.split("data-asset-selector", 1)[1]
-        self.assertEqual(selector.count('<input type="checkbox" name="tickers"'), 23)
+        self.assertEqual(len(_TICKER_CHECKBOX.findall(selector)), 23)
         self.assertNotIn('name="tickers" value="AAPL"', selector)
         self.assertEqual(
             len(re.findall(r'name="tickers" value="[^"]+" checked', selector)), 23

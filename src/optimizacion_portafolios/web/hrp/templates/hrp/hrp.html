@@ -279,54 +279,21 @@
 {% block page_scripts %}
   {% include "macros/chart_scripts.html" %}
   <script>
-    // HRP page helpers not covered by forms.js/charts.js: live feasibility of
-    // the weight limits (mirrors WeightBounds.resolve), selection count in the
-    // panel footer and CSV export of the allocation table.
+    // HRP page helpers not covered by forms.js/charts.js: selection count in the
+    // panel footer and CSV export of the allocation table. (Weight-limit
+    // feasibility is handled by forms.js through [data-weight-limits].)
     (() => {
       const form = document.getElementById("hrp-form");
       if (!form) return;
-      const indicator = form.querySelector("[data-feasibility]");
       const counter = form.querySelector("[data-summary-count]");
-      const number = (input) => {
-        if (!input || input.value.trim() === "") return null;
-        const value = Number(input.value);
-        return Number.isFinite(value) ? value : NaN;
+      const update = (event) => {
+        if (!counter) return;
+        const tickers = event && event.detail && event.detail.tickers;
+        counter.textContent = tickers
+          ? tickers.length
+          : form.querySelectorAll('input[name="tickers"]:checked').length;
       };
-      const fmt = (value) => value.toFixed(2) + " %";
-      const selectedTickers = () => {
-        const rows = form.querySelectorAll("[data-ticker-rows] [data-ticker]");
-        if (rows.length) return Array.from(rows, (row) => row.dataset.ticker);
-        return Array.from(form.querySelectorAll('input[name="tickers"]:checked'), (box) => box.value);
-      };
-      const update = () => {
-        const tickers = selectedTickers();
-        if (counter) counter.textContent = tickers.length;
-        if (!indicator) return;
-        const low = number(form.elements.min_weight) ?? 0;
-        const high = number(form.elements.max_weight) ?? 100;
-        const n = tickers.length;
-        if (!n) {
-          indicator.textContent = "Selecciona al menos dos activos.";
-          indicator.className = "notice notice--warning";
-          return;
-        }
-        let sumMin = 0, sumMax = 0, problem = "";
-        tickers.forEach((ticker) => {
-          const min = number(form.elements["min_" + ticker]) ?? low;
-          const max = number(form.elements["max_" + ticker]) ?? high;
-          if (Number.isNaN(min) || Number.isNaN(max)) problem = "Los límites de " + ticker + " deben ser numéricos.";
-          else if (min > max + 1e-9) problem = "El mínimo supera al máximo en " + ticker + ".";
-          sumMin += min; sumMax += max;
-        });
-        const equal = 100 / n;
-        if (!problem && sumMin > 100 + 1e-7) problem = "La suma de los mínimos (" + fmt(sumMin) + ") supera el 100 %.";
-        if (!problem && sumMax < 100 - 1e-7) problem = "La suma de los máximos (" + fmt(sumMax) + ") es menor que el 100 %.";
-        indicator.textContent = problem || ("Con " + n + " activos: mínimo global ≤ " + fmt(equal) + ", máximo global ≥ " + fmt(equal) + ". Límites factibles.");
-        indicator.className = "notice " + (problem ? "notice--danger" : "notice--success");
-      };
-      form.addEventListener("input", update);
-      form.addEventListener("change", () => window.setTimeout(update));
-      document.addEventListener("atlas:selectionchange", () => window.setTimeout(update));
+      document.addEventListener("atlas:selectionchange", update);
       update();
 
       document.querySelectorAll("[data-csv-download]").forEach((button) => {
