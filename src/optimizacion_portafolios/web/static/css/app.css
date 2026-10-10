@@ -854,7 +854,8 @@ details.analysis-section[open] > summary::after { transform: translateY(3px) rot
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-xs);
 }
-.param-panel > form {
+.param-panel > form,
+.param-panel__form {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -1059,7 +1060,8 @@ details.analysis-section[open] > summary::after { transform: translateY(3px) rot
   justify-content: space-between;
   gap: var(--sp-2) var(--sp-4);
 }
-.analysis-toolbar h2 { font-family: var(--font-ui); font-size: var(--fs-md); font-weight: 600; letter-spacing: 0; }
+.analysis-toolbar h2,
+.analysis-toolbar__title { margin: 0; color: var(--text-1); font-family: var(--font-ui); font-size: var(--fs-md); font-weight: 600; letter-spacing: 0; }
 .analysis-toolbar > :last-child:not(:first-child) { display: flex; gap: var(--sp-1); margin-left: auto; }
 
 details.analysis-section {
@@ -1136,6 +1138,41 @@ details.analysis-section[open] > summary {
 :where(.card__body, .analysis-section__body, .allocation-card) details[open]:not([class]) > summary::before { transform: rotate(90deg); }
 :where(.card__body, .analysis-section__body, .allocation-card) details:not([class]) > summary:hover { background: var(--accent-subtle); }
 :where(.card__body, .analysis-section__body, .allocation-card) details[open]:not([class]) > summary { margin-bottom: var(--sp-3); }
+
+/* Assumptions / data facts: term–value pairs */
+.assumptions {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  font-size: var(--fs-sm);
+}
+.assumptions > dt,
+.assumptions > dd {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.assumptions > dt { background: var(--surface-2); color: var(--text-2); font-weight: 500; }
+.assumptions > dd {
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums lining-nums;
+  overflow-wrap: anywhere;
+}
+.assumptions > dt:last-of-type,
+.assumptions > dd:last-of-type { border-bottom: 0; }
+.assumptions > div { display: contents; }
+.assumptions > div > dt,
+.assumptions > div > dd { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.assumptions > div > dt { background: var(--surface-2); color: var(--text-2); font-weight: 500; }
+.assumptions > div > dd { color: var(--text-1); font-variant-numeric: tabular-nums lining-nums; overflow-wrap: anywhere; }
+.assumptions > div:last-child > * { border-bottom: 0; }
+@media (max-width: 479.98px) {
+  .assumptions { grid-template-columns: minmax(0, 1fr); }
+  .assumptions dt { border-bottom: 0 !important; padding-bottom: 2px; }
+}
 
 /* Chart grid (cards themselves are styled in charts.css) */
 .chart-grid {
@@ -1325,7 +1362,7 @@ details.analysis-section[open] > summary {
   border-radius: var(--r-lg);
 }
 .empty-state__icon,
-.empty-state .empty-icon {
+.empty-icon {
   display: grid;
   place-items: center;
   width: 48px;
@@ -1336,7 +1373,7 @@ details.analysis-section[open] > summary {
   color: var(--accent);
 }
 .empty-state__icon svg,
-.empty-state .empty-icon svg { width: 22px; height: 22px; }
+.empty-icon svg { width: 22px; height: 22px; }
 .empty-state__title,
 .empty-state > strong,
 .empty-state h2 {
@@ -1394,6 +1431,86 @@ details.analysis-section[open] > summary {
 .badge--warning { background: var(--warning-bg); color: var(--warning); }
 .badge--danger { background: var(--danger-bg); color: var(--danger); }
 .badge--mono { font-family: var(--font-mono); font-weight: 500; }
+/* Read-only inputs shown as a badge, e.g. <input class="badge" value="95%" disabled> */
+input.badge,
+.form-field input.badge:not([type="checkbox"]):not([type="radio"]) {
+  width: auto;
+  max-width: 7ch;
+  min-height: 20px;
+  height: 20px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font: 600 var(--fs-xs) / 1 var(--font-ui);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: none;
+  opacity: 1;
+  -webkit-text-fill-color: currentColor;
+  cursor: default;
+}
+input.badge:disabled { background: var(--accent-subtle); color: var(--accent); }
+/* Direction badges: the arrow is added by CSS (markup holds only the value). */
+.badge.is-positive { background: var(--success-bg); color: var(--positive); }
+.badge.is-negative { background: var(--danger-bg); color: var(--negative); }
+.badge.is-positive::before { content: "▲"; font-size: .75em; }
+.badge.is-negative::before { content: "▼"; font-size: .75em; }
+
+/* Company header (Monitoreo · Fundamental) */
+.company-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-6);
+  padding: var(--card-pad);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-xs);
+}
+.company-header > :first-child { min-width: 0; flex: 1 1 280px; }
+.company-header__name {
+  margin: 0;
+  color: var(--text-1);
+  font: 700 var(--fs-xl) / var(--lh-tight) var(--font-display);
+  letter-spacing: var(--tracking-display);
+}
+.company-header__ticker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font: 500 var(--fs-sm) / 1 var(--font-mono);
+}
+.company-header__meta {
+  margin-top: var(--sp-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.company-header__price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  color: var(--text-1);
+  font: 600 var(--fs-3xl) / 1 var(--font-display);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.company-header__price .badge { font-family: var(--font-ui); letter-spacing: 0; }
+@media (max-width: 767.98px) {
+  .company-header__price { font-size: var(--fs-2xl); }
+}
 
 .segmented {
   display: inline-flex;
