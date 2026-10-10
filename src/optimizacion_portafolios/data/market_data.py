@@ -1,4 +1,4 @@
-"""Yahoo Finance data access for portfolio analysis."""
+"""Market data access: Tiingo prices with Yahoo Finance fallback and profiles."""
 
 from datetime import date, timedelta
 from functools import lru_cache
@@ -11,6 +11,15 @@ import pandas as pd
 import requests
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
+
+from optimizacion_portafolios.data.tiingo_prices import (
+    PriceSource,
+    download_tiingo_crypto_prices,
+    download_tiingo_prices,
+    normalize_dates,
+    price_source,
+    tiingo_api_key,
+)
 
 logger = logging.getLogger(__name__)
 _INFO_CACHE_TTL_SECONDS = 15 * 60
@@ -52,10 +61,10 @@ def _ticker_info(ticker: str) -> dict:
         return dict(_cached_ticker_info(ticker, cache_window))
 
 
-def download_prices(
+def _download_yfinance_prices(
     tickers: tuple[str, ...], start: date, end: date
 ) -> pd.DataFrame:
-    """Download adjusted closing prices with a consistent ticker-column shape."""
+    """Download adjusted closing prices from Yahoo Finance."""
     if not tickers:
         return pd.DataFrame()
     downloaded = yf.download(
@@ -92,9 +101,58 @@ def download_prices(
         prices = prices.to_frame(name=tickers[0])
     if not isinstance(prices, pd.DataFrame):
         return pd.DataFrame()
-    prices = prices.rename_axis(index="Fecha")
     available = [ticker for ticker in tickers if ticker in prices.columns]
-    return prices.loc[:, available].sort_index()
+    return prices.loc[:, available]
+
+
+def _download_from_tiingo(
+    tickers: tuple[str, ...], start: date, end: date, api_key: str
+) -> dict[str, pd.Series]:
+    """Download the tickers Tiingo covers; the rest are left out of the result."""
+    stocks = tuple(t for t in tickers if price_source(t) is PriceSource.TIINGO)
+    cryptos = tuple(
+        t for t in tickers if price_source(t) is PriceSource.TIINGO_CRYPTO
+    )
+    prices = download_tiingo_prices(stocks, start, end, api_key)
+    prices.update(download_tiingo_crypto_prices(cryptos, start, end, api_key))
+    return prices
+
+
+def download_prices(
+    tickers: tuple[str, ...], start: date, end: date
+) -> pd.DataFrame:
+    """Download adjusted closing prices with a consistent ticker-column shape.
+
+    Tiingo is used when ``TIINGO_API_KEY`` is set; tickers it does not cover
+    (or for which it returns no data) are downloaded from Yahoo Finance.
+    """
+    if not tickers:
+        return pd.DataFrame()
+    api_key = tiingo_api_key()
+    series = {}
+    if api_key:
+        series = _download_from_tiingo(tickers, start, end, api_key)
+
+    pending = tuple(ticker for ticker in tickers if ticker not in series)
+    yahoo_prices = _download_yfinance_prices(pending, start, end)
+    for ticker in yahoo_prices.columns:
+        series.setdefault(ticker, yahoo_prices[ticker])
+
+    frames = []
+    for ticker in tickers:
+        if ticker not in series:
+            continue
+        values = series[ticker].copy()
+        values.index = normalize_dates(values.index)
+        values = values[~values.index.duplicated(keep="last")]
+        frames.append(values.rename(ticker))
+    if not frames:
+        return pd.DataFrame()
+    prices = pd.concat(frames, axis=1, sort=True)
+    window = (prices.index >= pd.Timestamp(start)) & (
+        prices.index <= pd.Timestamp(end)
+    )
+    return prices.loc[window].sort_index().rename_axis(index="Fecha")
 
 
 def fetch_fundamental_information(ticker: str) -> dict:

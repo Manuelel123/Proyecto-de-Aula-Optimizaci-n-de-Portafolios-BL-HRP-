@@ -1,6 +1,6 @@
 # Atlas · Analítica de portafolios
 
-Aplicación web Flask para monitorear activos y analizar portafolios con Hierarchical Risk Parity (HRP) y Black-Litterman. Los precios y datos fundamentales se consultan en Yahoo Finance.
+Aplicación web Flask para monitorear activos y analizar portafolios con Hierarchical Risk Parity (HRP) y Black-Litterman. Los precios históricos se descargan de Tiingo (con Yahoo Finance como respaldo) y los datos fundamentales, capitalizaciones y tipos de cambio se consultan en Yahoo Finance.
 
 ## Requisitos
 
@@ -20,13 +20,31 @@ Abre `http://127.0.0.1:5000`. Para iniciar el servidor local sin el CLI de Flask
 uv run optimizacion-portafolios
 ```
 
+## Configuración de la fuente de precios
+
+Los precios de cierre ajustados se descargan de [Tiingo](https://www.tiingo.com/) cuando la variable de entorno `TIINGO_API_KEY` está definida. Crea una cuenta gratuita, copia tu API key y guárdala en Windows con:
+
+```powershell
+setx TIINGO_API_KEY "tu-api-key"
+```
+
+`setx` solo afecta a las terminales nuevas: abre otra terminal antes de ejecutar la aplicación.
+
+Yahoo Finance se usa como respaldo:
+
+- Sin `TIINGO_API_KEY`, todos los precios se descargan de Yahoo Finance y se registra una advertencia una sola vez.
+- Con la key, se envían a Yahoo Finance los tickers que Tiingo no cubre: acciones colombianas y otros listados fuera de EE. UU. (`.CL` o cualquier sufijo con punto), futuros y divisas (`GC=F`, `EURUSD=X`), índices (`^GSPC`, `^COLCAP`) y cualquier ticker para el que Tiingo responda 404 o no devuelva datos.
+- Las criptomonedas `XXX-USD` (`BTC-USD`, `ETH-USD`, `BNB-USD`, `XRP-USD`) se piden al endpoint de cripto de Tiingo (`btcusd`, ...) y, si no hay datos, a Yahoo Finance.
+
+Las series de ambas fuentes se alinean por fecha (sin hora ni zona horaria). Los errores HTTP de Tiingo distintos de 404 (key inválida, límite de solicitudes, fallas del servidor) se informan como error de descarga y no activan el respaldo.
+
 ## Pruebas
 
 ```powershell
 uv run python -m unittest discover -s tests
 ```
 
-Las pruebas no acceden a la red: las descargas de Yahoo Finance se simulan con `unittest.mock`.
+Las pruebas no acceden a la red: las descargas de Tiingo y Yahoo Finance se simulan con `unittest.mock`.
 
 ## Despliegue WSGI
 
@@ -52,7 +70,7 @@ El código está organizado en capas. Cada capa solo depende de las que están p
 web        →  interfaz Flask: rutas HTTP, servicios de página, plantillas
 models     →  modelos de optimización y pronóstico (HRP, Black-Litterman, ARIMA)
 analytics  →  estadísticas, volatilidad y métricas de desempeño
-data       →  catálogos de activos y acceso a Yahoo Finance
+data       →  catálogos de activos y acceso a Tiingo/Yahoo Finance
 ```
 
 `data`, `analytics` y `models` no importan Flask: se pueden usar desde un notebook, un script o las pruebas sin levantar la aplicación.
@@ -69,7 +87,8 @@ tests/
 src/optimizacion_portafolios/
   data/
     catalogs.py                 universos, benchmarks y periodos de volatilidad
-    market_data.py              descargas de Yahoo Finance con caché y reintentos
+    market_data.py              precios (Tiingo + respaldo Yahoo) y perfiles con caché
+    tiingo_prices.py            cliente Tiingo y enrutamiento de tickers por fuente
   analytics/
     statistics.py               retornos, riesgo y retornos esperados
     volatility.py               volatilidad mensual e histórica por periodo
