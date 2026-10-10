@@ -53,15 +53,15 @@
             <div class="data-table-wrap">{{ result.history.metrics|safe }}</div>
             {% if not result.history.has_rolling_sharpe %}<div class="notice">El Sharpe móvil requiere al menos 126 retornos comunes; los demás gráficos están disponibles.</div>{% endif %}
             <div class="chart-grid">{% for name, image in result.history.charts.items() %}<div class="chart-card"><h3>{{ name }}</h3><img class="chart-image" src="{{ image }}" alt="{{ name }}"></div>{% endfor %}</div>
-            <form method="post" class="form-stack" style="margin-top:16px">
+            <form method="post" class="form-stack report-form">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="objective" value="{{ objective_name }}"><input type="hidden" name="risk_free_rate" value="{{ risk_free_value }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="start_date" value="{{ default_start }}"><input type="hidden" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}">
               {% for ticker in view_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="view_{{ ticker }}" value="{{ views_values.get(ticker, '8.0') }}">{% endfor %}
-              <button class="button button-secondary" type="submit" name="action" value="download_report">Descargar informe QuantStats</button>
+              <button class="button button-secondary" type="submit" name="action" value="download_report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Descargar informe QuantStats</button>
             </form>
           </div>
         {% endif %}
       {% else %}
-        <div class="empty-state"><strong>Define tus expectativas</strong><p>Selecciona dos o más activos, ajusta sus views y configura la tasa libre de riesgo para calcular los pesos del modelo.</p></div>
+        <div class="empty-state"><span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg></span><strong>Define tus expectativas</strong><p>Selecciona dos o más activos, ajusta sus views y configura la tasa libre de riesgo para calcular los pesos del modelo.</p></div>
       {% endif %}
     </section>
   </div>

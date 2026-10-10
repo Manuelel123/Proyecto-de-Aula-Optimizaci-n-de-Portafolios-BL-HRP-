@@ -3,15 +3,23 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#102b28">
+    <meta name="theme-color" content="#0b1f3a">
     <title>{% block title %}Portafolios{% endblock %} · Atlas</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%230b1f3a'/%3E%3Cpath d='M11 29 20 10l9 19M14.5 22h11' fill='none' stroke='%23c19a5b' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   </head>
   <body>
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
     <header class="site-header">
       <div class="header-inner">
         <a class="brand" href="{{ url_for('main.index') }}" aria-label="Atlas, inicio">
-          <span class="brand-mark">A</span>
+          <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+            <rect x=".75" y=".75" width="38.5" height="38.5" rx="10" fill="#13294b" stroke="#c19a5b" stroke-opacity=".55" stroke-width="1.5"/>
+            <path d="M11 29 20 10l9 19M14.5 22h11" fill="none" stroke="#c19a5b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
           <span><strong>ATLAS</strong><small>PORTFOLIO LAB</small></span>
         </a>
         <nav class="primary-nav" aria-label="Navegación principal">
@@ -20,10 +28,10 @@
           <a class="{{ 'active' if request.blueprint == 'hrp' else '' }}" href="{{ url_for('hrp.hrp') }}">HRP</a>
           <a class="{{ 'active' if request.blueprint == 'black_litterman' else '' }}" href="{{ url_for('black_litterman.black_litterman') }}">Black-Litterman</a>
         </nav>
-        <div class="market-status"><span></span> Datos de mercado · Yahoo Finance</div>
+        <div class="market-status"><span></span> Tiingo · Yahoo Finance</div>
       </div>
     </header>
-    <main class="page-shell">
+    <main id="contenido" class="page-shell">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <div class="flash-stack" role="status">
@@ -36,8 +44,26 @@
       {% block content %}{% endblock %}
     </main>
     <footer class="site-footer">
-      <span>ATLAS · Analítica de portafolios</span>
-      <span>Los datos de mercado se consultan desde Yahoo Finance.</span>
+      <div class="footer-inner">
+        <span class="footer-brand">ATLAS <span>·</span> Analítica de portafolios</span>
+        <div class="footer-meta">
+          <span>Precios: Tiingo con respaldo de Yahoo Finance</span>
+          <span>Modelos: skfolio · QuantStats</span>
+        </div>
+      </div>
+      <p class="footer-disclaimer">Herramienta académica de análisis cuantitativo. Los resultados se basan en datos históricos y supuestos del modelo; no constituyen una recomendación de inversión.</p>
     </footer>
+    <script>
+      // Muestra un indicador de carga en los botones que lanzan cálculos largos.
+      document.addEventListener("submit", (event) => {
+        const button = event.submitter;
+        if (button && ["analyze", "optimize", "refresh"].includes(button.value)) {
+          button.classList.add("is-loading");
+        }
+      });
+      window.addEventListener("pageshow", () => {
+        document.querySelectorAll(".is-loading").forEach((button) => button.classList.remove("is-loading"));
+      });
+    </script>
   </body>
 </html>

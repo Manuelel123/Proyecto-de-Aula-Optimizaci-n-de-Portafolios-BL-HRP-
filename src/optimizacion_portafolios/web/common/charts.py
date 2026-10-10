@@ -6,14 +6,59 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 import pandas as pd
 import quantstats as qs
+from cycler import cycler
+from matplotlib.colors import LinearSegmentedColormap
 
-PRIMARY_COLOR = "#287d6b"
-ACCENT_COLOR = "#d26045"
+# Brand palette shared with static/css/app.css: navy for data, gold for highlights.
+PRIMARY_COLOR = "#1d3a63"
+ACCENT_COLOR = "#c19a5b"
+INK_COLOR = "#0f1b2d"
+MUTED_COLOR = "#6b778a"
+GRID_COLOR = "#e3e7ee"
+SERIES_COLORS = (
+    "#1d3a63",
+    "#c19a5b",
+    "#2f7d6d",
+    "#8c3b4a",
+    "#5b7fb5",
+    "#7a6a55",
+    "#4c5b70",
+    "#d4a373",
+    "#3e8e9e",
+    "#9a7fb8",
+)
+CORRELATION_CMAP = LinearSegmentedColormap.from_list(
+    "atlas_diverging", ["#8c3b4a", "#f7f6f2", "#1d3a63"]
+)
+
+plt.rcParams.update(
+    {
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+        "axes.edgecolor": GRID_COLOR,
+        "axes.labelcolor": MUTED_COLOR,
+        "axes.titlecolor": INK_COLOR,
+        "axes.titlesize": 12,
+        "axes.titleweight": "bold",
+        "axes.titlepad": 12,
+        "axes.labelsize": 10,
+        "axes.prop_cycle": cycler(color=SERIES_COLORS),
+        "axes.grid": False,
+        "grid.color": GRID_COLOR,
+        "grid.linewidth": 0.8,
+        "xtick.color": MUTED_COLOR,
+        "ytick.color": MUTED_COLOR,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "legend.labelcolor": INK_COLOR,
+    }
+)
 
 
 def figure_to_data_uri(figure) -> str:
     buffer = BytesIO()
-    figure.savefig(buffer, format="png", dpi=120, bbox_inches="tight")
+    figure.savefig(buffer, format="png", dpi=144, bbox_inches="tight")
     plt.close(figure)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
@@ -21,7 +66,7 @@ def figure_to_data_uri(figure) -> str:
 
 def line_chart(data: pd.Series | pd.DataFrame, title: str, ylabel: str) -> str:
     figure, axis = plt.subplots(figsize=(10, 3.8))
-    data.plot(ax=axis, linewidth=1.25)
+    data.plot(ax=axis, linewidth=1.4)
     axis.set_title(title, loc="left", fontweight="bold")
     axis.set_ylabel(ylabel)
     axis.set_xlabel("")
@@ -35,7 +80,10 @@ def line_chart(data: pd.Series | pd.DataFrame, title: str, ylabel: str) -> str:
 
 def bar_chart(data: pd.Series, title: str, ylabel: str) -> str:
     figure, axis = plt.subplots(figsize=(9, max(3.5, len(data) * 0.32)))
-    data.sort_values().plot.barh(ax=axis, color=PRIMARY_COLOR)
+    ordered = data.sort_values()
+    ordered.plot.barh(ax=axis, color=PRIMARY_COLOR, width=0.68)
+    if len(ordered):
+        axis.patches[-1].set_color(ACCENT_COLOR)
     axis.set_title(title, loc="left", fontweight="bold")
     axis.set_xlabel(ylabel)
     axis.set_ylabel("")
@@ -47,7 +95,7 @@ def bar_chart(data: pd.Series, title: str, ylabel: str) -> str:
 
 def correlation_chart(correlation: pd.DataFrame) -> str:
     figure, axis = plt.subplots(figsize=(max(6, len(correlation) * 0.55), 5.5))
-    image = axis.imshow(correlation, cmap="RdYlGn", vmin=-1, vmax=1)
+    image = axis.imshow(correlation, cmap=CORRELATION_CMAP, vmin=-1, vmax=1)
     labels = list(correlation.columns)
     axis.set_xticks(range(len(labels)), labels=labels, rotation=45, ha="right")
     axis.set_yticks(range(len(labels)), labels=labels)
@@ -60,10 +108,11 @@ def correlation_chart(correlation: pd.DataFrame) -> str:
                     f"{correlation.iloc[row, column]:.2f}",
                     ha="center",
                     va="center",
-                    color="#172c29",
+                    color="white" if abs(correlation.iloc[row, column]) > 0.6 else INK_COLOR,
                     fontsize=8,
                 )
-    figure.colorbar(image, ax=axis, shrink=0.82, label="Correlación")
+    colorbar = figure.colorbar(image, ax=axis, shrink=0.82, label="Correlación")
+    colorbar.outline.set_visible(False)
     axis.set_title("Correlación cuasi-diagonal", loc="left", fontweight="bold")
     figure.tight_layout()
     return figure_to_data_uri(figure)
@@ -78,6 +127,7 @@ def volatility_histogram(volatility: pd.Series, ticker: str, current: float) -> 
             current * 100,
             color=ACCENT_COLOR,
             linestyle="--",
+            linewidth=1.8,
             label=f"Actual: {current:.2%}",
         )
         axis.legend(frameon=False)
@@ -98,7 +148,7 @@ def monthly_volatility_histograms(monthly_volatility: pd.DataFrame) -> str:
     for axis, ticker in zip(axes.flat, monthly_volatility.columns):
         values = monthly_volatility[ticker].dropna() * 100
         axis.hist(values, bins="auto", color=PRIMARY_COLOR, edgecolor="white")
-        axis.axvline(values.iloc[-1], color=ACCENT_COLOR, linestyle="--")
+        axis.axvline(values.iloc[-1], color=ACCENT_COLOR, linestyle="--", linewidth=1.8)
         axis.set_title(f"{ticker} · actual {values.iloc[-1]:.2f}%", loc="left")
         axis.set_xlabel("Volatilidad mensual (%)")
         axis.set_ylabel("Meses")
@@ -128,7 +178,7 @@ def period_volatility_histograms(
         values = annualized_volatility[ticker].dropna() * 100
         latest_period = period_volatility.loc[values.index[-1], ticker]
         axis.hist(values, bins="auto", color=PRIMARY_COLOR, edgecolor="white")
-        axis.axvline(values.iloc[-1], color=ACCENT_COLOR, linestyle="--", linewidth=1.5)
+        axis.axvline(values.iloc[-1], color=ACCENT_COLOR, linestyle="--", linewidth=1.8)
         axis.set_title(ticker, loc="left")
         axis.set_xlabel("Volatilidad anualizada (%)")
         axis.set_ylabel("Frecuencia")
@@ -140,13 +190,20 @@ def period_volatility_histograms(
             ha="right",
             va="top",
             fontsize=8,
-            bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.85},
+            color=INK_COLOR,
+            bbox={"boxstyle": "round", "facecolor": "white", "edgecolor": GRID_COLOR, "alpha": 0.9},
         )
         axis.spines[["top", "right"]].set_visible(False)
         axis.grid(axis="y", alpha=0.18)
     for axis in list(axes.flat)[len(available) :]:
         axis.set_visible(False)
-    figure.suptitle(f"Volatilidad histórica · {period_label}", x=0.02, ha="left")
+    figure.suptitle(
+        f"Volatilidad histórica · {period_label}",
+        x=0.02,
+        ha="left",
+        color=INK_COLOR,
+        fontweight="bold",
+    )
     figure.tight_layout()
     return figure_to_data_uri(figure)
 
