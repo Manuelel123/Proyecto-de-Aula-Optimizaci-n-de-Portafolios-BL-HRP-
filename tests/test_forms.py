@@ -194,7 +194,9 @@ class UniversesPayloadTests(unittest.TestCase):
         labels = {asset["ticker"]: asset["label"] for asset in payload["Todo"]["assets"]}
         self.assertEqual(labels["AAPL"], "Apple (AAPL)")
         self.assertEqual(labels["BTC-USD"], "Bitcoin (BTC-USD)")
-        self.assertEqual(labels["JNJ"], "JNJ")
+        self.assertEqual(labels["JNJ"], "Johnson & Johnson (JNJ)")
+        self.assertEqual(labels["XLV"], "Sector salud (XLV)")
+        self.assertEqual(labels["ECOPETROL.CL"], "ECOPETROL")
         self.assertEqual(asset_labels({"X": "X", "Nombre (X)": "X"}), {"X": "Nombre (X)"})
 
     def test_groups(self) -> None:

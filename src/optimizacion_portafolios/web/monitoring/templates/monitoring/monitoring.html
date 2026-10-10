@@ -18,7 +18,6 @@
   <div class="form-field">
     <label for="custom_tickers">Tickers fuera del catálogo</label>
     {{ custom_tickers_input(custom_tickers) }}
-    <span class="help-text">Usa símbolos de Yahoo Finance: AMZN, BTC-USD, GC=F, ^GSPC, ECOPETROL.CL.</span>
   </div>
 {% endmacro %}
 
@@ -34,9 +33,11 @@
 
 {% block content %}
   <header class="page-header">
-    <span class="eyebrow">Mercado · Datos históricos</span>
-    <h1>Monitoreo de activos</h1>
-    <p class="lead">Explora precios, retornos, volatilidad y fundamentos de los activos que sigues.</p>
+    <div>
+      <span class="eyebrow">Mercado · Datos históricos</span>
+      <h1>Monitoreo de activos</h1>
+      <p class="lead">Explora precios, retornos, volatilidad y fundamentos de los activos que sigues.</p>
+    </div>
   </header>
 
   <nav class="segmented" aria-label="Vistas de monitoreo">

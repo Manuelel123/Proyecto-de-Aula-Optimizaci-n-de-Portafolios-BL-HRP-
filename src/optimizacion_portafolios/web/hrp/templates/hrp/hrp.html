@@ -16,9 +16,11 @@
 
 {% block content %}
   <header class="page-header">
-    <span class="eyebrow">Optimización · Riesgo jerárquico</span>
-    <h1>Optimización HRP</h1>
-    <p class="lead">Distribuye el capital a partir de la estructura de correlación y riesgo de los activos.</p>
+    <div>
+      <span class="eyebrow">Optimización · Riesgo jerárquico</span>
+      <h1>Optimización HRP</h1>
+      <p class="lead">Distribuye el capital a partir de la estructura de correlación y riesgo de los activos.</p>
+    </div>
   </header>
 
   <div class="analysis-layout">
@@ -47,7 +49,6 @@
               <div class="form-field">
                 <label for="custom_tickers">Otros tickers</label>
                 {{ custom_tickers_input(custom_tickers_value) }}
-                <span class="help-text">Usa símbolos de Yahoo Finance: AMZN, BTC-USD, GC=F, ^GSPC, ECOPETROL.CL</span>
               </div>
             </details>
           </fieldset>

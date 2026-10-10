@@ -684,8 +684,8 @@ html.js .js-hidden { display: none !important; }
 .form-stack > .form-row + .form-field,
 .form-stack > .form-field + .form-row { margin-top: 0; }
 
-/* Base controls (forms.css may refine) */
-.form-field input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+/* Base controls. Low specificity (:where) so component styles in forms.css win. */
+.form-field :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"])),
 .form-field select,
 .form-field textarea,
 .input {
@@ -717,11 +717,11 @@ html.js .js-hidden { display: none !important; }
   background-repeat: no-repeat;
 }
 .form-field select[multiple] { min-height: 160px; padding: 4px; background-image: none; }
-.form-field input:not([type="checkbox"]):not([type="radio"]):hover,
+.form-field :where(input:not([type="checkbox"]):not([type="radio"])):hover,
 .form-field select:hover,
 .form-field textarea:hover,
 .input:hover { border-color: var(--text-3); }
-.form-field input:not([type="checkbox"]):not([type="radio"]):focus,
+.form-field :where(input:not([type="checkbox"]):not([type="radio"])):focus,
 .form-field select:focus,
 .form-field textarea:focus,
 .input:focus {
@@ -1040,7 +1040,7 @@ details.analysis-section[open] > summary::after { transform: translateY(3px) rot
 .allocation-card__table { min-width: 0; }
 .allocation-card__table + .allocation-card__chart,
 .allocation-card__chart + .allocation-card__table { margin-top: var(--sp-5); }
-@media (min-width: 1280px) {
+@media (min-width: 1680px) {
   .allocation-card :has(> .allocation-card__chart),
   .allocation-card:has(> .allocation-card__chart) {
     display: grid;
@@ -1057,12 +1057,14 @@ details.analysis-section[open] > summary::after { transform: translateY(3px) rot
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--sp-2) var(--sp-4);
 }
 .analysis-toolbar h2,
 .analysis-toolbar__title { margin: 0; color: var(--text-1); font-family: var(--font-ui); font-size: var(--fs-md); font-weight: 600; letter-spacing: 0; }
 .analysis-toolbar > :last-child:not(:first-child) { display: flex; gap: var(--sp-1); margin-left: auto; }
+.analysis-toolbar > [data-expand-all] { margin-left: auto; }
+.analysis-toolbar > [data-expand-all] ~ [data-collapse-all] { margin-left: 0; }
 
 details.analysis-section {
   min-width: 0;
@@ -1974,3 +1976,6 @@ input.badge:disabled { background: var(--accent-subtle); color: var(--accent); }
   .site-header, .site-footer, .param-panel, .analysis-toolbar, .result-context__actions, .skip-link { display: none !important; }
   .analysis-layout { display: block; }
 }
+
+/* HRP allocation table: plain <td> cells (kept attribute-free), weight column is numeric. */
+#allocation-table td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums lining-nums; }

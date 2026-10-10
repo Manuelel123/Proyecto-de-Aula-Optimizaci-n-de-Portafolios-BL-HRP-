@@ -565,7 +565,9 @@
   }
 
   function init() {
-    renderWithin(document);
+    /* Wait for the web fonts: Plotly measures legend/label text when it draws. */
+    var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    fontsReady.then(function () { renderWithin(document); }, function () { renderWithin(document); });
 
     /* "toggle" does not bubble: listen in the capture phase. Opening draws or resizes its charts. */
     document.addEventListener("toggle", function (event) {
