@@ -4,9 +4,9 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-from pypfopt import expected_returns
 
 TRADING_DAYS = 252
+EMA_SPAN = 500
 
 
 def date_years_ago(value: date, years: int = 1) -> date:
@@ -33,17 +33,16 @@ def calculate_statistics(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_expected_returns(prices: pd.DataFrame) -> pd.DataFrame:
+    """Annualized compounded historical and exponentially weighted mean returns.
+
+    Matches PyPortfolioOpt's ``mean_historical_return`` (geometric mean, i.e.
+    CAGR over the observed returns) and ``ema_historical_return`` (EMA of daily
+    returns with ``span=500`` compounded over ``TRADING_DAYS``).
+    """
     prices = prices.dropna(axis="columns", how="all")
-    historical = expected_returns.mean_historical_return(
-        prices, returns_data=False, compounding=True, frequency=TRADING_DAYS
-    )
-    ema = expected_returns.ema_historical_return(
-        prices,
-        returns_data=False,
-        compounding=True,
-        span=500,
-        frequency=TRADING_DAYS,
-    )
+    returns = prices.pct_change(fill_method=None).dropna(how="all")
+    historical = (1 + returns).prod() ** (TRADING_DAYS / returns.count()) - 1
+    ema = (1 + returns.ewm(span=EMA_SPAN).mean().iloc[-1]) ** TRADING_DAYS - 1
     return pd.DataFrame(
         {
             "Retorno histórico esperado": historical,
