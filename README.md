@@ -59,8 +59,8 @@ Configura `FLASK_SECRET_KEY` con un valor aleatorio secreto al desplegar y habil
 ## Módulos
 
 - **Monitoreo de activos:** universos de opciones y portafolios, tickers personalizados, fechas, precios ajustados, retornos, retornos anualizados, riesgo, volatilidad histórica por periodo y análisis fundamental.
-- **Optimización HRP:** selección de activos, benchmark, pesos, correlación, contribuciones, métricas de riesgo, gráficos QuantStats e informe HTML descargable.
-- **Black-Litterman:** views individuales, objetivos de optimización, prior de mercado, capitalizaciones en USD, pesos posteriores, covarianza y análisis/informe QuantStats.
+- **Optimización HRP** ([skfolio](https://skfolio.org/) `HierarchicalRiskParity`, enlace *single*): selección de activos, benchmark, límites de peso mínimo y máximo (globales y por activo), pesos, correlación cuasi-diagonal, contribuciones, ratio de Sortino, métricas de riesgo, gráficos QuantStats e informe HTML descargable.
+- **Black-Litterman** (skfolio `BlackLitterman` + `MeanRisk`): prior de equilibrio por capitalización bursátil en USD, views anuales por activo editables en la interfaz con confianza fija del 95 % (método de Idzorek), objetivos de optimización (máximo Sharpe, máximo Sortino, mínima varianza, mínimo CVaR, máxima rentabilidad, máxima utilidad), retornos prior y posterior, covarianza posterior, ratio de Sortino esperado y análisis/informe QuantStats histórico.
 
 ## Arquitectura
 
