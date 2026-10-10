@@ -75,6 +75,21 @@ class BlackLittermanResult:
     risk_aversion: float
     tau: float
 
+    @property
+    def posterior_correlation(self) -> pd.DataFrame:
+        """Correlation matrix implied by the annualized posterior covariance."""
+        return covariance_to_correlation(self.posterior_covariance)
+
+
+def covariance_to_correlation(covariance: pd.DataFrame) -> pd.DataFrame:
+    """Normalize a covariance matrix to correlations (diagonal exactly 1)."""
+    deviations = np.sqrt(np.diag(covariance.to_numpy(dtype=float)))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        values = covariance.to_numpy(dtype=float) / np.outer(deviations, deviations)
+    values = np.clip(values, -1.0, 1.0)
+    np.fill_diagonal(values, 1.0)
+    return pd.DataFrame(values, index=covariance.index, columns=covariance.columns)
+
 
 class PosteriorScenarioPrior(BasePrior):
     """Black-Litterman prior whose return scenarios carry the posterior mean.
