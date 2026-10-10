@@ -12,19 +12,20 @@
         <div class="form-field"><label for="universe">Universo</label><select id="universe" name="universe">{% for name in universe_names %}<option value="{{ name }}" {{ 'selected' if name == universe_name else '' }}>{{ name }}</option>{% endfor %}</select></div>
         <button class="button button-secondary" type="submit" name="action" value="refresh">Actualizar lista de activos</button>
         <div class="form-field"><span class="field-label">Activos del portafolio</span><div class="check-grid">{% for ticker in available_tickers %}<label><input type="checkbox" name="tickers" value="{{ ticker }}" {{ 'checked' if ticker in selected_tickers else '' }}> {{ ticker }}</label>{% endfor %}</div></div>
-        <div class="form-field"><label for="custom_tickers">Otros tickers</label><input id="custom_tickers" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}" placeholder="AMZN, NVDA"></div>
-        <div class="form-field"><label for="objective">Objetivo</label><select id="objective" name="objective">{% for name in objective_names %}<option value="{{ name }}" {{ 'selected' if name == objective_name else '' }}>{{ name }}</option>{% endfor %}</select></div>
-        {% if objective_name == 'Pesos implícitos del modelo' %}<div class="notice">Los pesos implícitos no tienen restricción long-only; pueden ser negativos o superar el 100%.</div>{% endif %}
+        <div class="form-field"><label for="custom_tickers">Otros tickers</label><input id="custom_tickers" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}" placeholder="AMZN, NVDA"><span class="help-text">Pulsa «Actualizar lista de activos» para definir su view antes de calcular.</span></div>
+        <div class="form-field"><label for="objective">Objetivo</label><select id="objective" name="objective">{% for name in objective_names %}<option value="{{ name }}" {{ 'selected' if name == objective_name else '' }}>{{ name }}</option>{% endfor %}</select>
+        <span class="help-text">Optimización MeanRisk de skfolio sobre los momentos posteriores. Todos los objetivos son long-only y suman 100%, salvo la utilidad sin restricción.</span></div>
+        {% if objective_name == unconstrained_objective %}<div class="notice">Este objetivo no tiene restricción long-only: un peso individual puede ser negativo o superar el 100%; la suma total sigue siendo 100%.</div>{% endif %}
         <div class="form-field"><label for="risk_free_rate">Tasa libre de riesgo anual (%)</label><input id="risk_free_rate" name="risk_free_rate" type="number" min="0" max="100" step="0.25" value="{{ risk_free_value }}" required></div>
         <div class="form-field"><label for="benchmark">Benchmark de mercado</label><select id="benchmark" name="benchmark">{% for name in benchmark_names %}<option value="{{ name }}" {{ 'selected' if name == benchmark_name else '' }}>{{ name }}</option>{% endfor %}</select><span class="help-text">Se usa para estimar la aversión al riesgo del mercado.</span></div>
         <div class="form-field"><label for="start_date">Inicio de ventana fija de dos años</label><input id="start_date" type="date" value="{{ default_start }}" max="{{ today }}" disabled><input type="hidden" name="start_date" value="{{ default_start }}"></div>
         <hr class="section-divider">
         <h3 class="panel-title">Views anuales por activo</h3>
-        <p class="help-text">Indica el retorno esperado anual. El modelo usa una confianza fija del 95%.</p>
-        {% for ticker in selected_tickers %}
+        <p class="help-text">Indica el retorno esperado anual de cada activo, incluidos los tickers personalizados. Todas las views usan una confianza del {{ '%.0f'|format(view_confidence * 100) }}% (método de Idzorek).</p>
+        {% for ticker in view_tickers %}
           <div class="form-row">
             <div class="form-field"><label for="view_{{ ticker }}">{{ ticker }} · retorno anual (%)</label><input id="view_{{ ticker }}" name="view_{{ ticker }}" type="number" min="-100" max="1000" step="0.5" value="{{ views_values.get(ticker, '8.0') }}" required></div>
-            <div class="form-field"><label>Confianza</label><input value="95%" disabled></div>
+            <div class="form-field"><label>Confianza</label><input value="{{ '%.0f'|format(view_confidence * 100) }}%" disabled></div>
           </div>
         {% endfor %}
         <button class="button button-primary" type="submit" name="action" value="optimize">Calcular portafolio <span aria-hidden="true">↗</span></button>
@@ -35,20 +36,26 @@
         <div class="result-grid">
           <div class="metric-card"><span>Retorno esperado anual</span><strong>{{ '%.2f'|format(result.expected_return * 100) }}%</strong></div>
           <div class="metric-card"><span>Volatilidad anual</span><strong>{{ '%.2f'|format(result.volatility * 100) }}%</strong></div>
-          <div class="metric-card"><span>Ratio de Sharpe</span><strong>{{ '%.3f'|format(result.sharpe) }}</strong></div>
+          <div class="metric-card"><span>Ratio de Sharpe esperado (modelo)</span><strong>{{ '%.3f'|format(result.sharpe) }}</strong></div>
         </div>
+        <div class="result-grid">
+          <div class="metric-card"><span>Ratio de Sortino esperado (modelo)</span><strong>{{ '%.3f'|format(result.sortino) }}</strong></div>
+          <div class="metric-card"><span>Aversión al riesgo δ del mercado</span><strong>{{ '%.2f'|format(result.risk_aversion) }}</strong></div>
+          <div class="metric-card"><span>Confianza de las views · τ</span><strong>{{ '%.0f'|format(view_confidence * 100) }}% · {{ result.tau }}</strong></div>
+        </div>
+        <p class="help-text">Métricas esperadas según los momentos posteriores de Black-Litterman (skfolio), anualizadas con {{ result.trading_days }} días. El Sortino usa la semidesviación de los retornos históricos recentrados en el retorno posterior.</p>
         {% if result.excluded_tickers %}<div class="notice">Se excluyeron activos sin datos: {{ result.excluded_tickers|join(', ') }}.</div>{% endif %}
         <div class="result-panel"><span class="page-kicker">RESULTADO · BLACK-LITTERMAN</span><h2>Asignación del portafolio</h2><p>Suma de pesos: {{ '%.2f'|format(result.weights_sum * 100) }}%</p><img class="chart-image" src="{{ result.weights_chart }}" alt="Pesos Black-Litterman"><div class="data-table-wrap">{{ result.results_table|safe }}</div></div>
-        <div class="result-panel"><h2>Covarianza posterior</h2><div class="data-table-wrap">{{ result.covariance_table|safe }}</div></div>
+        <div class="result-panel"><h2>Covarianza posterior</h2><p>Anualizada.</p><div class="data-table-wrap">{{ result.covariance_table|safe }}</div></div>
         {% if result.history %}
           <div class="result-panel">
-            <h2>Análisis histórico · QuantStats</h2><p>{{ result.history.observations }} observaciones comunes con el benchmark.</p>
+            <h2>Análisis histórico · QuantStats</h2><p>{{ result.history.observations }} observaciones comunes con el benchmark. Estas métricas, incluidos Sharpe y Sortino, son históricas (realizadas con los pesos actuales), no esperadas.</p>
             <div class="data-table-wrap">{{ result.history.metrics|safe }}</div>
             {% if not result.history.has_rolling_sharpe %}<div class="notice">El Sharpe móvil requiere al menos 126 retornos comunes; los demás gráficos están disponibles.</div>{% endif %}
             <div class="chart-grid">{% for name, image in result.history.charts.items() %}<div class="chart-card"><h3>{{ name }}</h3><img class="chart-image" src="{{ image }}" alt="{{ name }}"></div>{% endfor %}</div>
             <form method="post" class="form-stack" style="margin-top:16px">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="objective" value="{{ objective_name }}"><input type="hidden" name="risk_free_rate" value="{{ risk_free_value }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="start_date" value="{{ default_start }}"><input type="hidden" name="custom_tickers" value="{{ request.values.get('custom_tickers', '') }}">
-              {% for ticker in result.included_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="view_{{ ticker }}" value="{{ views_values.get(ticker, '8.0') }}">{% endfor %}
+              {% for ticker in view_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="view_{{ ticker }}" value="{{ views_values.get(ticker, '8.0') }}">{% endfor %}
               <button class="button button-secondary" type="submit" name="action" value="download_report">Descargar informe QuantStats</button>
             </form>
           </div>
