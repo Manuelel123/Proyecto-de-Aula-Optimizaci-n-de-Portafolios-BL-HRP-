@@ -267,11 +267,12 @@
           </details>
         {% endif %}
 
-        {% if result.prices_payload %}
+        {% if result.prices_payload or result.charts.returns_matrix %}
           <details class="analysis-section" data-section="prices">
-            <summary><span class="analysis-section__title">Evolución de precios</span><span class="analysis-section__meta">Precio o base 100 frente a {{ benchmark_ticker }}</span></summary>
+            <summary><span class="analysis-section__title">Evolución de precios</span><span class="analysis-section__meta">Precios y matriz de rendimientos por activo y del portafolio frente a {{ benchmark_ticker }}</span></summary>
             <div class="analysis-section__body">
-              {{ price_explorer("bl", result.prices_payload, "Evolución de precios") }}
+              {{ price_explorer("bl", result.prices_payload, "Evolución de precios", linked_chart="returns_matrix") }}
+              {{ plotly_chart("returns_matrix", result.charts.returns_matrix, "Matriz de rendimientos históricos", subtitle="Rendimiento mensual compuesto y anual · elige portafolio Black-Litterman, benchmark o activo") }}
             </div>
           </details>
         {% endif %}

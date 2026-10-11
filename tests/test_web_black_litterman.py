@@ -148,6 +148,72 @@ class BlackLittermanPageTests(WebTestCase):
                 )
         self.assertIn("NVDA", {call.args[0] for call in market_cap.call_args_list})
 
+    @patch("optimizacion_portafolios.web.black_litterman.services.fetch_market_cap_usd")
+    @patch("optimizacion_portafolios.web.black_litterman.services.download_prices")
+    def test_black_litterman_returns_matrix_sits_below_price_explorer(
+        self, download, market_cap
+    ) -> None:
+        self._mock_market_data(download, market_cap)
+        response = self.post(
+            "/black-litterman",
+            **self._black_litterman_form(custom_tickers=""),
+        )
+        self.assertEqual(response.status_code, 200)
+        page = response.data.decode()
+        prices = page.split('data-section="prices">', 1)[1].split("</details>", 1)[0]
+        self.assertIn("Matriz de rendimientos históricos", prices)
+        self.assertIn('data-linked-chart="chart-returns_matrix"', prices)
+        self.assertIn('<script type="application/json" id="chart-returns_matrix">', prices)
+        self.assertLess(
+            prices.index("data-price-explorer"),
+            prices.index('data-plotly="chart-returns_matrix"'),
+        )
+        self.assertEqual(page.count('id="chart-returns_matrix"'), 1)
+        self.assertIn('data-plotly="chart-monthly_heatmap"', page)
+
+    @patch("optimizacion_portafolios.web.black_litterman.services.returns_matrix_chart")
+    @patch("optimizacion_portafolios.web.black_litterman.services.fetch_market_cap_usd")
+    @patch("optimizacion_portafolios.web.black_litterman.services.download_prices")
+    def test_black_litterman_returns_matrix_series_order(
+        self, download, market_cap, matrix
+    ) -> None:
+        from optimizacion_portafolios.web.black_litterman.services import (
+            run_black_litterman,
+        )
+        from optimizacion_portafolios.web.common.charts import PORTFOLIO_SERIES
+
+        self._mock_market_data(download, market_cap)
+        matrix.return_value = None
+        tickers = ["AAPL", "MSFT", "GOOGL"]
+
+        def run(benchmark):
+            return run_black_litterman(
+                tickers,
+                {ticker: 0.08 for ticker in tickers},
+                "Máximo ratio de Sharpe",
+                0.02,
+                benchmark,
+                date(2024, 1, 1),
+                {"AAPL": "Apple (AAPL)"},
+                False,
+                benchmark_label="S&P 500 (SPY)",
+            )
+
+        result = run("SPY")
+        series, names = matrix.call_args.args
+        allocation = [row["ticker"] for row in result["allocation_rows"]]
+        self.assertEqual(list(series), [PORTFOLIO_SERIES, "SPY", *allocation])
+        self.assertEqual(names[PORTFOLIO_SERIES], "Portafolio Black-Litterman")
+        self.assertEqual(names["SPY"], "S&P 500 (SPY)")
+        self.assertEqual(names["AAPL"], "Apple (AAPL)")
+        self.assertIsNone(result["charts"]["returns_matrix"])
+
+        # A benchmark that is also an asset is not repeated.
+        run("GOOGL")
+        series, _ = matrix.call_args.args
+        self.assertEqual(list(series)[0], PORTFOLIO_SERIES)
+        self.assertEqual(sorted(list(series)[1:]), sorted(tickers))
+
     def test_black_litterman_refresh_shows_custom_ticker_views(self) -> None:
         response = self.post(
             "/black-litterman",

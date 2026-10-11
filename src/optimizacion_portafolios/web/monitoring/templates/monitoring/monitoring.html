@@ -175,7 +175,15 @@
             <p class="card__subtitle">Precios de cierre ajustados por activo, sin rellenar días sin cotización.</p>
           </header>
           <div class="card__body">
-            {{ price_explorer("monitoring", result.prices_payload) }}
+            {% if result.view == 'portfolio' %}
+              {{ price_explorer("monitoring", result.prices_payload, linked_chart="returns_matrix") }}
+              {% if result.charts.returns_matrix %}
+                {{ plotly_chart("returns_matrix", result.charts.returns_matrix, "Matriz de rendimientos históricos", subtitle="Rendimiento mensual compuesto y anual · elige portafolio o activo") }}
+                <p class="help-text">El portafolio es equiponderado: todos los activos pesan lo mismo y se rebalancea a diario sobre los días comunes de cotización.</p>
+              {% endif %}
+            {% else %}
+              {{ price_explorer("monitoring", result.prices_payload) }}
+            {% endif %}
             <details>
               <summary>Ver datos recientes</summary>
               <div class="data-table-wrap">{{ result.tables.prices|safe }}</div>

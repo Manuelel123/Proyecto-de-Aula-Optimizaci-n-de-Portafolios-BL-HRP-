@@ -19,10 +19,12 @@ from optimizacion_portafolios.models.black_litterman import (
     optimize_black_litterman,
 )
 from optimizacion_portafolios.web.common.charts import (
+    PORTFOLIO_SERIES,
     allocation_chart,
     correlation_heatmap,
     historical_charts,
     prior_posterior_chart,
+    returns_matrix_chart,
 )
 from optimizacion_portafolios.web.common.price_series import price_series_payload
 from optimizacion_portafolios.web.common.tables import (
@@ -88,6 +90,7 @@ LOADING_STEPS = (
     "Optimizando",
 )
 _PORTFOLIO_COLUMN = "Portafolio Black Litterman"
+_PORTFOLIO_LABEL = "Portafolio Black-Litterman"
 _HISTORICAL_LABELS = {
     "Ratio de Sharpe": "Ratio de Sharpe histórico",
     "Ratio de Sortino": "Ratio de Sortino histórico",
@@ -215,6 +218,36 @@ def _allocation_csv(rows: list[dict]) -> str:
     return buffer.getvalue()
 
 
+def _daily_returns(prices: pd.Series) -> pd.Series:
+    """Daily simple returns of one asset over its own quotes (no ffill)."""
+    return prices.dropna().pct_change(fill_method=None).dropna()
+
+
+def _returns_matrix(
+    portfolio_returns: pd.Series,
+    weights: pd.Series,
+    raw_prices: pd.DataFrame,
+    benchmark: str,
+    benchmark_prices: pd.Series,
+    names: dict[str, str],
+):
+    """Returns matrix: portfolio, benchmark (unless it is an asset), assets.
+
+    Assets follow the allocation order (weight, descending) and use their own
+    price history. An empty portfolio series is skipped; the matrix then
+    shows the benchmark and the assets.
+    """
+    series = {}
+    portfolio = portfolio_returns.dropna()
+    if not portfolio.empty:
+        series[PORTFOLIO_SERIES] = portfolio
+    if benchmark not in weights.index:
+        series[benchmark] = _daily_returns(benchmark_prices)
+    for ticker in weights.sort_values(ascending=False).index:
+        series[ticker] = _daily_returns(raw_prices[ticker])
+    return returns_matrix_chart(series, {PORTFOLIO_SERIES: _PORTFOLIO_LABEL, **names})
+
+
 def run_black_litterman(
     tickers: list[str],
     views: dict[str, float],
@@ -226,7 +259,13 @@ def run_black_litterman(
     download_report: bool,
     benchmark_label: str | None = None,
 ) -> dict:
-    """Run the model; return the page view model or, if requested, the report."""
+    """Run the model; return the page view model or, if requested, the report.
+
+    ``charts`` keys: ``allocation``, ``prior_posterior``,
+    ``posterior_correlation`` and ``returns_matrix`` (portfolio, benchmark and
+    assets), each ``None`` when there is no data; ``history["charts"]`` holds
+    the historical charts.
+    """
     today = date.today()
     raw_prices = download_prices(tuple(tickers), start_date, today)
     # Keep the unaligned prices for the price explorer (no ffill across assets).
@@ -342,6 +381,14 @@ def run_black_litterman(
             ),
             "posterior_correlation": correlation_heatmap(
                 model.posterior_correlation, "Correlación posterior"
+            ),
+            "returns_matrix": _returns_matrix(
+                portfolio_returns,
+                model.weights,
+                raw_prices,
+                benchmark,
+                market_prices,
+                {**labels, benchmark: benchmark_label or benchmark},
             ),
         },
         "prices_payload": price_series_payload(

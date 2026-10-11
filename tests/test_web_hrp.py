@@ -3,6 +3,7 @@
 import json
 import re
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from support import WebTestCase, make_prices
@@ -255,6 +256,68 @@ class HrpPageTests(WebTestCase):
         self.assertIn("Límite aplicado (mín–máx)", html)
         self.assertIn("0.00% – 45.00%", html)
         self.assertIn('<details class="advanced" open data-weight-limits>', html)
+
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_returns_matrix_sits_below_price_explorer(self, download) -> None:
+        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
+        response = self.post(
+            "/hrp",
+            action="optimize",
+            universe="Portafolio actual",
+            benchmark="S&P 500 (SPY)",
+            start_date="2024-01-01",
+            tickers=["AAPL", "MSFT", "XLV"],
+            custom_tickers="",
+        )
+        html = response.data.decode()
+        self.assertEqual(response.status_code, 200)
+        prices = html.split('data-section="prices">', 1)[1].split("</details>", 1)[0]
+        self.assertIn("Matriz de rendimientos históricos", prices)
+        self.assertIn('data-linked-chart="chart-returns_matrix"', prices)
+        self.assertIn('<script type="application/json" id="chart-returns_matrix">', prices)
+        self.assertLess(
+            prices.index("data-price-explorer"),
+            prices.index('data-plotly="chart-returns_matrix"'),
+        )
+        self.assertEqual(html.count('id="chart-returns_matrix"'), 1)
+        # The historical monthly heatmap is kept.
+        self.assertIn('data-plotly="chart-monthly_heatmap"', html)
+
+    @patch("optimizacion_portafolios.web.hrp.services.returns_matrix_chart")
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_returns_matrix_series_order(self, download, matrix) -> None:
+        from optimizacion_portafolios.web.common.charts import PORTFOLIO_SERIES
+        from optimizacion_portafolios.web.hrp.services import run_hrp
+
+        def price_response(tickers, _start, _end):
+            prices = make_prices(tickers)
+            if "BTC-USD" in prices:
+                # Missing quotes stay missing: no ffill across assets.
+                prices.iloc[10:15, list(prices.columns).index("BTC-USD")] = float("nan")
+            return prices
+
+        download.side_effect = price_response
+        matrix.return_value = None
+        result = run_hrp(
+            ["AAPL", "BTC-USD", "XLV"],
+            "SPY",
+            date(2024, 1, 1),
+            labels={"AAPL": "Apple (AAPL)"},
+        )
+        series, names = matrix.call_args.args
+        allocation = [row["ticker"] for row in result["allocation_rows"]]
+        self.assertEqual(list(series), [PORTFOLIO_SERIES, "SPY", *allocation])
+        self.assertEqual(names[PORTFOLIO_SERIES], "Portafolio HRP")
+        self.assertEqual(names["AAPL"], "Apple (AAPL)")
+        self.assertEqual(names["SPY"], "SPY")
+        self.assertEqual(len(series["BTC-USD"]), len(series["AAPL"]) - 5)
+        self.assertNotIn("returns_matrix", result["charts"])
+
+        # A benchmark that is also an asset is not repeated.
+        run_hrp(["AAPL", "BTC-USD", "XLV"], "AAPL", date(2024, 1, 1))
+        series, _ = matrix.call_args.args
+        self.assertEqual(list(series)[0], PORTFOLIO_SERIES)
+        self.assertEqual(sorted(list(series)[1:]), ["AAPL", "BTC-USD", "XLV"])
 
     @staticmethod
     def _hrp_weights(html: str) -> dict[str, float]:
