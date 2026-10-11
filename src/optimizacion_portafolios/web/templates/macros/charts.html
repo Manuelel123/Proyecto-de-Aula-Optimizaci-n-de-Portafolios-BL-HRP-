@@ -29,9 +29,9 @@
 {# Lightweight Charts price explorer with asset selector, range buttons and
    base-100 comparison against the benchmark. ``selected`` (optional) is the
    ticker shown first. #}
-{% macro price_explorer(key, payload, title="Evolución de precios", selected=None) %}
+{% macro price_explorer(key, payload, title="Evolución de precios", selected=None, linked_chart=None) %}
   {% if payload %}
-    <section class="price-explorer" data-price-explorer="prices-{{ key }}" aria-label="{{ title }}">
+    <section class="price-explorer" data-price-explorer="prices-{{ key }}"{% if linked_chart %} data-linked-chart="chart-{{ linked_chart }}"{% endif %} aria-label="{{ title }}">
       <div class="price-explorer__toolbar">
         <label class="price-explorer__asset">
           <span class="visually-hidden">Activo</span>
