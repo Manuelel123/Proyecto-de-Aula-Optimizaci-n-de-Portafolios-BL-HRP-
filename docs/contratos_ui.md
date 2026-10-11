@@ -94,6 +94,12 @@ Acuerdos compartidos entre los módulos del frontend. Especificaciones de refere
 - Macro: `price_explorer(key, payload, title="Evolución de precios", selected=None, linked_chart=None)`. Con `linked_chart="returns_matrix"` añade `data-linked-chart="chart-returns_matrix"` a la sección. Al cambiar el activo del explorador, `charts.js` activa en la matriz el botón cuyo `name` es ese ticker (si existe).
 - Ubicación: la matriz va con `plotly_chart("returns_matrix", …, "Matriz de rendimientos históricos")` justo debajo del explorador de precios. En HRP y BL va en la sección «Evolución de precios»; en Mercado › Portafolio, en la tarjeta de precios. El heatmap `monthly_heatmap` del análisis histórico se mantiene.
 
+### Historial completo por activo
+- Endpoint `GET /api/historial?ticker=<TICKER>` (blueprint `web/history`): descarga todos los precios disponibles desde `FULL_HISTORY_START` (1900-01-01; Yahoo devuelve desde la primera cotización). Respuesta JSON: `ticker`, `name`, `start`, `end`, `observations`, `years`, `prices` (una entrada del explorador: `ticker`, `name`, `time`, `value`) y `matrix` (figura de `returns_matrix_chart` con una sola serie). Errores en `{"error": …}`: 400 si el ticker no es válido, 404 si no hay datos, 503 si Yahoo limita las consultas y 502 para otros fallos. Usa la caché de precios de 15 minutos.
+- Macro: `price_explorer(..., history_url=None)`. Con `history_url` se añaden `data-history-url`, el interruptor «Periodo del análisis / Historial completo» (`[data-history-mode]`) y una línea de estado (`[data-history-status]`).
+- `charts.js`: en modo completo se descarga a demanda el historial del activo seleccionado (con caché por ticker en la página), se pone el rango en «Máx», se desactiva «Base 100» (el benchmark solo cubre el periodo del análisis) y, si hay `data-linked-chart`, la matriz se sustituye por la del historial completo. Al volver al periodo del análisis se restauran la figura original y la selección del activo.
+- La matriz usa filas de 24 px cuando hay más de `MATRIX_COMPACT_YEARS` (15) años.
+
 ## Pruebas
 - Ningún test accede a la red. Cada módulo actualiza sus tests: se pueden adaptar las aserciones de marcado HTML (orden de atributos, textos) al nuevo diseño, siempre que se mantenga la intención (que el valor, el resultado o el error se muestren).
 - Comando, desde la raíz del worktree: `PYTHONPATH=src <python compartido> -m unittest discover -s tests`. Toda la suite debe pasar.

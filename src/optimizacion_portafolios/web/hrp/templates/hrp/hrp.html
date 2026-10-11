@@ -244,7 +244,7 @@
         <details class="analysis-section" data-section="prices">
           <summary><span class="analysis-section__title">Evolución de precios</span><span class="analysis-section__meta">Precios y matriz de rendimientos por activo y del portafolio</span></summary>
           <div class="analysis-section__body">
-            {{ price_explorer("hrp", result.prices_payload, linked_chart="returns_matrix") }}
+            {{ price_explorer("hrp", result.prices_payload, linked_chart="returns_matrix", history_url=url_for("history.asset_history")) }}
             {{ plotly_chart("returns_matrix", result.charts.returns_matrix, "Matriz de rendimientos históricos", subtitle="Rendimiento mensual compuesto y anual · elige portafolio HRP, benchmark o activo") }}
           </div>
         </details>

@@ -33,6 +33,7 @@ MONO_FONT = "JetBrains Mono, ui-monospace, monospace"
 DATE_HOVER = "%d %b %Y"
 BAR_ROW_HEIGHT = 28
 PORTFOLIO_SERIES = "__portfolio__"
+MATRIX_COMPACT_YEARS = 15
 
 
 def figure_payload(figure: go.Figure) -> Markup:
@@ -551,7 +552,9 @@ def returns_matrix_chart(
     years = [str(year) for year in all_years]
     has_menu = len(tables) > 1
     margin_top = 64 if has_menu else 28
-    height = max(180, 36 * len(years) + 80) + (margin_top - 28)
+    # Long full histories (decades) use shorter rows so the matrix stays readable.
+    row_height = 36 if len(years) <= MATRIX_COMPACT_YEARS else 24
+    height = max(180, row_height * len(years) + 80) + (margin_top - 28)
     figure = _figure(
         height=height,
         showlegend=False,

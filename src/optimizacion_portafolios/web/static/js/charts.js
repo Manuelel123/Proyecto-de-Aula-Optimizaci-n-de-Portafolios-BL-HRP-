@@ -8,6 +8,10 @@
  *   [data-linked-chart="chart-<key>"]          on the explorer: when the user picks an asset, the button of that
  *                                              chart's first updatemenu whose ``name`` is the ticker is applied
  *                                              (remembered and applied at render time if not drawn yet).
+ *   [data-history-url]                         on the explorer: "Periodo del análisis / Historial completo"
+ *                                              switch ([data-history-mode]); the full history of the selected
+ *                                              asset is fetched from ``<url>?ticker=`` (prices + returns matrix
+ *                                              figure) and shown in the explorer and in the linked chart.
  *   [data-expand-all] / [data-collapse-all]    open / close every details.analysis-section of the page.
  *
  * Figures are serialized with the light-theme token hex values (web/common/chart_theme.py). Every known
@@ -161,6 +165,8 @@
   /* ------------------------------------------------------------------ Plotly */
 
   var pristine = new WeakMap();
+  /* Figure shown instead of the page's own JSON (full-history matrix); absent = the original. */
+  var alternates = new WeakMap();
 
   function plotConfig(el) {
     return {
@@ -211,7 +217,7 @@
     if (state === "pending" || state === "error") { return; }
     if (!isVisible(el)) { watch(el); return; }
     if (!window.Plotly) { el.dataset.plotlyState = "error"; showMessage(el, LIBRARY_ERROR); return; }
-    var spec = readJson(el.dataset.plotly);
+    var spec = alternates.has(el) ? alternates.get(el) : readJson(el.dataset.plotly);
     if (!spec || !Array.isArray(spec.data)) { el.dataset.plotlyState = "error"; showMessage(el, DATA_ERROR); return; }
     unwatch(el);
     pristine.set(el, spec);
@@ -254,6 +260,26 @@
         Object.keys(button.args[1]).forEach(function (key) { setPath(figure.layout, key, button.args[1][key]); });
       }
     });
+    syncHeight(el, figure.layout);
+    window.Plotly.react(el, figure.data, figure.layout, plotConfig(el));
+  }
+
+  /* Swap a chart's figure for ``spec`` (null = back to the page's own figure). ``subtitle`` replaces the
+   * card subtitle while the alternate figure is shown. Charts not drawn yet pick it up at render time. */
+  function swapFigure(el, spec, subtitle) {
+    var card = el.closest("figure");
+    var caption = card && card.querySelector(".chart-card__subtitle");
+    if (caption) {
+      if (caption.dataset.original === undefined) { caption.dataset.original = caption.textContent; }
+      caption.textContent = spec && subtitle ? subtitle : caption.dataset.original;
+    }
+    if (spec) { alternates.set(el, spec); } else { alternates.delete(el); }
+    if (el.dataset.plotlyState !== "rendered") { return; }
+    var next = spec || readJson(el.dataset.plotly);
+    if (!next || !Array.isArray(next.data)) { return; }
+    pristine.set(el, next);
+    var figure = themed(next, palette());
+    figure.layout = figure.layout || {};
     syncHeight(el, figure.layout);
     window.Plotly.react(el, figure.data, figure.layout, plotConfig(el));
   }
@@ -408,10 +434,17 @@
     var base100 = root.querySelector("[data-price-base100]");
     var legend = root.querySelector("[data-price-legend]");
     var rangeButtons = Array.prototype.slice.call(root.querySelectorAll("[data-range]"));
+    var historyUrl = root.dataset.historyUrl;
+    var historyButtons = Array.prototype.slice.call(root.querySelectorAll("[data-history-mode]"));
+    var historyStatus = root.querySelector("[data-history-status]");
+    var linkedChart = root.dataset.linkedChart
+      ? document.querySelector('[data-plotly="' + root.dataset.linkedChart + '"]') : null;
     var benchmark = payload.benchmark && payload.benchmark.time && payload.benchmark.time.length
       ? payload.benchmark : null;
     var byTicker = {};
     payload.series.forEach(function (entry) { byTicker[entry.ticker] = entry; });
+    var analysisByTicker = Object.assign({}, byTicker);
+    var fullHistory = {};
 
     if (select) {
       var preferred = select.dataset.selected || select.value;
@@ -440,7 +473,8 @@
       range: activeButton ? activeButton.dataset.range : "ALL",
       base100: Boolean(base100 && base100.checked && benchmark),
       main: null,
-      bench: null
+      bench: null,
+      full: false
     };
     var colors = explorerColors();
     var chart = LW.createChart(canvas, chartOptions(LW, colors));
@@ -506,6 +540,118 @@
       updateLegend(null, null);
     }
 
+    function setRange(range) {
+      state.range = range;
+      rangeButtons.forEach(function (other) {
+        var active = other.dataset.range === range;
+        other.classList.toggle("is-active", active);
+        other.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+    }
+
+    function setStatus(text, isError) {
+      if (!historyStatus) { return; }
+      historyStatus.textContent = text || "";
+      historyStatus.hidden = !text;
+      historyStatus.classList.toggle("is-error", Boolean(isError));
+    }
+
+    /* Base 100 compares against the benchmark of the analysis window only. */
+    function setBase100Available(available) {
+      if (!base100 || !benchmark) { return; }
+      var label = base100.closest("label") || base100;
+      base100.disabled = !available;
+      label.classList.toggle("is-disabled", !available);
+      label.title = available ? "" : "Disponible solo con el periodo del análisis";
+      if (!available && base100.checked) { base100.checked = false; state.base100 = false; }
+    }
+
+    function historyText(data) {
+      return "Historial completo de " + data.ticker + " · desde el " + formatDay(data.start) + " · " +
+        data.years + (data.years === 1 ? " año" : " años") + " · " +
+        formatNumber(data.observations, 0) + " cotizaciones";
+    }
+
+    function showFullHistory(data) {
+      var entry = Object.assign({}, data.prices);
+      var analysis = analysisByTicker[data.ticker];
+      if (analysis && analysis.name) { entry.name = analysis.name; }
+      byTicker[data.ticker] = entry;
+      draw();
+      setStatus(historyText(data), false);
+      if (linkedChart && data.matrix) {
+        swapFigure(linkedChart, data.matrix,
+          "Historial completo de " + (entry.name || data.ticker) + " · rendimiento mensual compuesto y anual");
+      }
+    }
+
+    function requestHistory(ticker) {
+      var cached = fullHistory[ticker];
+      if (cached) { return cached; }
+      var url = historyUrl + (historyUrl.indexOf("?") < 0 ? "?" : "&") + "ticker=" + encodeURIComponent(ticker);
+      cached = fetch(url, { headers: { Accept: "application/json" } }).then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (body) {
+          if (!response.ok || !body.prices) {
+            throw new Error(body.error || "No se pudo descargar el historial de " + ticker + ".");
+          }
+          return body;
+        });
+      });
+      fullHistory[ticker] = cached;
+      /* Failures are not cached: the next attempt retries. */
+      cached.catch(function () { delete fullHistory[ticker]; });
+      return cached;
+    }
+
+    function loadFullHistory(ticker) {
+      root.classList.add("is-loading");
+      setStatus("Cargando el historial completo de " + ticker + "…", false);
+      requestHistory(ticker).then(function (data) {
+        if (!state.full || state.ticker !== ticker) { return; }
+        root.classList.remove("is-loading");
+        showFullHistory(data);
+      }, function (error) {
+        if (!state.full || state.ticker !== ticker) { return; }
+        root.classList.remove("is-loading");
+        setStatus(error.message + " Se muestra el periodo del análisis.", true);
+      });
+    }
+
+    function setHistoryMode(full) {
+      state.full = full;
+      historyButtons.forEach(function (button) {
+        var active = (button.dataset.historyMode === "full") === full;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      setBase100Available(!full);
+      if (full) {
+        setRange("ALL");
+        loadFullHistory(state.ticker);
+        return;
+      }
+      root.classList.remove("is-loading");
+      setStatus("", false);
+      byTicker = Object.assign({}, analysisByTicker);
+      draw();
+      if (linkedChart) {
+        swapFigure(linkedChart, null);
+        if (linkedChart.dataset.plotlyState === "rendered") { selectMenuButton(linkedChart, state.ticker, "name"); }
+        else { linkedChart.dataset.plotlyLinked = state.ticker; }
+      }
+    }
+
+    if (historyUrl && historyButtons.length && window.fetch) {
+      historyButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          var full = button.dataset.historyMode === "full";
+          if (full !== state.full) { setHistoryMode(full); }
+        });
+      });
+    } else if (historyButtons.length) {
+      historyButtons[0].parentNode.hidden = true;
+    }
+
     chart.subscribeCrosshairMove(function (param) {
       if (!param || !param.time || !state.main) { updateLegend(null, null); return; }
       var data = param.seriesData && param.seriesData.get(state.main);
@@ -519,7 +665,10 @@
 
     if (select) {
       select.addEventListener("change", function () {
-        if (byTicker[select.value]) { state.ticker = select.value; draw(); }
+        if (!byTicker[select.value]) { return; }
+        state.ticker = select.value;
+        draw();
+        if (state.full) { loadFullHistory(state.ticker); }
       });
     }
     if (base100) {
@@ -531,12 +680,7 @@
     rangeButtons.forEach(function (button) {
       button.setAttribute("aria-pressed", button.dataset.range === state.range ? "true" : "false");
       button.addEventListener("click", function () {
-        state.range = button.dataset.range;
-        rangeButtons.forEach(function (other) {
-          var active = other === button;
-          other.classList.toggle("is-active", active);
-          other.setAttribute("aria-pressed", active ? "true" : "false");
-        });
+        setRange(button.dataset.range);
         /* In base 100 the base moves with the range start, so the data is rebuilt. */
         if (state.base100) { draw(); } else { applyRange(); updateLegend(null, null); }
       });
