@@ -31,6 +31,7 @@ MONTHS = ("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", 
 MONO_FONT = "JetBrains Mono, ui-monospace, monospace"
 DATE_HOVER = "%d %b %Y"
 BAR_ROW_HEIGHT = 28
+PORTFOLIO_SERIES = "__portfolio__"
 
 
 def figure_payload(figure: go.Figure) -> Markup:
@@ -451,6 +452,27 @@ def monthly_returns_heatmap(portfolio: pd.Series) -> Markup | None:
     )
     figure.update_yaxes(type="category", autorange="reversed", showgrid=False)
     return figure_payload(figure)
+
+
+def returns_matrix_chart(
+    series: dict[str, pd.Series],
+    names: dict[str, str] | None = None,
+) -> Markup | None:
+    """Historical returns matrix (year × month + yearly column) per series.
+
+    ``series`` maps an id (ticker, or ``PORTFOLIO_SERIES`` for the portfolio)
+    to its *daily* simple returns, in display order; the first one with data
+    is shown first. ``names`` maps ids to display labels. One in-figure
+    selector switches between series; each selector button carries the id in
+    ``name`` so the price explorer can drive it (``data-linked-chart``).
+
+    TODO(agent charts): stub that only draws the first series.
+    """
+    for values in series.values():
+        payload = monthly_returns_heatmap(values)
+        if payload is not None:
+            return payload
+    return None
 
 
 def _rolling_sharpe(returns: pd.Series, period: int) -> pd.Series:

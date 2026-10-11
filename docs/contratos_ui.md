@@ -76,14 +76,22 @@ Acuerdos compartidos entre los módulos del frontend. Especificaciones de refere
 - `web/common/charts.py`: cada función pública devuelve `Markup` (JSON de Plotly, ya escapado para `<script>`) o `None` si no hay datos. Firmas fijas, documentadas en el módulo:
   - `allocation_chart`, `cumulative_returns_chart`, `drawdown_chart`, `monthly_returns_heatmap`, `rolling_sharpe_chart`, `returns_distribution_chart`, `yearly_returns_chart`;
   - `historical_charts(portfolio, benchmark, rolling_period) -> (dict, bool)`;
-  - `correlation_heatmap`, `dendrogram_chart`, `contribution_chart`, `volatility_histogram_chart`, `returns_box_chart`, `prior_posterior_chart`, `period_volatility_chart`.
+  - `correlation_heatmap`, `dendrogram_chart`, `contribution_chart`, `volatility_histogram_chart`, `returns_box_chart`, `prior_posterior_chart`, `period_volatility_chart`, `returns_matrix_chart`.
 - `web/common/price_series.py::price_series_payload(raw_prices, names=None, benchmark=None) -> Markup | None` con el formato columnar documentado en el módulo. Usar precios sin `ffill` entre activos.
-- Claves estables de `result["charts"]`: `allocation`, `cumulative`, `drawdown`, `monthly_heatmap`, `rolling_sharpe`, `returns_distribution`, `yearly_returns`, `correlation`, `dendrogram`, `risk_contribution`, `return_contribution`, `monthly_volatility`, `returns_box`, `prior_posterior`, `posterior_correlation`, `period_volatility`. Además `result["prices_payload"]`.
+- Claves estables de `result["charts"]`: `allocation`, `cumulative`, `drawdown`, `monthly_heatmap`, `rolling_sharpe`, `returns_distribution`, `yearly_returns`, `correlation`, `dendrogram`, `risk_contribution`, `return_contribution`, `monthly_volatility`, `returns_box`, `prior_posterior`, `posterior_correlation`, `period_volatility`, `returns_matrix`. Además `result["prices_payload"]`.
 - Macros de `macros/charts.html`:
   - `plotly_chart(key, payload, title, height=360, subtitle=None)` genera `[data-plotly="chart-<key>"]` + `<script id="chart-<key>">`. Si el payload es `None`, no dibuja nada.
   - `price_explorer(key, payload, title)` genera `[data-price-explorer="prices-<key>"]`.
   - Los `key` deben ser únicos en la página.
 - `charts.js` dibuja lo visible al cargar. Para lo que está dentro de un `details` cerrado, dibuja al abrirlo (`toggle`) y nunca sobre contenedores ocultos. Aplica colores de tema desde las variables CSS.
+
+### Matriz de rendimientos históricos (`returns_matrix`)
+- `returns_matrix_chart(series: dict[str, pd.Series], names: dict[str, str] | None = None) -> Markup | None`.
+  - `series`: id → retornos **diarios** simples, en orden de presentación. Ids: `PORTFOLIO_SERIES` (`"__portfolio__"`, constante de `charts.py`) para el portafolio, el ticker del benchmark y los tickers de los activos.
+  - Orden en HRP/BL: portafolio, benchmark (si no es también un activo) y activos en el orden de la asignación. En Mercado › Portafolio: portafolio equiponderado (rebalanceo diario, etiqueta «Portafolio equiponderado») y los activos.
+  - Figura: filas = años (más reciente arriba), columnas = Ene…Dic + «Año», celdas con el retorno compuesto en % (1 decimal; hover con 2 decimales y el nombre de la serie), escala divergente `RETURNS_SCALE` centrada en 0. Un selector dentro de la figura cambia de serie. Cada botón del selector lleva `name` = id de la serie.
+- Macro: `price_explorer(key, payload, title="Evolución de precios", selected=None, linked_chart=None)`. Con `linked_chart="returns_matrix"` añade `data-linked-chart="chart-returns_matrix"` a la sección. Al cambiar el activo del explorador, `charts.js` activa en la matriz el botón cuyo `name` es ese ticker (si existe).
+- Ubicación: la matriz va con `plotly_chart("returns_matrix", …, "Matriz de rendimientos históricos")` justo debajo del explorador de precios. En HRP y BL va en la sección «Evolución de precios»; en Mercado › Portafolio, en la tarjeta de precios. El heatmap `monthly_heatmap` del análisis histórico se mantiene.
 
 ## Pruebas
 - Ningún test accede a la red. Cada módulo actualiza sus tests: se pueden adaptar las aserciones de marcado HTML (orden de atributos, textos) al nuevo diseño, siempre que se mantenga la intención (que el valor, el resultado o el error se muestren).
