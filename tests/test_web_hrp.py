@@ -309,7 +309,7 @@ class HrpPageTests(WebTestCase):
         self.assertEqual(list(series), [PORTFOLIO_SERIES, "SPY", *allocation])
         self.assertEqual(names[PORTFOLIO_SERIES], "Portafolio HRP")
         self.assertEqual(names["AAPL"], "Apple (AAPL)")
-        self.assertEqual(names["SPY"], "SPY")
+        self.assertEqual(names["SPY"], "S&P 500 (SPY)")
         self.assertEqual(len(series["BTC-USD"]), len(series["AAPL"]) - 5)
         self.assertNotIn("returns_matrix", result["charts"])
 

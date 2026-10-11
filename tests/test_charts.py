@@ -128,6 +128,7 @@ class HistoricalChartsTests(PayloadAssertions):
         self.assertEqual(figure["data"][0]["zmid"], 0)
         self.assertEqual(len(figure["data"][0]["x"]), 12)
         self.assertEqual(figure["data"][1]["x"], ["Año"])
+        self.assertEqual(figure["data"][1]["xaxis"], "x2")
         self.assertEqual(figure["data"][0]["texttemplate"], "%{z:.1%}")
 
     def test_rolling_sharpe_needs_enough_history(self) -> None:
@@ -318,7 +319,8 @@ class ReturnsMatrixChartTests(PayloadAssertions):
         yaxis = figure["layout"]["yaxis"]
         self.assertEqual(yaxis["autorange"], "reversed")
         self.assertEqual(yaxis["categoryarray"], years)
-        self.assertEqual(figure["layout"]["xaxis"]["categoryarray"], [*charts.MONTHS, "Año"])
+        self.assertEqual(figure["layout"]["xaxis"]["categoryarray"], list(charts.MONTHS))
+        self.assertEqual(figure["layout"]["xaxis2"]["type"], "category")
         self.assertEqual(figure["layout"]["height"], max(180, 36 * 3 + 80) + 36)
 
     def test_dropdown_buttons_carry_series_id_and_display_name(self) -> None:

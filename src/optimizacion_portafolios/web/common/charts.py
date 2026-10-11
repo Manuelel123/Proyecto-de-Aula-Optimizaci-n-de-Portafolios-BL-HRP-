@@ -462,6 +462,7 @@ def _heatmap_pair(
         go.Heatmap(
             z=[[value] for value in _none_list(year_values)],
             x=["Año"],
+            xaxis="x2",
             zmin=-year_bound,
             zmax=year_bound,
             name=year_name,
@@ -472,12 +473,15 @@ def _heatmap_pair(
 
 
 def _matrix_axes(figure: go.Figure, years: list[str] | None = None) -> None:
-    figure.update_xaxes(
-        type="category",
-        side="top",
-        showgrid=False,
-        categoryorder="array",
-        categoryarray=[*MONTHS, "Año"],
+    """Months on ``xaxis`` and the "Año" column on its own ``xaxis2``.
+
+    A one-column heatmap sharing the months' category axis is drawn far to the
+    right by Plotly, so the yearly column gets a narrow axis of its own.
+    """
+    common = {"type": "category", "side": "top", "showgrid": False, "fixedrange": True}
+    figure.update_layout(
+        xaxis={**common, "domain": [0, 0.905], "categoryorder": "array", "categoryarray": list(MONTHS)},
+        xaxis2={**common, "domain": [0.925, 1], "anchor": "y"},
     )
     extra = {"categoryorder": "array", "categoryarray": years} if years is not None else {}
     figure.update_yaxes(type="category", autorange="reversed", showgrid=False, **extra)

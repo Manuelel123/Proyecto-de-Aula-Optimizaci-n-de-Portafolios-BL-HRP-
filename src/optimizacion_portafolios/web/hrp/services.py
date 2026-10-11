@@ -12,6 +12,7 @@ from optimizacion_portafolios.analytics.performance import (
     generate_tearsheet,
 )
 from optimizacion_portafolios.analytics.volatility import calculate_monthly_volatility
+from optimizacion_portafolios.data.catalogs import BENCHMARKS
 from optimizacion_portafolios.data.market_data import download_prices
 from optimizacion_portafolios.models.hrp import (
     WeightBounds,
@@ -44,6 +45,7 @@ _QUANTSTATS_SORTINO_LABEL = (
     "Ratio de Sortino (QuantStats · días comunes con el benchmark)"
 )
 _TOLERANCE = 1e-9
+_BENCHMARK_LABELS = {ticker: label for label, ticker in BENCHMARKS.items()}
 
 
 @dataclass(frozen=True)
@@ -152,7 +154,7 @@ def _returns_matrix(run: HrpRun, benchmark: str, chart_names: dict[str, str]):
     names = {PORTFOLIO_SERIES: _PORTFOLIO_COLUMN, **chart_names}
     if benchmark not in run.weights.index:
         series[benchmark] = _daily_returns(run.benchmark_prices)
-        names[benchmark] = benchmark
+        names[benchmark] = _BENCHMARK_LABELS.get(benchmark, benchmark)
     for ticker in run.weights.sort_values(ascending=False).index:
         series[ticker] = _daily_returns(run.raw_prices[ticker])
     return returns_matrix_chart(series, names)
