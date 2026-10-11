@@ -36,6 +36,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
 def _register_blueprints(app: Flask) -> None:
     from optimizacion_portafolios.web.black_litterman import bp as black_litterman_bp
+    from optimizacion_portafolios.web.history import bp as history_bp
     from optimizacion_portafolios.web.hrp import bp as hrp_bp
     from optimizacion_portafolios.web.main import bp as main_bp
     from optimizacion_portafolios.web.monitoring import bp as monitoring_bp
@@ -44,6 +45,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(monitoring_bp)
     app.register_blueprint(hrp_bp)
     app.register_blueprint(black_litterman_bp)
+    app.register_blueprint(history_bp)
 
 
 def _register_csrf_protection(app: Flask) -> None:

@@ -12,6 +12,7 @@ from optimizacion_portafolios.analytics.performance import (
     generate_tearsheet,
 )
 from optimizacion_portafolios.analytics.volatility import calculate_monthly_volatility
+from optimizacion_portafolios.data.catalogs import BENCHMARKS
 from optimizacion_portafolios.data.market_data import download_prices
 from optimizacion_portafolios.models.hrp import (
     WeightBounds,
@@ -19,12 +20,14 @@ from optimizacion_portafolios.models.hrp import (
     optimize_hrp,
 )
 from optimizacion_portafolios.web.common.charts import (
+    PORTFOLIO_SERIES,
     allocation_chart,
     contribution_chart,
     correlation_heatmap,
     dendrogram_chart,
     historical_charts,
     returns_box_chart,
+    returns_matrix_chart,
     volatility_histogram_chart,
 )
 from optimizacion_portafolios.web.common.price_series import price_series_payload
@@ -42,6 +45,7 @@ _QUANTSTATS_SORTINO_LABEL = (
     "Ratio de Sortino (QuantStats · días comunes con el benchmark)"
 )
 _TOLERANCE = 1e-9
+_BENCHMARK_LABELS = {ticker: label for label, ticker in BENCHMARKS.items()}
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,27 @@ def asset_name(ticker: str, label: str | None) -> str:
     return name if name and name != ticker else "—"
 
 
+def _daily_returns(prices: pd.Series) -> pd.Series:
+    """Daily simple returns of one asset over its own quotes (no ffill)."""
+    return prices.dropna().pct_change(fill_method=None).dropna()
+
+
+def _returns_matrix(run: HrpRun, benchmark: str, chart_names: dict[str, str]):
+    """Returns matrix: portfolio, benchmark (unless it is an asset), assets.
+
+    Assets follow the allocation order (weight, descending) and use their own
+    price history, so different start dates and crypto weekends are kept.
+    """
+    series = {PORTFOLIO_SERIES: run.returns.dot(run.weights)}
+    names = {PORTFOLIO_SERIES: _PORTFOLIO_COLUMN, **chart_names}
+    if benchmark not in run.weights.index:
+        series[benchmark] = _daily_returns(run.benchmark_prices)
+        names[benchmark] = _BENCHMARK_LABELS.get(benchmark, benchmark)
+    for ticker in run.weights.sort_values(ascending=False).index:
+        series[ticker] = _daily_returns(run.raw_prices[ticker])
+    return returns_matrix_chart(series, names)
+
+
 def has_weight_limits(bounds: WeightBounds) -> bool:
     """True when the bounds differ from the unconstrained 0 %–100 % default."""
     return bool(
@@ -176,6 +201,12 @@ def run_hrp(
     """Optimize the portfolio and return everything the HRP page renders.
 
     ``labels`` maps tickers to catalog labels (e.g. "AAPL" -> "Apple (AAPL)").
+    ``charts`` keys: ``allocation``, the historical charts (``cumulative``,
+    ``drawdown``, ``monthly_heatmap``, ``rolling_sharpe``,
+    ``returns_distribution``, ``yearly_returns``), ``correlation``,
+    ``dendrogram``, ``risk_contribution``, ``return_contribution``,
+    ``monthly_volatility``, ``returns_box`` and ``returns_matrix`` (portfolio,
+    benchmark and assets); keys without data are omitted.
     """
     bounds = bounds or WeightBounds()
     labels = labels or {}
@@ -225,6 +256,7 @@ def run_hrp(
             else None
         ),
         "returns_box": returns_box_chart(returns),
+        "returns_matrix": _returns_matrix(run, benchmark, chart_names),
     }
     risk_shares = contributions["Contribución al riesgo"]
     top_risk = str(risk_shares.idxmax()) if risk_shares.notna().any() else None

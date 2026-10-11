@@ -152,7 +152,7 @@
           {% endfor %}
           <div class="metric-card metric-card--compact"><span class="metric-card__label">Rango de precio · 52 semanas</span><strong class="metric-card__value">{{ company.annual_range }}</strong></div>
         </div>
-        {{ price_explorer("fundamental", company.prices_payload, "Precio del último año") }}
+        {{ price_explorer("fundamental", company.prices_payload, "Precio del último año", history_url=url_for("history.asset_history")) }}
         <article class="card">
           <header class="card__header"><h2 class="card__title">Indicadores financieros</h2></header>
           <div class="card__body"><div class="data-table-wrap">{{ company.table|safe }}</div></div>
@@ -175,7 +175,15 @@
             <p class="card__subtitle">Precios de cierre ajustados por activo, sin rellenar días sin cotización.</p>
           </header>
           <div class="card__body">
-            {{ price_explorer("monitoring", result.prices_payload) }}
+            {% if result.view == 'portfolio' %}
+              {{ price_explorer("monitoring", result.prices_payload, linked_chart="returns_matrix", history_url=url_for("history.asset_history")) }}
+              {% if result.charts.returns_matrix %}
+                {{ plotly_chart("returns_matrix", result.charts.returns_matrix, "Matriz de rendimientos históricos", subtitle="Rendimiento mensual compuesto y anual · elige portafolio o activo") }}
+                <p class="help-text">El portafolio es equiponderado: todos los activos pesan lo mismo y se rebalancea a diario sobre los días comunes de cotización.</p>
+              {% endif %}
+            {% else %}
+              {{ price_explorer("monitoring", result.prices_payload, history_url=url_for("history.asset_history")) }}
+            {% endif %}
             <details>
               <summary>Ver datos recientes</summary>
               <div class="data-table-wrap">{{ result.tables.prices|safe }}</div>

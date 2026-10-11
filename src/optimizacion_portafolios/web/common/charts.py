@@ -15,6 +15,7 @@ Spanish hover texts with exact values, categorical colors assigned by the order
 in which the tickers are received (never by rank).
 """
 
+import html
 from collections.abc import Iterable
 from math import isfinite, sqrt
 
@@ -31,6 +32,8 @@ MONTHS = ("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", 
 MONO_FONT = "JetBrains Mono, ui-monospace, monospace"
 DATE_HOVER = "%d %b %Y"
 BAR_ROW_HEIGHT = 28
+PORTFOLIO_SERIES = "__portfolio__"
+MATRIX_COMPACT_YEARS = 15
 
 
 def figure_payload(figure: go.Figure) -> Markup:
@@ -389,11 +392,14 @@ def drawdown_chart(portfolio: pd.Series) -> Markup | None:
     return figure_payload(figure)
 
 
-def monthly_returns_heatmap(portfolio: pd.Series) -> Markup | None:
-    """Year × month heatmap of compounded monthly returns plus a yearly column."""
-    monthly = _compound_monthly(portfolio)
+def _returns_table(returns: pd.Series | None) -> tuple[pd.DataFrame, pd.Series]:
+    """Compounded returns by (year × month 1..12) and by calendar year.
+
+    Empty frame/series when there is no usable data. Missing months are NaN.
+    """
+    monthly = _compound_monthly(returns)
     if monthly.empty:
-        return None
+        return pd.DataFrame(columns=range(1, 13), dtype=float), pd.Series(dtype=float)
     table = (
         monthly.groupby([monthly.index.year, monthly.index.month])
         .first()
@@ -401,9 +407,36 @@ def monthly_returns_heatmap(portfolio: pd.Series) -> Markup | None:
         .reindex(columns=range(1, 13))
     )
     yearly = monthly.groupby(monthly.index.year).apply(lambda values: (1 + values).prod() - 1)
+    return table, yearly
+
+
+def _symmetric_bound(values) -> float:
+    """Largest absolute finite value (color bound around 0), 0.01 when there is none."""
+    array = np.abs(np.asarray(values, dtype=float))
+    array = array[np.isfinite(array)]
+    return float(array.max()) if array.size and array.max() > 0 else 0.01
+
+
+def _heatmap_pair(
+    table: pd.DataFrame,
+    yearly: pd.Series,
+    *,
+    month_hover: str,
+    year_hover: str,
+    month_name: str = "Mes",
+    year_name: str = "Año",
+    visible: bool = True,
+) -> list[go.Heatmap]:
+    """Month grid + separate "Año" column, each with its own symmetric bound.
+
+    ``table`` rows are the years (in the order drawn), columns months 1..12;
+    ``yearly`` is reindexed to the same years. NaN cells become gaps.
+    """
     years = [str(year) for year in table.index]
-    month_bound = float(np.nanmax(np.abs(table.to_numpy(dtype=float)))) or 0.01
-    year_bound = float(np.nanmax(np.abs(yearly.to_numpy(dtype=float)))) or 0.01
+    month_values = table.to_numpy(dtype=float)
+    year_values = yearly.reindex(table.index).to_numpy(dtype=float)
+    month_bound = _symmetric_bound(month_values)
+    year_bound = _symmetric_bound(year_values)
     common = {
         "y": years,
         "zmid": 0,
@@ -415,41 +448,150 @@ def monthly_returns_heatmap(portfolio: pd.Series) -> Markup | None:
         "texttemplate": "%{z:.1%}",
         "textfont": {"size": 11},
     }
-    figure = _figure(
-        height=max(180, 36 * len(years) + 80),
-        showlegend=False,
-        margin={"l": 48, "r": 8, "t": 28, "b": 12},
-    )
-    figure.add_trace(
+    if not visible:
+        common["visible"] = False
+    return [
         go.Heatmap(
-            z=[_none_list(row) for row in table.to_numpy(dtype=float)],
+            z=[_none_list(row) for row in month_values],
             x=list(MONTHS),
             zmin=-month_bound,
             zmax=month_bound,
-            name="Mes",
-            hovertemplate="%{x} %{y}: %{z:.2%}<extra></extra>",
+            name=month_name,
+            hovertemplate=month_hover,
             **common,
-        )
-    )
-    figure.add_trace(
+        ),
         go.Heatmap(
-            z=[[value] for value in _none_list(yearly.reindex(table.index))],
+            z=[[value] for value in _none_list(year_values)],
             x=["Año"],
+            xaxis="x2",
             zmin=-year_bound,
             zmax=year_bound,
-            name="Año",
-            hovertemplate="Año %{y}: %{z:.2%}<extra></extra>",
+            name=year_name,
+            hovertemplate=year_hover,
             **common,
-        )
+        ),
+    ]
+
+
+def _matrix_axes(figure: go.Figure, years: list[str] | None = None) -> None:
+    """Months on ``xaxis`` and the "Año" column on its own ``xaxis2``.
+
+    A one-column heatmap sharing the months' category axis is drawn far to the
+    right by Plotly, so the yearly column gets a narrow axis of its own.
+    """
+    common = {"type": "category", "side": "top", "showgrid": False, "fixedrange": True}
+    figure.update_layout(
+        xaxis={**common, "domain": [0, 0.905], "categoryorder": "array", "categoryarray": list(MONTHS)},
+        xaxis2={**common, "domain": [0.925, 1], "anchor": "y"},
     )
-    figure.update_xaxes(
-        type="category",
-        side="top",
-        showgrid=False,
-        categoryorder="array",
-        categoryarray=[*MONTHS, "Año"],
+    extra = {"categoryorder": "array", "categoryarray": years} if years is not None else {}
+    figure.update_yaxes(type="category", autorange="reversed", showgrid=False, **extra)
+
+
+def monthly_returns_heatmap(portfolio: pd.Series) -> Markup | None:
+    """Year × month heatmap of compounded monthly returns plus a yearly column."""
+    table, yearly = _returns_table(portfolio)
+    if table.empty:
+        return None
+    figure = _figure(
+        height=max(180, 36 * len(table.index) + 80),
+        showlegend=False,
+        margin={"l": 48, "r": 8, "t": 28, "b": 12},
     )
-    figure.update_yaxes(type="category", autorange="reversed", showgrid=False)
+    for trace in _heatmap_pair(
+        table,
+        yearly,
+        month_hover="%{x} %{y}: %{z:.2%}<extra></extra>",
+        year_hover="Año %{y}: %{z:.2%}<extra></extra>",
+    ):
+        figure.add_trace(trace)
+    _matrix_axes(figure)
+    return figure_payload(figure)
+
+
+def _hover_text(text: str) -> str:
+    """Literal text for a hovertemplate (pseudo-HTML escaped, no %{…} placeholders)."""
+    return html.escape(text, quote=False).replace("%{", "%&#123;")
+
+
+def returns_matrix_chart(
+    series: dict[str, pd.Series],
+    names: dict[str, str] | None = None,
+) -> Markup | None:
+    """Historical returns matrix (year × month + yearly column) per series.
+
+    ``series`` maps an id (ticker, or ``PORTFOLIO_SERIES`` for the portfolio)
+    to its *daily* simple returns, in display order; the first one with data
+    is shown first. ``names`` maps ids to display labels (default: the id, and
+    "Portafolio" for ``PORTFOLIO_SERIES``). Series without data are skipped;
+    ``None`` when none has data.
+
+    Two heatmap traces per series (months, then the "Año" column; ``meta`` =
+    series id), only the selected pair visible. Every series has its own
+    symmetric color bounds (months and "Año" separately) so low-volatility
+    assets keep contrast. Rows are the union of the years of every series,
+    most recent on top; months without data are gaps. With two or more series
+    an in-figure dropdown switches between them: each button has ``name`` =
+    series id and ``label`` = display name (``data-linked-chart`` matches
+    ``name``).
+    """
+    names = names or {}
+    tables: list[tuple[str, str, pd.DataFrame, pd.Series]] = []
+    for key, values in (series or {}).items():
+        table, yearly = _returns_table(values)
+        if table.empty:
+            continue
+        series_id = str(key)
+        default = "Portafolio" if series_id == PORTFOLIO_SERIES else series_id
+        label = str(names.get(key, names.get(series_id, default)))
+        tables.append((series_id, label, table, yearly))
+    if not tables:
+        return None
+
+    all_years = sorted({int(year) for _, _, table, _ in tables for year in table.index}, reverse=True)
+    years = [str(year) for year in all_years]
+    has_menu = len(tables) > 1
+    margin_top = 64 if has_menu else 28
+    # Long full histories (decades) use shorter rows so the matrix stays readable.
+    row_height = 36 if len(years) <= MATRIX_COMPACT_YEARS else 24
+    height = max(180, row_height * len(years) + 80) + (margin_top - 28)
+    figure = _figure(
+        height=height,
+        showlegend=False,
+        hovermode="closest",
+        margin={"l": 48, "r": 8, "t": margin_top, "b": 12},
+    )
+    for position, (series_id, label, table, yearly) in enumerate(tables):
+        text = _hover_text(label)
+        for trace in _heatmap_pair(
+            table.reindex(all_years),
+            yearly,
+            month_hover=f"{text} · %{{x}} %{{y}}: %{{z:.2%}}<extra></extra>",
+            year_hover=f"{text} · Año %{{y}}: %{{z:.2%}}<extra></extra>",
+            month_name=label,
+            year_name=f"{label} · Año",
+            visible=position == 0,
+        ):
+            trace.meta = series_id
+            figure.add_trace(trace)
+
+    if has_menu:
+        count = 2 * len(tables)
+        buttons = [
+            {
+                "name": series_id,
+                "label": label,
+                "method": "update",
+                "args": [{"visible": [index // 2 == position for index in range(count)]}, {}],
+            }
+            for position, (series_id, label, _, _) in enumerate(tables)
+        ]
+        menus = _selector_menu(buttons, 0)
+        # The month labels sit on top of the plot: lift the menu ~26px above it.
+        plot_height = height - margin_top - 12
+        menus[0].update({"y": 1 + 26 / plot_height, "yanchor": "bottom", "pad": {"t": 0, "b": 0}})
+        figure.update_layout(updatemenus=menus)
+    _matrix_axes(figure, years)
     return figure_payload(figure)
 
 

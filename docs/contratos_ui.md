@@ -76,14 +76,29 @@ Acuerdos compartidos entre los módulos del frontend. Especificaciones de refere
 - `web/common/charts.py`: cada función pública devuelve `Markup` (JSON de Plotly, ya escapado para `<script>`) o `None` si no hay datos. Firmas fijas, documentadas en el módulo:
   - `allocation_chart`, `cumulative_returns_chart`, `drawdown_chart`, `monthly_returns_heatmap`, `rolling_sharpe_chart`, `returns_distribution_chart`, `yearly_returns_chart`;
   - `historical_charts(portfolio, benchmark, rolling_period) -> (dict, bool)`;
-  - `correlation_heatmap`, `dendrogram_chart`, `contribution_chart`, `volatility_histogram_chart`, `returns_box_chart`, `prior_posterior_chart`, `period_volatility_chart`.
+  - `correlation_heatmap`, `dendrogram_chart`, `contribution_chart`, `volatility_histogram_chart`, `returns_box_chart`, `prior_posterior_chart`, `period_volatility_chart`, `returns_matrix_chart`.
 - `web/common/price_series.py::price_series_payload(raw_prices, names=None, benchmark=None) -> Markup | None` con el formato columnar documentado en el módulo. Usar precios sin `ffill` entre activos.
-- Claves estables de `result["charts"]`: `allocation`, `cumulative`, `drawdown`, `monthly_heatmap`, `rolling_sharpe`, `returns_distribution`, `yearly_returns`, `correlation`, `dendrogram`, `risk_contribution`, `return_contribution`, `monthly_volatility`, `returns_box`, `prior_posterior`, `posterior_correlation`, `period_volatility`. Además `result["prices_payload"]`.
+- Claves estables de `result["charts"]`: `allocation`, `cumulative`, `drawdown`, `monthly_heatmap`, `rolling_sharpe`, `returns_distribution`, `yearly_returns`, `correlation`, `dendrogram`, `risk_contribution`, `return_contribution`, `monthly_volatility`, `returns_box`, `prior_posterior`, `posterior_correlation`, `period_volatility`, `returns_matrix`. Además `result["prices_payload"]`.
 - Macros de `macros/charts.html`:
   - `plotly_chart(key, payload, title, height=360, subtitle=None)` genera `[data-plotly="chart-<key>"]` + `<script id="chart-<key>">`. Si el payload es `None`, no dibuja nada.
   - `price_explorer(key, payload, title)` genera `[data-price-explorer="prices-<key>"]`.
   - Los `key` deben ser únicos en la página.
 - `charts.js` dibuja lo visible al cargar. Para lo que está dentro de un `details` cerrado, dibuja al abrirlo (`toggle`) y nunca sobre contenedores ocultos. Aplica colores de tema desde las variables CSS.
+
+### Matriz de rendimientos históricos (`returns_matrix`)
+- `returns_matrix_chart(series: dict[str, pd.Series], names: dict[str, str] | None = None) -> Markup | None`.
+  - `series`: id → retornos **diarios** simples, en orden de presentación. Ids: `PORTFOLIO_SERIES` (`"__portfolio__"`, constante de `charts.py`) para el portafolio, el ticker del benchmark y los tickers de los activos.
+  - Orden en HRP/BL: portafolio, benchmark (si no es también un activo) y activos en el orden de la asignación. En Mercado › Portafolio: portafolio equiponderado (rebalanceo diario, etiqueta «Portafolio equiponderado») y los activos.
+  - Figura: filas = años (más reciente arriba), columnas = Ene…Dic + «Año», celdas con el retorno compuesto en % (1 decimal; hover con 2 decimales y el nombre de la serie), escala divergente `RETURNS_SCALE` centrada en 0. Un selector dentro de la figura cambia de serie. Cada botón del selector lleva `name` = id de la serie.
+  - Detalles: se omiten las series sin datos (`None` si no queda ninguna); se muestra primero la primera serie con datos; con una sola serie no hay selector. Botón: `name` = id, `label` = `names.get(id, id)` («Portafolio» por defecto para `PORTFOLIO_SERIES`). Dos trazas heatmap por serie (meses y columna «Año», `meta` = id), cada serie con su propia escala simétrica. Filas = unión de años de todas las series; los meses sin datos quedan como huecos.
+- Macro: `price_explorer(key, payload, title="Evolución de precios", selected=None, linked_chart=None)`. Con `linked_chart="returns_matrix"` añade `data-linked-chart="chart-returns_matrix"` a la sección. Al cambiar el activo del explorador, `charts.js` activa en la matriz el botón cuyo `name` es ese ticker (si existe).
+- Ubicación: la matriz va con `plotly_chart("returns_matrix", …, "Matriz de rendimientos históricos")` justo debajo del explorador de precios. En HRP y BL va en la sección «Evolución de precios»; en Mercado › Portafolio, en la tarjeta de precios. El heatmap `monthly_heatmap` del análisis histórico se mantiene.
+
+### Historial completo por activo
+- Endpoint `GET /api/historial?ticker=<TICKER>` (blueprint `web/history`): descarga todos los precios disponibles desde `FULL_HISTORY_START` (1900-01-01; Yahoo devuelve desde la primera cotización). Respuesta JSON: `ticker`, `name`, `start`, `end`, `observations`, `years`, `prices` (una entrada del explorador: `ticker`, `name`, `time`, `value`) y `matrix` (figura de `returns_matrix_chart` con una sola serie). Errores en `{"error": …}`: 400 si el ticker no es válido, 404 si no hay datos, 503 si Yahoo limita las consultas y 502 para otros fallos. Usa la caché de precios de 15 minutos.
+- Macro: `price_explorer(..., history_url=None)`. Con `history_url` se añaden `data-history-url`, el interruptor «Periodo del análisis / Historial completo» (`[data-history-mode]`) y una línea de estado (`[data-history-status]`).
+- `charts.js`: en modo completo se descarga a demanda el historial del activo seleccionado (con caché por ticker en la página), se pone el rango en «Máx», se desactiva «Base 100» (el benchmark solo cubre el periodo del análisis) y, si hay `data-linked-chart`, la matriz se sustituye por la del historial completo. Al volver al periodo del análisis se restauran la figura original y la selección del activo.
+- La matriz usa filas de 24 px cuando hay más de `MATRIX_COMPACT_YEARS` (15) años.
 
 ## Pruebas
 - Ningún test accede a la red. Cada módulo actualiza sus tests: se pueden adaptar las aserciones de marcado HTML (orden de atributos, textos) al nuevo diseño, siempre que se mantenga la intención (que el valor, el resultado o el error se muestren).

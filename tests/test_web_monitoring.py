@@ -98,6 +98,67 @@ class MonitoringPageTests(WebTestCase):
         self.assertEqual(lengths, {"AAPL": len(prices) - 1, "BTC-USD": len(prices)})
 
     @patch(f"{_SERVICES}.download_prices")
+    def test_portfolio_view_renders_returns_matrix_in_prices_card(self, download) -> None:
+        download.return_value = make_prices(("AAPL", "MSFT"))
+        response = self.post(
+            "/monitoring",
+            action="analyze",
+            view="portfolio",
+            universe="Portafolio actual",
+            start_date="2024-01-01",
+            tickers=["AAPL", "MSFT"],
+            custom_tickers="",
+        )
+        html = response.data
+        self.assertEqual(response.status_code, 200)
+        card = html.split("Evolución de precios ajustados".encode(), 1)[1]
+        card = card.split(b"</article>", 1)[0]
+        self.assertIn(b'data-linked-chart="chart-returns_matrix"', card)
+        self.assertIn(b'<script type="application/json" id="chart-returns_matrix">', card)
+        self.assertIn("Matriz de rendimientos históricos".encode(), card)
+        self.assertIn("equiponderado".encode(), card)
+        self.assertLess(
+            card.index(b"data-price-explorer"),
+            card.index(b'data-plotly="chart-returns_matrix"'),
+        )
+        self.assertLess(
+            card.index(b'data-plotly="chart-returns_matrix"'),
+            card.index(b"Ver datos recientes"),
+        )
+
+    @patch(f"{_SERVICES}.returns_matrix_chart")
+    @patch(f"{_SERVICES}.download_prices")
+    def test_returns_matrix_series_are_equal_weight_portfolio_and_assets(
+        self, download, matrix
+    ) -> None:
+        from datetime import date
+
+        from optimizacion_portafolios.web.common.charts import PORTFOLIO_SERIES
+        from optimizacion_portafolios.web.monitoring.services import (
+            build_price_analysis,
+        )
+
+        prices = make_prices(("AAPL", "BTC-USD"))
+        prices.iloc[5, 0] = float("nan")
+        download.return_value = prices
+        matrix.return_value = None
+        build_price_analysis("portfolio", ["AAPL", "BTC-USD"], date(2024, 1, 1), "Mensual")
+        series, names = matrix.call_args.args
+        self.assertEqual(list(series), [PORTFOLIO_SERIES, "AAPL", "BTC-USD"])
+        self.assertEqual(names[PORTFOLIO_SERIES], "Portafolio equiponderado")
+        # Each asset keeps its own history (no forward fill).
+        self.assertEqual(len(series["AAPL"]), len(prices) - 2)
+        self.assertEqual(len(series["BTC-USD"]), len(prices) - 1)
+        aligned = prices.ffill().pct_change(fill_method=None).dropna()
+        self.assertAlmostEqual(
+            float(series[PORTFOLIO_SERIES].iloc[-1]), float(aligned.iloc[-1].mean())
+        )
+
+        matrix.reset_mock()
+        build_price_analysis("options", ["AAPL", "BTC-USD"], date(2024, 1, 1), "Mensual")
+        matrix.assert_not_called()
+
+    @patch(f"{_SERVICES}.download_prices")
     def test_options_view_renders_period_volatility(self, download) -> None:
         download.return_value = make_prices(("UEC", "EQT"))
         response = self.post(
@@ -117,6 +178,8 @@ class MonitoringPageTests(WebTestCase):
         self.assertIn(b'data-plotly="chart-period_volatility"', volatility)
         self.assertIn(b'data-plotly="chart-period_volatility_distribution"', volatility)
         self.assertIn(b'data-price-explorer="prices-monitoring"', html)
+        self.assertNotIn(b"data-linked-chart", html)
+        self.assertNotIn(b"chart-returns_matrix", html)
         self.assertNotIn(b"data:image/png", html)
 
     def test_get_renders_view_tabs_and_steps(self) -> None:
@@ -198,6 +261,8 @@ class MonitoringPageTests(WebTestCase):
         self.assertIn(b'class="kpi-grid"', html)
         self.assertIn("Capitalización bursátil".encode(), html)
         self.assertIn(b'data-price-explorer="prices-fundamental"', html)
+        self.assertNotIn(b"data-linked-chart", html)
+        self.assertNotIn(b"chart-returns_matrix", html)
         fetch_info.assert_called_once_with("AAPL")
 
     @patch(f"{_SERVICES}.download_prices", side_effect=ValueError("sin red"))

@@ -24,8 +24,10 @@ from optimizacion_portafolios.data.market_data import (
     fetch_fundamental_information,
 )
 from optimizacion_portafolios.web.common.charts import (
+    PORTFOLIO_SERIES,
     period_volatility_chart,
     returns_box_chart,
+    returns_matrix_chart,
     volatility_histogram_chart,
 )
 from optimizacion_portafolios.web.common.price_series import price_series_payload
@@ -39,6 +41,7 @@ logger = logging.getLogger(__name__)
 _RECENT_ROWS = 60
 # Realized monthly volatility uses the last 21 sessions.
 _MONTH_SESSIONS = 21
+_EQUAL_WEIGHT_LABEL = "Portafolio equiponderado"
 
 _FUNDAMENTAL_METRICS = (
     ("Capitalización bursátil", "marketCap", "billions"),
@@ -179,6 +182,27 @@ def build_fundamental_analysis(ticker: str) -> dict | None:
     }
 
 
+def _returns_matrix(
+    returns: pd.DataFrame, raw_prices: pd.DataFrame, names: dict[str, str]
+):
+    """Returns matrix: equal-weight portfolio (daily rebalancing) and assets.
+
+    The portfolio averages the aligned daily returns; each asset uses its own
+    price history (no ffill across assets).
+    """
+    aligned = returns.dropna()
+    series = {}
+    if not aligned.empty:
+        series[PORTFOLIO_SERIES] = aligned.mean(axis="columns")
+    for ticker in returns.columns:
+        series[ticker] = (
+            raw_prices[ticker].dropna().pct_change(fill_method=None).dropna()
+        )
+    return returns_matrix_chart(
+        series, {**names, PORTFOLIO_SERIES: _EQUAL_WEIGHT_LABEL}
+    )
+
+
 def build_price_analysis(
     view: str,
     tickers: list[str],
@@ -192,7 +216,8 @@ def build_price_analysis(
 
     Keys: ``view``, ``prices_payload`` (price explorer JSON built from the raw,
     non forward-filled prices), ``charts`` (``returns_box``; plus
-    ``monthly_volatility`` in the portfolio view or ``period_volatility`` and
+    ``monthly_volatility`` and ``returns_matrix`` (equal-weight portfolio with
+    daily rebalancing, then each asset) in the portfolio view or ``period_volatility`` and
     ``period_volatility_distribution`` in the options view), ``tables``
     (``prices``, ``returns``, ``expected``, ``statistics``, ``volatility``),
     ``tickers``, ``missing`` (requested tickers without data), ``start``,
@@ -266,6 +291,9 @@ def build_price_analysis(
         tables["volatility"] = dataframe_html(
             current_vol.rename("Volatilidad mensual actual").to_frame(),
             {"Volatilidad mensual actual": format_percent},
+        )
+        charts["returns_matrix"] = _returns_matrix(
+            returns, raw_prices, asset_names()
         )
     return {
         "view": view,
