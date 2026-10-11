@@ -10,6 +10,7 @@ from skfolio.cluster import HierarchicalClustering
 from skfolio.distance import PearsonDistance
 
 from optimizacion_portafolios.analytics.volatility import calculate_monthly_volatility
+from optimizacion_portafolios.web import create_app
 from optimizacion_portafolios.web.common import chart_theme, charts
 from optimizacion_portafolios.web.common.price_series import price_series_payload
 from support import make_prices
@@ -270,6 +271,139 @@ class PriorPosteriorChartTests(PayloadAssertions):
         self.assertEqual(figure["data"][-1]["y"], ["AAPL", "MSFT", "GLD"])
         self.assertEqual(figure["layout"]["hovermode"], "y unified")
         self.assertIsNone(charts.prior_posterior_chart(prior, views, pd.Series(dtype=float)))
+
+
+class ReturnsMatrixChartTests(PayloadAssertions):
+    def setUp(self) -> None:
+        # 2024-01-02 + 560 business days: 2024, 2025 and part of 2026.
+        self.returns = make_prices(("^GSPC", "BRK-B", "GLD"), rows=560).pct_change().dropna()
+        self.series = {
+            charts.PORTFOLIO_SERIES: self.returns.mean(axis=1),
+            "^GSPC": self.returns["^GSPC"],
+            # Shorter history: starts in 2025.
+            "BRK-B": self.returns["BRK-B"].loc["2025-03-01":],
+        }
+
+    def matrix(self, series=None, names=None) -> dict:
+        return self.assertSafePayload(charts.returns_matrix_chart(series or self.series, names))
+
+    @staticmethod
+    def visible(trace) -> bool:
+        return trace.get("visible", True) is True
+
+    def test_two_heatmaps_per_series_and_only_the_first_visible(self) -> None:
+        figure = self.matrix()
+        data = figure["data"]
+        self.assertEqual([trace["type"] for trace in data], ["heatmap"] * 6)
+        self.assertEqual([self.visible(trace) for trace in data], [True, True, False, False, False, False])
+        self.assertEqual([trace["meta"] for trace in data[::2]], [charts.PORTFOLIO_SERIES, "^GSPC", "BRK-B"])
+        for months, year in zip(data[::2], data[1::2]):
+            self.assertEqual(months["x"], list(charts.MONTHS))
+            self.assertEqual(year["x"], ["Año"])
+            self.assertEqual(months["zmid"], 0)
+            self.assertEqual(months["texttemplate"], "%{z:.1%}")
+            self.assertEqual(months["colorscale"], [list(stop) for stop in chart_theme.RETURNS_SCALE])
+            # Own symmetric bounds per series (months and year column separately).
+            self.assertEqual(months["zmin"], -months["zmax"])
+            self.assertEqual(year["zmin"], -year["zmax"])
+            month_values = [abs(value) for row in months["z"] for value in row if value is not None]
+            self.assertAlmostEqual(months["zmax"], max(month_values))
+        self.assertNotEqual(data[0]["zmax"], data[2]["zmax"])
+
+    def test_years_most_recent_on_top(self) -> None:
+        figure = self.matrix()
+        years = ["2026", "2025", "2024"]
+        for trace in figure["data"]:
+            self.assertEqual(trace["y"], years)
+        yaxis = figure["layout"]["yaxis"]
+        self.assertEqual(yaxis["autorange"], "reversed")
+        self.assertEqual(yaxis["categoryarray"], years)
+        self.assertEqual(figure["layout"]["xaxis"]["categoryarray"], [*charts.MONTHS, "Año"])
+        self.assertEqual(figure["layout"]["height"], max(180, 36 * 3 + 80) + 36)
+
+    def test_dropdown_buttons_carry_series_id_and_display_name(self) -> None:
+        figure = self.matrix(names={"^GSPC": "S&P 500"})
+        menus = figure["layout"]["updatemenus"]
+        self.assertEqual(len(menus), 1)
+        self.assertEqual(menus[0]["active"], 0)
+        buttons = menus[0]["buttons"]
+        self.assertEqual([button["name"] for button in buttons], [charts.PORTFOLIO_SERIES, "^GSPC", "BRK-B"])
+        self.assertEqual([button["label"] for button in buttons], ["Portafolio", "S&P 500", "BRK-B"])
+        for position, button in enumerate(buttons):
+            self.assertEqual(button["method"], "update")
+            visible = button["args"][0]["visible"]
+            self.assertEqual(visible, [index // 2 == position for index in range(6)])
+
+    def test_hover_texts_name_the_series(self) -> None:
+        figure = self.matrix(names={charts.PORTFOLIO_SERIES: "Portafolio equiponderado", "^GSPC": "S&P <500>"})
+        data = figure["data"]
+        self.assertEqual(
+            data[0]["hovertemplate"], "Portafolio equiponderado · %{x} %{y}: %{z:.2%}<extra></extra>"
+        )
+        self.assertEqual(data[1]["hovertemplate"], "Portafolio equiponderado · Año %{y}: %{z:.2%}<extra></extra>")
+        # Display names are escaped as literal hover text.
+        self.assertTrue(data[2]["hovertemplate"].startswith("S&amp;P &lt;500&gt; · %{x}"))
+        self.assertEqual(figure["layout"]["updatemenus"][0]["buttons"][0]["label"], "Portafolio equiponderado")
+
+    def test_shorter_series_and_missing_months_are_gaps(self) -> None:
+        series = dict(self.series)
+        gappy = self.returns["GLD"].copy()
+        gappy.loc["2024-05-01":"2024-06-30"] = np.nan
+        series["GLD"] = gappy
+        figure = self.matrix(series)
+        data = figure["data"]
+        brk_months, brk_year = data[4], data[5]
+        self.assertEqual(brk_months["y"][-1], "2024")
+        self.assertEqual(brk_months["z"][-1], [None] * 12)
+        self.assertEqual(brk_year["z"][-1], [None])
+        self.assertEqual(brk_months["z"][1][:2], [None, None])  # 2025: starts in March
+        self.assertIsNotNone(brk_months["z"][1][2])
+        self.assertFalse(brk_months["hoverongaps"])
+        gld_2024 = data[6]["z"][-1]
+        self.assertEqual(gld_2024[4:6], [None, None])
+        self.assertIsNotNone(gld_2024[3])
+
+    def test_single_series_has_no_dropdown(self) -> None:
+        figure = self.matrix({"^GSPC": self.returns["^GSPC"], "EMPTY": pd.Series(dtype=float)})
+        self.assertEqual(len(figure["data"]), 2)
+        self.assertFalse(figure["layout"].get("updatemenus"))
+        self.assertTrue(all(self.visible(trace) for trace in figure["data"]))
+        self.assertEqual(figure["layout"]["height"], max(180, 36 * 3 + 80))
+
+    def test_series_without_data_are_skipped_or_none(self) -> None:
+        self.assertIsNone(charts.returns_matrix_chart({}))
+        nan = pd.Series(np.nan, index=self.returns.index)
+        self.assertIsNone(charts.returns_matrix_chart({"A": nan, "B": pd.Series(dtype=float), "C": None}))
+        figure = self.matrix({"A": nan, "^GSPC": self.returns["^GSPC"], "GLD": self.returns["GLD"]})
+        names = [button["name"] for button in figure["layout"]["updatemenus"][0]["buttons"]]
+        self.assertEqual(names, ["^GSPC", "GLD"])
+        self.assertTrue(self.visible(figure["data"][0]))
+
+    def test_many_series(self) -> None:
+        tickers = tuple(f"T{index:02d}.X" for index in range(24))
+        returns = make_prices(tickers, rows=300).pct_change().dropna()
+        figure = self.matrix({ticker: returns[ticker] for ticker in tickers})
+        self.assertEqual(len(figure["data"]), 48)
+        self.assertEqual(sum(self.visible(trace) for trace in figure["data"]), 2)
+        self.assertEqual([button["name"] for button in figure["layout"]["updatemenus"][0]["buttons"]], list(tickers))
+
+
+class PriceExplorerMacroTests(unittest.TestCase):
+    def setUp(self) -> None:
+        app = create_app({"TESTING": True, "SECRET_KEY": "test-secret"})
+        self.macro = app.jinja_env.get_template("macros/charts.html").module.price_explorer
+        self.payload = price_series_payload(make_prices(("AAPL", "MSFT"), rows=40))
+
+    def test_linked_chart_attribute(self) -> None:
+        html = str(self.macro("main", self.payload, linked_chart="returns_matrix"))
+        self.assertIn('data-price-explorer="prices-main"', html)
+        self.assertIn('data-linked-chart="chart-returns_matrix"', html)
+
+    def test_backward_compatible_without_link(self) -> None:
+        html = str(self.macro("main", self.payload, "Precios", "MSFT"))
+        self.assertIn('data-selected="MSFT"', html)
+        self.assertNotIn("data-linked-chart", html)
+        self.assertEqual(str(self.macro("main", None, linked_chart="returns_matrix")).strip(), "")
 
 
 class PriceSeriesPayloadTests(unittest.TestCase):

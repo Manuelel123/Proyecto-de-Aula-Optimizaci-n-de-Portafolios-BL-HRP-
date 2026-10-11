@@ -5,6 +5,9 @@
  *   select[data-plotly-control="chart-<key>"]  optional external selector: its value is matched against the
  *                                              labels of the figure's first updatemenu (e.g. a ticker).
  *   [data-price-explorer="prices-<key>"]       Lightweight Charts explorer; JSON in <script id="prices-<key>">.
+ *   [data-linked-chart="chart-<key>"]          on the explorer: when the user picks an asset, the button of that
+ *                                              chart's first updatemenu whose ``name`` is the ticker is applied
+ *                                              (remembered and applied at render time if not drawn yet).
  *   [data-expand-all] / [data-collapse-all]    open / close every details.analysis-section of the page.
  *
  * Figures are serialized with the light-theme token hex values (web/common/chart_theme.py). Every known
@@ -180,19 +183,22 @@
     }
   }
 
-  function menuButton(el, value) {
+  /* Index of the first updatemenu button whose ``field`` ("label" by default, or "name") equals value. */
+  function menuButton(el, value, field) {
     var menus = (el.layout && el.layout.updatemenus) || [];
     if (!menus.length) { return -1; }
     var buttons = menus[0].buttons || [];
+    var key = field || "label";
     for (var i = 0; i < buttons.length; i += 1) {
-      if (String(buttons[i].label) === String(value)) { return i; }
+      if (buttons[i][key] !== undefined && String(buttons[i][key]) === String(value)) { return i; }
     }
     return -1;
   }
 
-  function selectMenuButton(el, value) {
-    var index = menuButton(el, value);
+  function selectMenuButton(el, value, field) {
+    var index = menuButton(el, value, field);
     if (index < 0) { return; }
+    if (((el.layout.updatemenus || [])[0] || {}).active === index) { return; }
     var args = el.layout.updatemenus[0].buttons[index].args || [];
     var map = palette();
     var layoutArgs = Object.assign({}, themed(args[1] || {}, map), { "updatemenus[0].active": index });
@@ -218,9 +224,11 @@
       el.on("plotly_relayout", function () { syncHeight(el, el.layout); });
       el.on("plotly_update", function () { syncHeight(el, el.layout); });
       var control = document.querySelector('select[data-plotly-control="' + el.dataset.plotly + '"]');
-      if (control && control.value) {
-        var active = ((el.layout.updatemenus || [])[0] || {}).active;
-        if (menuButton(el, control.value) !== active) { selectMenuButton(el, control.value); }
+      if (control && control.value) { selectMenuButton(el, control.value); }
+      var linked = el.dataset.plotlyLinked;
+      if (linked !== undefined) {
+        delete el.dataset.plotlyLinked;
+        selectMenuButton(el, linked, "name");
       }
     }, function () {
       el.dataset.plotlyState = "error";
@@ -543,6 +551,18 @@
     draw();
   }
 
+  /* Explorer -> linked Plotly chart: apply now if drawn, otherwise remember it for renderPlot. */
+  function followLinkedChart(chartId, ticker) {
+    var el = document.querySelector('[data-plotly="' + chartId + '"]');
+    if (!el || !ticker) { return; }
+    if (el.dataset.plotlyState === "rendered") {
+      delete el.dataset.plotlyLinked;
+      selectMenuButton(el, ticker, "name");
+    } else if (el.dataset.plotlyState !== "error") {
+      el.dataset.plotlyLinked = ticker;
+    }
+  }
+
   /* ------------------------------------------------------------------ wiring */
 
   function renderWithin(scope) {
@@ -583,6 +603,9 @@
     });
 
     document.addEventListener("change", function (event) {
+      var asset = event.target.closest && event.target.closest("select[data-price-asset]");
+      var explorer = asset && asset.closest("[data-linked-chart]");
+      if (explorer) { followLinkedChart(explorer.dataset.linkedChart, asset.value); return; }
       var control = event.target.closest && event.target.closest("select[data-plotly-control]");
       if (!control) { return; }
       var el = document.querySelector('[data-plotly="' + control.dataset.plotlyControl + '"]');
