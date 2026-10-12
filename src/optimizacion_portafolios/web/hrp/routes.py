@@ -19,11 +19,18 @@ from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
     normalize_ticker,
     parse_bounded_float,
+    parse_bounded_int,
     parse_optional_bounded_float,
     parse_start_date,
     selected_option,
     selected_tickers,
     universes_payload,
+)
+from optimizacion_portafolios.models.hrp_backtest import (
+    MIN_LOOKBACK,
+    VOL_HYSTERESIS,
+    BacktestConfig,
+    engine_ready,
 )
 from optimizacion_portafolios.web.hrp import bp
 from optimizacion_portafolios.web.hrp.services import (
@@ -45,6 +52,16 @@ for _label, _ticker in ACTIVOS_HRP.items():
 _DEFAULT_UNIVERSE = "Portafolio actual"
 _DEFAULT_MIN_WEIGHT = "0"
 _DEFAULT_MAX_WEIGHT = "100"
+# Backtest form fields (percentages typed in percent) and their defaults.
+BACKTEST_DEFAULTS = {
+    "bt_lookback": "252",
+    "bt_drift": "5",
+    "bt_vol_window": "63",
+    "bt_vol_threshold": "",
+    "bt_fees": "0.10",
+    "bt_slippage": "0.05",
+    "bt_init_cash": "10000",
+}
 
 
 def _percent_field(field: str, label: str, default: str) -> float:
@@ -88,6 +105,50 @@ def _weight_bounds(tickers: list[str]) -> WeightBounds:
         max_weight=_percent_field("max_weight", "peso máximo", _DEFAULT_MAX_WEIGHT),
         asset_min_weights=_asset_limits("min", "peso mínimo", tickers),
         asset_max_weights=_asset_limits("max", "peso máximo", tickers),
+    )
+
+
+def _backtest_config() -> BacktestConfig | None:
+    """Backtest parameters from the form, or ``None`` when it is disabled."""
+    if not request.form.get("backtest"):
+        return None
+    defaults = BACKTEST_DEFAULTS
+
+    def number(field, label, low, high, unit=""):
+        return parse_bounded_float(
+            field,
+            defaults[field],
+            low,
+            high,
+            f"{label} debe ser numérico.",
+            f"{label} debe estar entre {low:g}{unit} y {high:g}{unit}.",
+        )
+
+    def whole(field, label, low, high):
+        return parse_bounded_int(
+            field,
+            defaults[field],
+            low,
+            high,
+            f"{label} debe ser un número entero de días.",
+            f"{label} debe estar entre {low} y {high} días.",
+        )
+
+    vol_threshold = parse_optional_bounded_float(
+        "bt_vol_threshold",
+        1.0,
+        200.0,
+        "El umbral de volatilidad debe ser numérico.",
+        "El umbral de volatilidad debe estar entre 1 % y 200 %.",
+    )
+    return BacktestConfig(
+        lookback=whole("bt_lookback", "La ventana de estimación", MIN_LOOKBACK, 1260),
+        drift_threshold=number("bt_drift", "El umbral de desviación", 0.5, 50, " pp") / 100,
+        vol_window=whole("bt_vol_window", "La ventana de volatilidad", 5, 252),
+        vol_threshold=vol_threshold / 100 if vol_threshold is not None else None,
+        fees=number("bt_fees", "La comisión", 0, 5, " %") / 100,
+        slippage=number("bt_slippage", "El slippage", 0, 5, " %") / 100,
+        init_cash=number("bt_init_cash", "El capital inicial", 100, 1e10),
     )
 
 
@@ -135,6 +196,7 @@ def hrp():
             start_date = parse_start_date("start_date", default_start)
             bounds = _weight_bounds(selected)
             download_requested = request.form.get("action") == "download_report"
+            backtest = None if download_requested else _backtest_config()
             try:
                 if download_requested:
                     report, missing = build_hrp_report(
@@ -142,7 +204,12 @@ def hrp():
                     )
                 else:
                     result = run_hrp(
-                        selected, benchmark_ticker, start_date, bounds, _ASSET_LABELS
+                        selected,
+                        benchmark_ticker,
+                        start_date,
+                        bounds,
+                        _ASSET_LABELS,
+                        backtest=backtest,
                     )
                     missing = result["missing"]
             except (requests.RequestException, TimeoutError, YFException) as error:
@@ -175,8 +242,16 @@ def hrp():
     has_asset_limits = any(
         limits["min"] or limits["max"] for limits in asset_limits.values()
     )
+    backtest_values = {
+        field: request.form.get(field, default).strip() if request.method == "POST" else default
+        for field, default in BACKTEST_DEFAULTS.items()
+    }
     return render_template(
         "hrp/hrp.html",
+        backtest_enabled=request.method != "POST" or bool(request.form.get("backtest")),
+        backtest_values=backtest_values,
+        backtest_engine_ready=engine_ready(),
+        vol_hysteresis=VOL_HYSTERESIS,
         today=today.isoformat(),
         default_start=start_value,
         universe_names=universe_names,

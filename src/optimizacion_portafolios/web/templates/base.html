@@ -177,7 +177,7 @@
           });
         });
 
-        /* Loading overlay for long POST calculations (data-loading-title / data-loading-steps). */
+        /* Loading overlay for long POST calculations (data-loading-title / data-loading-steps / data-loading-hint). */
         var LOADING_ACTIONS = ["optimize", "analyze"];
         var STEP_INTERVAL = 2500;
         var timers = [];
@@ -218,7 +218,7 @@
           title.textContent = form.getAttribute("data-loading-title") || "Calculando";
           var hint = document.createElement("p");
           hint.className = "loading-card__hint";
-          hint.textContent = "Puede tardar entre 5 y 15 segundos.";
+          hint.textContent = form.getAttribute("data-loading-hint") || "Puede tardar entre 5 y 15 segundos.";
           text.append(title, hint);
           head.append(text);
           card.append(head);

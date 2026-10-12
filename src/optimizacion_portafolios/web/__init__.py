@@ -31,7 +31,21 @@ def create_app(test_config: dict | None = None) -> Flask:
     _register_blueprints(app)
     _register_csrf_protection(app)
     _register_error_handlers(app)
+    _warm_up_backtest_engine(app)
     return app
+
+
+def _warm_up_backtest_engine(app: Flask) -> None:
+    """Compile vectorbt's numba kernels in the background (not in tests).
+
+    The first backtest otherwise pays the import and JIT compilation (several
+    seconds). Disable with ``ATLAS_VECTORBT_WARMUP=0``.
+    """
+    if app.testing or os.environ.get("ATLAS_VECTORBT_WARMUP", "1") == "0":
+        return
+    from optimizacion_portafolios.models.hrp_backtest import warm_up_in_background
+
+    warm_up_in_background()
 
 
 def _register_blueprints(app: Flask) -> None:
