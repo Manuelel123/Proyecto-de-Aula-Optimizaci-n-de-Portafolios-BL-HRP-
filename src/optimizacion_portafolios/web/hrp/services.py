@@ -1,11 +1,15 @@
 """HRP workflow: download data, optimize and build the page view model."""
 
+import logging
 import re
+import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
+import requests
 from skfolio.cluster import HierarchicalClustering
+from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.performance import (
     calculate_quantstats_metrics,
@@ -19,6 +23,12 @@ from optimizacion_portafolios.models.hrp import (
     calculate_hrp_contributions,
     optimize_hrp,
 )
+from optimizacion_portafolios.models.hrp_backtest import (
+    BUY_AND_HOLD,
+    BacktestConfig,
+    BacktestResult,
+    cached_backtest,
+)
 from optimizacion_portafolios.web.common.charts import (
     PORTFOLIO_SERIES,
     allocation_chart,
@@ -28,14 +38,19 @@ from optimizacion_portafolios.web.common.charts import (
     historical_charts,
     returns_box_chart,
     returns_matrix_chart,
+    strategy_drawdown_chart,
+    strategy_equity_chart,
     volatility_histogram_chart,
 )
 from optimizacion_portafolios.web.common.price_series import price_series_payload
 from optimizacion_portafolios.web.common.tables import (
     dataframe_html,
+    format_decimal,
     format_percent,
     metrics_html,
 )
+
+logger = logging.getLogger(__name__)
 
 ROLLING_SHARPE_PERIOD = 126
 REPORT_FILENAME = "reporte_quantstats_hrp.html"
@@ -46,6 +61,20 @@ _QUANTSTATS_SORTINO_LABEL = (
 )
 _TOLERANCE = 1e-9
 _BENCHMARK_LABELS = {ticker: label for label, ticker in BENCHMARKS.items()}
+# Calendar days requested per trading day of the estimation window (weekends,
+# holidays) plus a fixed margin, so the backtest can start on ``start_date``.
+_CALENDAR_DAYS_PER_TRADING_DAY = 1.5
+_HISTORY_MARGIN_DAYS = 14
+_BACKTEST_PERCENT_COLUMNS = (
+    "Retorno total",
+    "CAGR",
+    "Volatilidad anualizada",
+    "Máxima caída",
+    "Costos / capital inicial",
+)
+_BACKTEST_RATIO_COLUMNS = ("Ratio de Sharpe", "Ratio de Sortino")
+_BACKTEST_COUNT_COLUMNS = ("Rebalanceos", "Órdenes")
+_BACKTEST_MONEY_COLUMNS = ("Comisiones", "Costo de slippage", "Costos totales")
 
 
 @dataclass(frozen=True)
@@ -191,12 +220,118 @@ def _allocation_rows(
     return rows
 
 
+def _backtest_prices(
+    assets: list[str], start_date: date, config: BacktestConfig
+) -> pd.DataFrame:
+    """Aligned prices from ``lookback`` trading days before ``start_date``."""
+    history_start = start_date - timedelta(
+        days=int(config.lookback * _CALENDAR_DAYS_PER_TRADING_DAY)
+        + _HISTORY_MARGIN_DAYS
+    )
+    raw = download_prices(tuple(assets), history_start, date.today())
+    available = [asset for asset in assets if asset in raw.columns]
+    prices = raw.loc[:, available].dropna(axis="columns", how="all").ffill().dropna()
+    missing = [asset for asset in assets if asset not in prices.columns]
+    if missing:
+        raise ValueError(
+            "No hay historia de precios para el backtest de: " + ", ".join(missing)
+        )
+    return prices
+
+
+def _money(value) -> str:
+    return "N/D" if pd.isna(value) else f"${value:,.2f}"
+
+
+def _backtest_metrics_table(metrics: pd.DataFrame) -> str:
+    formatters = {}
+    for column in metrics.columns:
+        if column in _BACKTEST_PERCENT_COLUMNS:
+            formatters[column] = format_percent
+        elif column in _BACKTEST_RATIO_COLUMNS:
+            formatters[column] = lambda value: "N/D" if pd.isna(value) else f"{value:.3f}"
+        elif column in _BACKTEST_COUNT_COLUMNS:
+            formatters[column] = lambda value: f"{int(value):d}"
+        elif column in _BACKTEST_MONEY_COLUMNS:
+            formatters[column] = _money
+        else:
+            formatters[column] = format_decimal
+    return dataframe_html(metrics, formatters)
+
+
+def backtest_view(
+    result: BacktestResult, from_cache: bool = False, seconds: float | None = None
+) -> dict:
+    """Template data of the "Backtest de rebalanceo" section."""
+    reference = result.labels.get(BUY_AND_HOLD)
+    metrics = result.metrics
+    sharpe = metrics["Ratio de Sharpe"].dropna()
+    best = str(sharpe.idxmax()) if not sharpe.empty else None
+    config = result.config
+    return {
+        "charts": {
+            key: value
+            for key, value in {
+                "equity": strategy_equity_chart(result.values, reference),
+                "drawdown": strategy_drawdown_chart(result.values, reference),
+            }.items()
+            if value is not None
+        },
+        "metrics_table": _backtest_metrics_table(metrics),
+        "rebalances": [
+            {
+                "strategy": label,
+                "count": len(dates),
+                "dates": [day.date().isoformat() for day in dates],
+            }
+            for label, dates in result.rebalance_dates.items()
+        ],
+        "best_strategy": best,
+        "best_sharpe": float(sharpe[best]) if best else None,
+        "best_return_strategy": str(metrics["Retorno total"].idxmax()),
+        "start": result.start.date().isoformat(),
+        "end": result.end.date().isoformat(),
+        "days": len(result.values),
+        "lookback": config.lookback,
+        "drift_threshold": config.drift_threshold,
+        "vol_window": config.vol_window,
+        "vol_threshold": config.vol_threshold,
+        "fees": config.fees,
+        "slippage": config.slippage,
+        "init_cash": config.init_cash,
+        "from_cache": from_cache,
+        "seconds": seconds,
+    }
+
+
+def run_backtest_section(
+    assets: list[str],
+    start_date: date,
+    bounds: WeightBounds,
+    config: BacktestConfig,
+) -> dict:
+    """Backtest view model, or ``{"error": message}`` without failing the page."""
+    started = time.perf_counter()
+    try:
+        prices = _backtest_prices(assets, start_date, config)
+        result, from_cache = cached_backtest(
+            prices, config, bounds.restricted_to(list(prices.columns)), start_date
+        )
+    except (requests.RequestException, TimeoutError, YFException) as error:
+        logger.exception("Price download failed during the HRP backtest")
+        return {"error": f"No se pudieron descargar los datos del backtest: {error}"}
+    except ValueError as error:
+        return {"error": str(error)}
+    return backtest_view(result, from_cache, time.perf_counter() - started)
+
+
 def run_hrp(
     tickers: list[str],
     benchmark: str,
     start_date: date,
     bounds: WeightBounds | None = None,
     labels: dict[str, str] | None = None,
+    backtest: BacktestConfig | None = None,
 ) -> dict:
     """Optimize the portfolio and return everything the HRP page renders.
 
@@ -207,6 +342,9 @@ def run_hrp(
     ``dendrogram``, ``risk_contribution``, ``return_contribution``,
     ``monthly_volatility``, ``returns_box`` and ``returns_matrix`` (portfolio,
     benchmark and assets); keys without data are omitted.
+    With ``backtest`` the result's ``backtest`` key holds ``backtest_view()``
+    (or ``{"error": ...}``): a walk-forward vectorbt backtest of the HRP
+    portfolio over the same period with several rebalancing triggers.
     """
     bounds = bounds or WeightBounds()
     labels = labels or {}
@@ -303,4 +441,9 @@ def run_hrp(
         "has_rolling_sharpe": has_rolling_sharpe,
         "selected_tickers": assets,
         "benchmark": benchmark,
+        "backtest": (
+            run_backtest_section(assets, start_date, bounds, backtest)
+            if backtest is not None
+            else None
+        ),
     }

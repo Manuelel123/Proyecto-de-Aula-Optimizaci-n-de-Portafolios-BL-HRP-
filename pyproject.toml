@@ -19,6 +19,7 @@ dependencies = [
     "skfolio>=1.8.0",
     "statsmodels>=0.14.4",
     "tiingo>=0.16.1",
+    "vectorbt>=1.1.2",
     "waitress>=3.0.2",
     "yfinance>=1.7.0",
 ]
