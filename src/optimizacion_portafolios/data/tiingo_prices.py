@@ -178,3 +178,79 @@ def download_tiingo_crypto_prices(
         if series is not None:
             prices[ticker] = series
     return prices
+
+
+# Daily OHLCV fields: adjusted for stocks/ETFs (same basis as ``adjClose``),
+# raw for crypto (no corporate actions). Keys are the output column names.
+_STOCK_OHLCV_FIELDS = {
+    "open": "adjOpen",
+    "high": "adjHigh",
+    "low": "adjLow",
+    "close": "adjClose",
+    "volume": "adjVolume",
+}
+_CRYPTO_OHLCV_FIELDS = {
+    "open": "open",
+    "high": "high",
+    "low": "low",
+    "close": "close",
+    "volume": "volume",
+}
+
+
+def _ohlcv_frame(records: list[dict], fields: dict[str, str]) -> pd.DataFrame | None:
+    """OHLCV frame (columns open/high/low/close/volume) or None without closes."""
+    columns = {
+        column: _series(records, field, column) for column, field in fields.items()
+    }
+    if columns["close"] is None:
+        return None
+    frame = pd.concat(
+        [
+            series if series is not None else pd.Series(dtype=float, name=column)
+            for column, series in columns.items()
+        ],
+        axis=1,
+    )
+    return frame.loc[frame["close"].notna()].sort_index()
+
+
+def download_tiingo_ohlcv(
+    ticker: str, start: date, end: date, api_key: str
+) -> pd.DataFrame | None:
+    """Daily adjusted OHLCV of a stock/ETF/fund, or None when Tiingo lacks it."""
+    try:
+        records = _client(api_key).get_ticker_price(
+            ticker,
+            startDate=start.isoformat(),
+            endDate=end.isoformat(),
+            fmt="json",
+            frequency="daily",
+        )
+    except RestClientError as error:
+        if _status_code(error) == 404:
+            return None
+        raise _http_error(error, ticker) from error
+    return _ohlcv_frame(records or [], _STOCK_OHLCV_FIELDS)
+
+
+def download_tiingo_crypto_ohlcv(
+    ticker: str, start: date, end: date, api_key: str
+) -> pd.DataFrame | None:
+    """Daily OHLCV of an ``XXX-USD`` pair, or None when Tiingo lacks it."""
+    tiingo_ticker = to_tiingo_crypto_ticker(ticker)
+    try:
+        response = _client(api_key).get_crypto_price_history(
+            tickers=[tiingo_ticker],
+            startDate=start.isoformat(),
+            endDate=(end + timedelta(days=1)).isoformat(),
+            resampleFreq="1day",
+        )
+    except RestClientError as error:
+        if _status_code(error) == 404:
+            return None
+        raise _http_error(error, ticker) from error
+    for item in response or []:
+        if str(item.get("ticker", "")).lower() == tiingo_ticker:
+            return _ohlcv_frame(item.get("priceData") or [], _CRYPTO_OHLCV_FIELDS)
+    return None
