@@ -35,10 +35,17 @@
    ticker), e.g. ``linked_chart="returns_matrix"``. ``history_url`` (optional)
    adds the "Periodo del análisis / Historial completo" switch: the full history
    of the selected asset is fetched from that URL (?ticker=) and replaces its
-   prices and, when linked, the matrix. #}
-{% macro price_explorer(key, payload, title="Evolución de precios", selected=None, linked_chart=None, history_url=None) %}
+   prices and, when linked, the matrix.
+   ``ohlc_url`` (optional; defaults to the /api/ohlc endpoint whenever
+   ``history_url`` is given) serves daily open/high/low/close/volume on demand
+   for the bar and candle chart types and the volume indicator; without it
+   those options are disabled. The chart type selector and the technical
+   indicators panel (filled by static/js/indicators.js + charts.js) are
+   always present. #}
+{% macro price_explorer(key, payload, title="Evolución de precios", selected=None, linked_chart=None, history_url=None, ohlc_url=None) %}
   {% if payload %}
-    <section class="price-explorer" data-price-explorer="prices-{{ key }}"{% if linked_chart %} data-linked-chart="chart-{{ linked_chart }}"{% endif %}{% if history_url %} data-history-url="{{ history_url }}"{% endif %} aria-label="{{ title }}">
+    {%- set ohlc_url = ohlc_url or (url_for("history.asset_ohlc") if history_url else None) -%}
+    <section class="price-explorer" data-price-explorer="prices-{{ key }}"{% if linked_chart %} data-linked-chart="chart-{{ linked_chart }}"{% endif %}{% if history_url %} data-history-url="{{ history_url }}"{% endif %}{% if ohlc_url %} data-ohlc-url="{{ ohlc_url }}"{% endif %} aria-label="{{ title }}">
       <div class="price-explorer__toolbar">
         <label class="price-explorer__asset">
           <span class="visually-hidden">Activo</span>
@@ -58,6 +65,32 @@
         <label class="price-explorer__mode">
           <input type="checkbox" data-price-base100> Base 100 vs benchmark
         </label>
+      </div>
+      <div class="price-explorer__toolbar price-explorer__toolbar--studies">
+        <label class="price-explorer__type">
+          <span class="price-explorer__label">Tipo de gráfico</span>
+          <select class="input" data-chart-type aria-describedby="prices-{{ key }}-type-note">
+            {% for value, label in (("area", "Área"), ("line", "Línea"), ("baseline", "Línea base"), ("histogram", "Histograma"), ("bars", "Barras OHLC"), ("candles", "Velas")) %}
+              <option value="{{ value }}"{% if value in ("bars", "candles") %} data-needs-ohlc{% endif %}{{ ' selected' if value == 'area' else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="button" class="price-explorer__studies-toggle" data-indicators-toggle aria-expanded="false" aria-controls="prices-{{ key }}-indicators">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M1.5 12.5 5.5 7l3 3 6-7.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Indicadores<span class="price-explorer__count" data-indicators-count hidden></span>
+        </button>
+      </div>
+      <p class="price-explorer__note" id="prices-{{ key }}-type-note" data-chart-note role="status" aria-live="polite" hidden></p>
+      <div class="price-explorer__studies" id="prices-{{ key }}-indicators" data-indicators-panel hidden>
+        <div class="price-explorer__studies-add">
+          <label>
+            <span class="visually-hidden">Indicador</span>
+            <select class="input" data-indicator-choice></select>
+          </label>
+          <button type="button" class="button button-secondary button-sm" data-indicator-add>Agregar</button>
+        </div>
+        <p class="price-explorer__studies-empty" data-indicators-empty>Sin indicadores. Elige uno y pulsa «Agregar»; los osciladores (RSI, MACD) se dibujan en un panel debajo del precio.</p>
+        <ul class="price-explorer__study-list" data-indicator-list></ul>
       </div>
       {% if history_url %}<p class="price-explorer__status" data-history-status role="status" aria-live="polite" hidden></p>{% endif %}
       <div class="price-explorer__stage">

@@ -1,14 +1,17 @@
-"""Full-history view model: every available price and its returns matrix."""
+"""Full-history view model (every price + returns matrix) and on-demand OHLCV."""
 
 import json
 import re
 from datetime import date
 
 from optimizacion_portafolios.data.catalogs import BENCHMARKS, GRUPOS_ACTIVOS
-from optimizacion_portafolios.data.market_data import download_prices
+from optimizacion_portafolios.data.market_data import download_ohlcv, download_prices
 from optimizacion_portafolios.web.common.charts import returns_matrix_chart
 from optimizacion_portafolios.web.common.forms import asset_labels
-from optimizacion_portafolios.web.common.price_series import price_series_payload
+from optimizacion_portafolios.web.common.price_series import (
+    ohlc_entry,
+    price_series_payload,
+)
 
 # Yahoo Finance returns each asset from its first quote (e.g. ^GSPC from 1927).
 FULL_HISTORY_START = date(1900, 1, 1)
@@ -62,3 +65,28 @@ def build_asset_history(ticker: str) -> dict | None:
         "prices": json.loads(str(payload))["series"][0],
         "matrix": json.loads(str(matrix)) if matrix is not None else None,
     }
+
+
+def parse_day(raw: str | None, default: date) -> date:
+    """ISO ``YYYY-MM-DD`` day, ``default`` when empty, ValueError otherwise."""
+    text = (raw or "").strip()
+    if not text:
+        return default
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise ValueError("Fecha no válida; usa el formato AAAA-MM-DD.") from None
+
+
+def build_asset_ohlc(ticker: str, start: date, end: date) -> dict | None:
+    """Daily OHLCV entry (``price_series.ohlc_entry``) of ``ticker`` in ``[start, end]``.
+
+    Used lazily by the price explorer for bars, candles and volume. Returns
+    None when the provider has no prices for the ticker in the window.
+    """
+    if start > end:
+        raise ValueError("La fecha inicial es posterior a la final.")
+    frame = download_ohlcv(ticker, start, end)
+    if frame.empty:
+        return None
+    return ohlc_entry(ticker, frame)
