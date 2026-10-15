@@ -13,6 +13,9 @@
 {% endmacro %}
 
 {% set loading_steps = ["Descargando precios", "Estimando correlaciones", "Clustering jerárquico", "Asignando pesos", "Calculando métricas"] %}
+{% set backtest_steps = loading_steps + ["Backtest walk-forward (vectorbt)"] %}
+{% set loading_hint = "Puede tardar entre 5 y 15 segundos." %}
+{% set backtest_hint = "Puede tardar entre 5 y 30 segundos; el backtest reestima HRP en cada rebalanceo." if backtest_engine_ready else "La primera ejecución del backtest compila vectorbt/numba y puede tardar hasta un minuto; las siguientes son mucho más rápidas." %}
 
 {% block content %}
   <header class="page-header">
@@ -25,7 +28,7 @@
 
   <div class="analysis-layout">
     <aside class="param-panel" aria-label="Parámetros del portafolio HRP">
-      <form method="post" id="hrp-form" class="form-stack" data-loading-title="Optimizando portafolio HRP" data-loading-steps='{{ loading_steps|tojson }}'>
+      <form method="post" id="hrp-form" class="form-stack" data-loading-title="Optimizando portafolio HRP" data-loading-steps='{{ (backtest_steps if backtest_enabled else loading_steps)|tojson }}' data-loading-hint="{{ backtest_hint if backtest_enabled else loading_hint }}" data-steps-base='{{ loading_steps|tojson }}' data-steps-backtest='{{ backtest_steps|tojson }}' data-hint-base="{{ loading_hint }}" data-hint-backtest="{{ backtest_hint }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="param-panel__header">
           <h2 class="card__title">Configura tu portafolio</h2>
@@ -94,6 +97,30 @@
                   </table>
                 </div>
                 <template id="limit-row">{{ limit_row("__TICKER__") }}</template>
+              </div>
+            </details>
+          </fieldset>
+
+          <fieldset class="step">
+            <legend><span class="step__number">4</span> Backtest de rebalanceo {{ help_tip("Simula el portafolio HRP con vectorbt desde la fecha inicial. Los pesos se reestiman en cada rebalanceo solo con los datos disponibles hasta el día anterior (walk-forward, sin look-ahead).", "Qué es el backtest") }}</legend>
+            <div class="form-field">
+              <label class="inline-check"><input type="checkbox" name="backtest" value="1" data-backtest-toggle{{ ' checked' if backtest_enabled else '' }}> Incluir backtest walk-forward</label>
+              <span class="help-text">Compara buy &amp; hold con rebalanceo mensual, trimestral, semestral, anual, por desviación de pesos y por régimen de volatilidad.</span>
+            </div>
+            <details class="advanced" data-backtest-options>
+              <summary>Parámetros del backtest</summary>
+              <div class="form-row">
+                <div class="form-field"><label for="bt_lookback">Ventana de estimación {{ help_tip("Retornos diarios previos usados para estimar HRP en cada rebalanceo. Se descarga historia anterior a la fecha inicial para cubrirla.", "Ayuda sobre la ventana") }}</label><input id="bt_lookback" name="bt_lookback" type="number" min="20" max="1260" step="1" value="{{ backtest_values.bt_lookback }}" inputmode="numeric"><span class="help-text">días hábiles</span></div>
+                <div class="form-field"><label for="bt_init_cash">Capital inicial</label><input id="bt_init_cash" name="bt_init_cash" type="number" min="100" step="any" value="{{ backtest_values.bt_init_cash }}" inputmode="decimal"><span class="help-text">USD</span></div>
+              </div>
+              <div class="form-row">
+                <div class="form-field"><label for="bt_fees">Comisión</label>{{ percent_input("bt_fees", backtest_values.bt_fees, min=0, max=5) }}</div>
+                <div class="form-field"><label for="bt_slippage">Slippage</label>{{ percent_input("bt_slippage", backtest_values.bt_slippage, min=0, max=5) }}</div>
+              </div>
+              <div class="form-field"><label for="bt_drift">Umbral de desviación {{ help_tip("Rebalancea cuando algún peso se aleja del objetivo HRP más de estos puntos porcentuales.", "Ayuda sobre el umbral de desviación") }}</label>{{ percent_input("bt_drift", backtest_values.bt_drift, min=0.5, max=50) }}<span class="help-text">puntos porcentuales (pp)</span></div>
+              <div class="form-row">
+                <div class="form-field"><label for="bt_vol_window">Ventana de volatilidad</label><input id="bt_vol_window" name="bt_vol_window" type="number" min="5" max="252" step="1" value="{{ backtest_values.bt_vol_window }}" inputmode="numeric"><span class="help-text">días hábiles</span></div>
+                <div class="form-field"><label for="bt_vol_threshold">Umbral de volatilidad {{ help_tip("Volatilidad anualizada que separa los regímenes. Vacío = automático: mediana de la volatilidad móvil observada hasta ese día. Se usa una banda de ±" ~ (vol_hysteresis * 100)|round|int ~ " % para evitar cambios de régimen por ruido.", "Ayuda sobre el umbral de volatilidad") }}</label>{{ percent_input("bt_vol_threshold", backtest_values.bt_vol_threshold, min=1, max=200, placeholder="Auto") }}<span class="help-text">anualizada · vacío = automático</span></div>
               </div>
             </details>
           </fieldset>
@@ -175,6 +202,54 @@
           <button type="button" class="button button-ghost button-sm" data-expand-all>Expandir todo</button>
           <button type="button" class="button button-ghost button-sm" data-collapse-all>Contraer todo</button>
         </div>
+
+        {% set bt = result.backtest %}
+        {% if bt %}
+        <details class="analysis-section" data-section="backtest" id="backtest" open>
+          <summary><span class="analysis-section__title">Backtest de rebalanceo · vectorbt</span><span class="analysis-section__meta">{% if bt.error %}No disponible{% else %}{{ bt.start }} — {{ bt.end }} · {{ bt.rebalances|length }} estrategias · walk-forward{% endif %}</span></summary>
+          <div class="analysis-section__body">
+            {% if bt.error %}
+              <div class="notice notice--warning" role="status">No se pudo calcular el backtest: {{ bt.error }}</div>
+            {% else %}
+              <div class="kpi-grid">
+                {% if bt.best_strategy %}<div class="metric-card metric-card--compact"><span class="metric-card__label">Mejor Sharpe</span><strong class="metric-card__value">{{ bt.best_strategy }}</strong><span class="metric-card__context">Sharpe {{ '%.3f'|format(bt.best_sharpe) }}</span></div>{% endif %}
+                <div class="metric-card metric-card--compact"><span class="metric-card__label">Mayor retorno total</span><strong class="metric-card__value">{{ bt.best_return_strategy }}</strong></div>
+                <div class="metric-card metric-card--compact"><span class="metric-card__label">Periodo de prueba</span><strong class="metric-card__value">{{ bt.days }}</strong><span class="metric-card__context">días · {{ bt.start }} — {{ bt.end }}</span></div>
+                <div class="metric-card metric-card--compact"><span class="metric-card__label">Capital inicial</span><strong class="metric-card__value">${{ '{:,.0f}'.format(bt.init_cash) }}</strong><span class="metric-card__context">Comisión {{ '%.2f'|format(bt.fees * 100) }} % · slippage {{ '%.2f'|format(bt.slippage * 100) }} %</span></div>
+              </div>
+              <div class="chart-grid">
+                {{ plotly_chart("backtest_equity", bt.charts.equity, "Curvas de equity", subtitle="Valor del portafolio por estrategia · línea punteada = buy & hold") }}
+                {{ plotly_chart("backtest_drawdown", bt.charts.drawdown, "Drawdown por estrategia", subtitle="Caída desde el máximo de cada estrategia") }}
+              </div>
+              <h3 class="card__title">Métricas por estrategia</h3>
+              <div class="data-table-wrap">{{ bt.metrics_table|safe }}</div>
+              <p class="help-text">Retorno total y CAGR frente al capital inicial (incluyen los costos de la compra inicial). Volatilidad, Sharpe y Sortino (tasa libre de riesgo 0 %) sobre los retornos diarios del valor del portafolio. «Rebalanceos» excluye la compra inicial; el costo de slippage es |precio de ejecución − cierre| × unidades.</p>
+              <h3 class="card__title">Fechas de rebalanceo</h3>
+              <div class="data-table-wrap">
+                <table class="data-table rebalance-table">
+                  <thead><tr><th scope="col">Estrategia</th><th scope="col" class="num">Rebalanceos</th><th scope="col">Fechas de ejecución</th></tr></thead>
+                  <tbody>
+                    {% for row in bt.rebalances %}
+                      <tr>
+                        <th scope="row">{{ row.strategy }}</th>
+                        <td class="num">{{ row.count }}</td>
+                        <td>{% if row.dates %}{% if row.dates|length > 12 %}<details class="rebalance-dates"><summary>{{ row.dates[:3]|join(', ') }} … {{ row.dates[-1] }}</summary><p class="rebalance-dates__list">{{ row.dates|join(', ') }}</p></details>{% else %}<span class="rebalance-dates__list">{{ row.dates|join(', ') }}</span>{% endif %}{% else %}<span class="help-text">Sin rebalanceos</span>{% endif %}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              <dl class="assumptions">
+                <dt>Método</dt><dd>Walk-forward: en cada fecha de ejecución los pesos HRP se reestiman con los {{ bt.lookback }} retornos diarios que terminan el día anterior, con los mismos límites de peso. Los detonantes se evalúan con el cierre del día anterior y la orden se ejecuta al cierre (vectorbt <code>Portfolio.from_orders</code>, <code>size_type="targetpercent"</code>, un grupo por estrategia con efectivo compartido).</dd>
+                <dt>Calendario</dt><dd>Primer día hábil de cada mes, trimestre, semestre o año.</dd>
+                <dt>Desviación</dt><dd>Algún peso se aleja más de {{ '%g'|format(bt.drift_threshold * 100) }} pp del objetivo HRP vigente.</dd>
+                <dt>Volatilidad</dt><dd>Cambio de régimen de la volatilidad móvil anualizada ({{ bt.vol_window }} días) del portafolio actual frente a {% if bt.vol_threshold is not none %}un umbral de {{ '%g'|format(bt.vol_threshold * 100) }} %{% else %}su mediana observada hasta ese día{% endif %}, con banda de ±{{ (vol_hysteresis * 100)|round|int }} %.</dd>
+                <dt>Ejecución</dt><dd>{% if bt.from_cache %}Resultado reutilizado de la caché (mismos datos y parámetros).{% elif bt.seconds is not none %}Calculado en {{ '%.1f'|format(bt.seconds) }} s.{% endif %}</dd>
+              </dl>
+            {% endif %}
+          </div>
+        </details>
+        {% endif %}
 
         <details class="analysis-section" data-section="risk">
           <summary><span class="analysis-section__title">Riesgo y desempeño</span><span class="analysis-section__meta">Sortino, pesos extremos y métricas QuantStats</span></summary>
@@ -297,6 +372,19 @@
       };
       document.addEventListener("atlas:selectionchange", update);
       update();
+
+      // Loading overlay text and backtest options follow the backtest checkbox.
+      const backtestToggle = form.querySelector("[data-backtest-toggle]");
+      const syncBacktest = () => {
+        if (!backtestToggle) return;
+        const key = backtestToggle.checked ? "Backtest" : "Base";
+        form.setAttribute("data-loading-steps", form.dataset["steps" + key]);
+        form.setAttribute("data-loading-hint", form.dataset["hint" + key]);
+        const options = form.querySelector("[data-backtest-options]");
+        if (options) options.hidden = !backtestToggle.checked;
+      };
+      if (backtestToggle) backtestToggle.addEventListener("change", syncBacktest);
+      syncBacktest();
 
       document.querySelectorAll("[data-csv-download]").forEach((button) => {
         const table = document.getElementById(button.dataset.csvDownload);

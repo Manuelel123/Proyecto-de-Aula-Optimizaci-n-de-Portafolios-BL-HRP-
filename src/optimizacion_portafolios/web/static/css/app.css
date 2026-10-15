@@ -1979,3 +1979,20 @@ input.badge:disabled { background: var(--accent-subtle); color: var(--accent); }
 
 /* HRP allocation table: plain <td> cells (kept attribute-free), weight column is numeric. */
 #allocation-table td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
+
+/* HRP backtest: inline checkbox label and rebalance date lists. */
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+}
+.rebalance-table td { vertical-align: top; }
+.rebalance-dates__list,
+.rebalance-dates > summary {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+.rebalance-dates > summary { cursor: pointer; }

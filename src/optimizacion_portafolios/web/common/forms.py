@@ -64,6 +64,21 @@ def parse_bounded_float(
     return value
 
 
+def parse_bounded_int(
+    field: str,
+    default: str,
+    minimum: int,
+    maximum: int,
+    numeric_error: str,
+    range_error: str,
+) -> int:
+    """Whole number in ``[minimum, maximum]`` (``"63"`` and ``"63.0"`` are valid)."""
+    value = parse_bounded_float(field, default, minimum, maximum, numeric_error, range_error)
+    if not value.is_integer():
+        raise ValueError(numeric_error)
+    return int(value)
+
+
 def selected_option(field: str, choices: dict, default: str) -> str:
     value = request.form.get(field, default)
     if value not in choices:

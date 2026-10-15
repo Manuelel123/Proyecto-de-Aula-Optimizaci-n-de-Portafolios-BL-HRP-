@@ -15,7 +15,9 @@ from yfinance.exceptions import YFRateLimitError
 
 from optimizacion_portafolios.data.tiingo_prices import (
     PriceSource,
+    download_tiingo_crypto_ohlcv,
     download_tiingo_crypto_prices,
+    download_tiingo_ohlcv,
     download_tiingo_prices,
     normalize_dates,
     price_source,
@@ -31,6 +33,9 @@ _RATE_LIMIT_RETRIES = 2
 _info_lock = Lock()
 _price_lock = Lock()
 _price_cache: "OrderedDict[tuple, pd.DataFrame]" = OrderedDict()
+_ohlcv_cache: "OrderedDict[tuple, pd.DataFrame]" = OrderedDict()
+OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
+_YAHOO_OHLCV_FIELDS = dict(zip(OHLCV_COLUMNS, ("Open", "High", "Low", "Close", "Volume")))
 
 
 @lru_cache(maxsize=_INFO_CACHE_MAX_SIZE)
@@ -144,13 +149,7 @@ def download_prices(
     prices = _download_prices_uncached(tickers, start, end)
     if not prices.empty:
         with _price_lock:
-            _price_cache[key] = prices.copy()
-            _price_cache.move_to_end(key)
-            stale = [k for k in _price_cache if k[-1] != cache_window]
-            for old_key in stale:
-                del _price_cache[old_key]
-            while len(_price_cache) > _PRICE_CACHE_MAX_SIZE:
-                _price_cache.popitem(last=False)
+            _store(_price_cache, key, prices)
     return prices
 
 
@@ -158,6 +157,112 @@ def clear_price_cache() -> None:
     """Drop every cached price download (used by tests)."""
     with _price_lock:
         _price_cache.clear()
+        _ohlcv_cache.clear()
+
+
+def _store(cache: "OrderedDict[tuple, pd.DataFrame]", key: tuple, frame: pd.DataFrame) -> None:
+    """Insert ``frame`` in ``cache`` dropping entries of older windows (lock held)."""
+    cache[key] = frame.copy()
+    cache.move_to_end(key)
+    for old_key in [k for k in cache if k[-1] != key[-1]]:
+        del cache[old_key]
+    while len(cache) > _PRICE_CACHE_MAX_SIZE:
+        cache.popitem(last=False)
+
+
+def _yahoo_field(downloaded: pd.DataFrame, field: str, ticker: str) -> pd.Series | None:
+    """Column ``field`` of a single-ticker ``yf.download`` frame (flat or MultiIndex)."""
+    if isinstance(downloaded.columns, pd.MultiIndex):
+        level = next(
+            (
+                level
+                for level in range(downloaded.columns.nlevels)
+                if field in downloaded.columns.get_level_values(level)
+            ),
+            None,
+        )
+        if level is None:
+            return None
+        values = downloaded.xs(field, axis=1, level=level)
+        if isinstance(values, pd.DataFrame):
+            if ticker in values.columns:
+                values = values[ticker]
+            elif values.shape[1] == 1:
+                values = values.iloc[:, 0]
+            else:
+                return None
+        return values
+    return downloaded[field] if field in downloaded.columns else None
+
+
+def _download_yfinance_ohlcv(ticker: str, start: date, end: date) -> pd.DataFrame:
+    """Adjusted daily OHLCV of one ticker from Yahoo Finance (``auto_adjust``)."""
+    downloaded = yf.download(
+        [ticker],
+        start=start,
+        end=end + timedelta(days=1),
+        interval="1d",
+        auto_adjust=True,
+        progress=False,
+        threads=False,
+        timeout=20,
+    )
+    if downloaded is None or downloaded.empty:
+        return pd.DataFrame()
+    columns = {}
+    for column, field in _YAHOO_OHLCV_FIELDS.items():
+        values = _yahoo_field(downloaded, field, ticker)
+        columns[column] = (
+            pd.to_numeric(values, errors="coerce").astype(float)
+            if values is not None
+            else pd.Series(float("nan"), index=downloaded.index)
+        )
+    frame = pd.DataFrame(columns, index=downloaded.index)
+    return frame.loc[frame["close"].notna()]
+
+
+def download_ohlcv(ticker: str, start: date, end: date) -> pd.DataFrame:
+    """Daily OHLCV of one ticker with columns ``open, high, low, close, volume``.
+
+    Same routing as ``download_prices``: Tiingo (adjusted ``adjOpen``..
+    ``adjVolume``; raw fields for crypto) when ``TIINGO_API_KEY`` is set and it
+    covers the ticker, otherwise Yahoo Finance with ``auto_adjust=True``, so the
+    close matches the adjusted close of ``download_prices``. Fields the provider
+    does not publish are all-NaN columns (never filled in). The index is
+    ``Fecha`` (tz-naive days, ascending, unique). Empty frame without data.
+    Cached like ``download_prices``; every call returns an independent copy.
+    """
+    cache_window = int(monotonic() // _PRICE_CACHE_TTL_SECONDS)
+    key = (ticker, start, end, cache_window)
+    with _price_lock:
+        cached = _ohlcv_cache.get(key)
+        if cached is not None:
+            _ohlcv_cache.move_to_end(key)
+            return cached.copy()
+    frame = _download_ohlcv_uncached(ticker, start, end)
+    if not frame.empty:
+        with _price_lock:
+            _store(_ohlcv_cache, key, frame)
+    return frame
+
+
+def _download_ohlcv_uncached(ticker: str, start: date, end: date) -> pd.DataFrame:
+    frame = None
+    api_key = tiingo_api_key()
+    source = price_source(ticker)
+    if api_key and source is PriceSource.TIINGO:
+        frame = download_tiingo_ohlcv(ticker, start, end, api_key)
+    elif api_key and source is PriceSource.TIINGO_CRYPTO:
+        frame = download_tiingo_crypto_ohlcv(ticker, start, end, api_key)
+    if frame is None or frame.empty:
+        frame = _download_yfinance_ohlcv(ticker, start, end)
+    if frame.empty:
+        return pd.DataFrame(columns=list(OHLCV_COLUMNS))
+    frame = frame.reindex(columns=list(OHLCV_COLUMNS)).astype(float)
+    frame.index = normalize_dates(frame.index)
+    frame = frame[~frame.index.duplicated(keep="last")].sort_index()
+    window = (frame.index >= pd.Timestamp(start)) & (frame.index <= pd.Timestamp(end))
+    return frame.loc[window].rename_axis(index="Fecha")
 
 
 def _download_prices_uncached(

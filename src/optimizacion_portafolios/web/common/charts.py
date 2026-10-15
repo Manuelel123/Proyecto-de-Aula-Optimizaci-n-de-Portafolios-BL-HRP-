@@ -742,6 +742,58 @@ def historical_charts(
     return {key: value for key, value in charts.items() if value is not None}, has_rolling_sharpe
 
 
+# --------------------------------------------------------------------------- backtest
+
+
+def _strategy_styles(columns: list[str], reference: str | None) -> list[tuple[str, str, float, str]]:
+    """(name, color, width, dash) per strategy; the reference is gray dotted."""
+    styles = []
+    palette = iter(theme.SERIES)
+    for name in columns:
+        if name == reference:
+            styles.append((name, theme.TEXT_3, 1.5, "dot"))
+        else:
+            styles.append((name, next(palette, theme.TEXT_2), 1.8, "solid"))
+    return styles
+
+
+def strategy_equity_chart(values: pd.DataFrame, reference: str | None = None) -> Markup | None:
+    """Portfolio value of every backtested strategy (one line each, same capital)."""
+    if values is None or values.empty:
+        return None
+    figure = _figure(hovermode="x unified", showlegend=True, margin={"t": 32})
+    for name, color, width, dash in _strategy_styles(list(values.columns), reference):
+        series = _clean(values[name])
+        if series.empty:
+            continue
+        figure.add_trace(_line(series.index, series.to_numpy(), str(name), color, width, dash, ",.0f"))
+    if not figure.data:
+        return None
+    _time_series_axes(figure, ",.0f")
+    figure.update_yaxes(zeroline=False, tickprefix="$")
+    return figure_payload(figure)
+
+
+def strategy_drawdown_chart(values: pd.DataFrame, reference: str | None = None) -> Markup | None:
+    """Drawdown from the running peak of every backtested strategy."""
+    if values is None or values.empty:
+        return None
+    figure = _figure(hovermode="x unified", showlegend=True, margin={"t": 32})
+    worst = 0.0
+    for name, color, width, dash in _strategy_styles(list(values.columns), reference):
+        series = _clean(values[name])
+        if series.empty:
+            continue
+        drawdown = series / series.cummax() - 1
+        worst = min(worst, float(drawdown.min()))
+        figure.add_trace(_line(drawdown.index, drawdown.to_numpy(), str(name), color, width, dash, ".2%"))
+    if not figure.data:
+        return None
+    _time_series_axes(figure, ".0%")
+    figure.update_yaxes(range=[min(worst, -0.01) * 1.15, 0.004], zeroline=False)
+    return figure_payload(figure)
+
+
 # --------------------------------------------------------------------------- structure
 
 

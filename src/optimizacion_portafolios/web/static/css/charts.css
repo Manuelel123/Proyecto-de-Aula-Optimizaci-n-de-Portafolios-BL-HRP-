@@ -155,10 +155,11 @@
 .price-explorer__status.is-error { color: var(--negative); }
 
 .price-explorer__stage { position: relative; }
+/* Each oscillator pane (RSI, MACD) adds room below the price pane; charts.js sets --oscillator-panes. */
 .price-explorer__canvas {
   position: relative;
   width: 100%;
-  height: 380px;
+  height: calc(380px + var(--oscillator-panes, 0) * 150px);
 }
 .price-explorer__canvas .chart-message {
   position: absolute;
@@ -214,11 +215,206 @@
   font-size: var(--fs-xs);
 }
 
+/* Day OHLC and indicator values under the price. */
+.price-explorer__ohlc {
+  flex-basis: 100%;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.price-explorer__study-values {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-3);
+}
+.price-explorer__study-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.price-explorer__study-value::before {
+  content: "";
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--swatch, var(--text-3));
+}
+
+/* ---------- Chart type and technical indicators ---------- */
+.price-explorer__toolbar--studies { gap: var(--sp-2) var(--sp-3); }
+.price-explorer__type {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.price-explorer__label {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.price-explorer .input {
+  width: auto;
+  min-height: 34px;
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.price-explorer select.input { padding-right: var(--sp-1); cursor: pointer; }
+.price-explorer select.input option:disabled { color: var(--text-disabled); }
+.price-explorer__studies-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font: 500 var(--fs-sm) / 1 var(--font-ui);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.price-explorer__studies-toggle:hover { background: var(--surface-2); }
+.price-explorer__studies-toggle.is-active { border-color: var(--accent); }
+.price-explorer__studies-toggle:focus-visible,
+.price-explorer__remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.price-explorer__studies-toggle svg { color: var(--text-3); }
+.price-explorer__count {
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.price-explorer__count[hidden] { display: none; }
+.price-explorer__note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.price-explorer__note.is-error { color: var(--negative); }
+
+.price-explorer__studies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.price-explorer__studies[hidden] { display: none; }
+.price-explorer__studies-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.price-explorer__studies-add label { min-width: 0; }
+.price-explorer__studies-add select { max-width: 100%; }
+.price-explorer__studies-empty {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.price-explorer__studies-empty[hidden] { display: none; }
+.price-explorer__study-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.price-explorer__study {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+}
+.price-explorer__study-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.price-explorer__swatch {
+  flex: none;
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-3);
+}
+.price-explorer__study-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+.price-explorer__remove {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: -4px -6px -4px 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.price-explorer__remove:hover { background: var(--surface-3); color: var(--text-1); }
+.price-explorer__params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.price-explorer__param {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.price-explorer__param .input {
+  width: 5.5rem;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.price-explorer__study-status {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.price-explorer__study-status[hidden] { display: none; }
+.price-explorer__study.is-unavailable .price-explorer__study-status { color: var(--negative); }
+.price-explorer__study.is-unavailable .price-explorer__study-name { color: var(--text-3); }
+
 /* ---------- Small screens ---------- */
 @media (max-width: 767px) {
   .chart-grid { grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); }
   .plotly-chart { height: 280px; }
-  .price-explorer__canvas { height: 280px; }
+  .price-explorer__canvas { height: calc(280px + var(--oscillator-panes, 0) * 120px); }
+  .price-explorer__type { flex: 1 1 auto; }
+  .price-explorer__type select.input { flex: 1; min-width: 0; }
+  .price-explorer .input,
+  .price-explorer__studies-toggle { min-height: 40px; }
+  .price-explorer__remove { width: 40px; height: 40px; }
+  .price-explorer__studies-add label { flex: 1 1 12rem; }
+  .price-explorer__studies-add select.input { width: 100%; }
+  .price-explorer__param .input { width: 4.75rem; }
   .price-explorer__mode { margin-left: 0; }
   .price-explorer__ranges { overflow-x: auto; max-width: 100%; }
   .price-explorer__range { min-width: 44px; height: 36px; }
@@ -226,5 +422,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .price-explorer__range { transition: none; }
+  .price-explorer__range,
+  .price-explorer__studies-toggle { transition: none; }
 }

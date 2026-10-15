@@ -6,6 +6,7 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 
+from optimizacion_portafolios.models.hrp_backtest import clear_backtest_cache
 from support import WebTestCase, make_prices
 
 
@@ -318,6 +319,85 @@ class HrpPageTests(WebTestCase):
         series, _ = matrix.call_args.args
         self.assertEqual(list(series)[0], PORTFOLIO_SERIES)
         self.assertEqual(sorted(list(series)[1:]), ["AAPL", "BTC-USD", "XLV"])
+
+    def _post_backtest(self, **extra):
+        data = dict(
+            action="optimize",
+            universe="Portafolio actual",
+            benchmark="S&P 500 (SPY)",
+            start_date="2024-01-01",
+            tickers=["AAPL", "MSFT", "XLV"],
+            custom_tickers="",
+            backtest="1",
+            bt_lookback="60",
+        )
+        data.update(extra)
+        return self.post("/hrp", **data)
+
+    def test_backtest_toggle_is_checked_by_default(self) -> None:
+        html = self.client.get("/hrp").data.decode()
+        self.assertIn('name="backtest" value="1" data-backtest-toggle checked', html)
+        self.assertIn('id="bt_lookback" name="bt_lookback"', html)
+        self.assertIn("Backtest walk-forward (vectorbt)", html)
+
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_backtest_renders_strategies_metrics_and_rebalance_dates(self, download) -> None:
+        clear_backtest_cache()
+        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
+        response = self._post_backtest(bt_drift="3", bt_fees="0.2", bt_vol_threshold="15")
+        self.assertEqual(response.status_code, 200)
+        html = response.data.decode()
+        self.assertIn("Backtest de rebalanceo · vectorbt", html)
+        self.assertIn('id="chart-backtest_equity"', html)
+        self.assertIn('id="chart-backtest_drawdown"', html)
+        self.assertIn("Fechas de rebalanceo", html)
+        for label in ("Buy &amp; hold", "Mensual", "Trimestral", "Semestral", "Anual",
+                      "Desviación ±3 pp", "Volatilidad (15 %)"):
+            self.assertIn(label, html)
+        for column in ("CAGR", "Ratio de Sortino", "Máxima caída", "Rebalanceos", "Costos totales"):
+            self.assertIn(column, html)
+        self.assertIn('id="bt_drift" name="bt_drift" type="number" value="3"', html)
+        # Assets, benchmark and the longer history for the estimation window.
+        self.assertEqual(download.call_count, 3)
+        backtest_call = download.call_args_list[2].args
+        self.assertEqual(backtest_call[0], ("AAPL", "MSFT", "XLV"))
+        self.assertLess(backtest_call[1], date(2024, 1, 1))
+
+        # Same inputs: the backtest comes from the cache.
+        again = self._post_backtest(bt_drift="3", bt_fees="0.2", bt_vol_threshold="15")
+        self.assertIn("reutilizado de la caché", again.data.decode())
+
+    @patch("optimizacion_portafolios.web.hrp.services.run_backtest_section")
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_backtest_is_skipped_when_disabled(self, download, section) -> None:
+        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
+        response = self._post_backtest(backtest="")
+        self.assertEqual(response.status_code, 200)
+        section.assert_not_called()
+        self.assertNotIn("Backtest de rebalanceo · vectorbt", response.data.decode())
+        self.assertIn('name="backtest" value="1" data-backtest-toggle>', response.data.decode())
+
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_backtest_errors_do_not_hide_the_hrp_result(self, download) -> None:
+        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
+        response = self._post_backtest(bt_lookback="1000")
+        html = response.data.decode()
+        self.assertIn("Distribución del portafolio", html)
+        self.assertIn("No se pudo calcular el backtest", html)
+        self.assertIn("No hay datos suficientes", html)
+
+    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
+    def test_invalid_backtest_parameters_are_reported(self, download) -> None:
+        for field, value, message in (
+            ("bt_lookback", "abc", "La ventana de estimación debe ser un número entero"),
+            ("bt_lookback", "10", "La ventana de estimación debe estar entre 20 y 1260"),
+            ("bt_fees", "9", "La comisión debe estar entre 0 % y 5 %"),
+            ("bt_vol_threshold", "0", "El umbral de volatilidad debe estar entre 1 % y 200 %"),
+        ):
+            with self.subTest(field=field, value=value):
+                response = self._post_backtest(**{field: value})
+                self.assertIn(message, response.data.decode())
+        download.assert_not_called()
 
     @staticmethod
     def _hrp_weights(html: str) -> dict[str, float]:
