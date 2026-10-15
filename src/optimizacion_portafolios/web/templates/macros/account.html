@@ -1,0 +1,35 @@
+{# Account controls for result pages. Import "with context" (they read current_user and csrf_token). #}
+
+{% macro save_portfolio_control(save) %}
+  {% if accounts_enabled and save %}
+    {% if current_user %}
+      <form method="post" action="{{ url_for('account.save_portfolio') }}" class="save-portfolio">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="snapshot" value="{{ save.token }}">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <label class="visually-hidden" for="save-portfolio-name">Nombre del portafolio</label>
+        <input class="input save-portfolio__name" id="save-portfolio-name" name="name" type="text" maxlength="120" placeholder="{{ save.default_name }}">
+        <button class="button button-primary button-sm" type="submit">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>Guardar portafolio
+        </button>
+      </form>
+    {% else %}
+      <a class="button button-secondary button-sm" href="{{ url_for('auth.login') }}">Inicia sesión para guardar</a>
+    {% endif %}
+  {% endif %}
+{% endmacro %}
+
+{% macro backtest_history_notice(bt) %}
+  {% if accounts_enabled %}
+    {% if bt.history and bt.history.error %}
+      <div class="notice notice--warning" role="status">No se pudo guardar el backtest en tu historial: {{ bt.history.error }}</div>
+    {% elif bt.history %}
+      <div class="notice notice--success" role="status">
+        {{ 'Backtest guardado en tu historial.' if bt.history.created else 'Este backtest ya estaba en tu historial.' }}
+        <a href="{{ url_for('account.backtest_detail', run_id=bt.history.id) }}">Ver en el historial</a>
+      </div>
+    {% elif not current_user %}
+      <p class="help-text"><a href="{{ url_for('auth.login') }}">Inicia sesión</a> para guardar tus backtests en un historial.</p>
+    {% endif %}
+  {% endif %}
+{% endmacro %}

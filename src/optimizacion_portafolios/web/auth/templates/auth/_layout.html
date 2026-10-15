@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{# Centered card shared by every sign-in step. #}
+{% block content %}
+  <section class="auth-page" aria-labelledby="auth-title">
+    <div class="card auth-card">
+      <div class="card__body">
+        <p class="eyebrow">{% block eyebrow %}Cuenta Atlas{% endblock %}</p>
+        <h1 id="auth-title" class="auth-card__title">{% block heading %}{% endblock %}</h1>
+        {% block intro %}{% endblock %}
+        {% block form %}{% endblock %}
+      </div>
+      {% block card_footer %}{% endblock %}
+    </div>
+  </section>
+{% endblock %}

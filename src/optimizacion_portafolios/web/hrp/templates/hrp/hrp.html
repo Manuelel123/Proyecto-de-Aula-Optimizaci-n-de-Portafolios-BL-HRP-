@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "macros/forms.html" import universe_select, asset_selector, custom_tickers_input, percent_input, help_tip, date_presets %}
 {% from "macros/charts.html" import plotly_chart, price_explorer %}
+{% from "macros/account.html" import save_portfolio_control, backtest_history_notice with context %}
 {% block title %}Optimización HRP{% endblock %}
 
 {# One row of the per-asset limits table; also used inside <template id="limit-row">. #}
@@ -142,6 +143,7 @@
               {% for ticker in result.selected_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="min_{{ ticker }}" value="{{ request.form.get('min_' ~ ticker, '') }}"><input type="hidden" name="max_{{ ticker }}" value="{{ request.form.get('max_' ~ ticker, '') }}">{% endfor %}
               <button class="button button-secondary button-sm" type="submit" name="action" value="download_report"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Descargar informe QuantStats</button>
             </form>
+            {{ save_portfolio_control(result.save) }}
           </div>
         </div>
         {% if result.missing %}<div class="notice notice--warning" role="status">Yahoo Finance no devolvió datos para: {{ result.missing|join(', ') }}. Se optimizó con los activos restantes.</div>{% endif %}
@@ -211,6 +213,7 @@
             {% if bt.error %}
               <div class="notice notice--warning" role="status">No se pudo calcular el backtest: {{ bt.error }}</div>
             {% else %}
+              {{ backtest_history_notice(bt) }}
               <div class="kpi-grid">
                 {% if bt.best_strategy %}<div class="metric-card metric-card--compact"><span class="metric-card__label">Mejor Sharpe</span><strong class="metric-card__value">{{ bt.best_strategy }}</strong><span class="metric-card__context">Sharpe {{ '%.3f'|format(bt.best_sharpe) }}</span></div>{% endif %}
                 <div class="metric-card metric-card--compact"><span class="metric-card__label">Mayor retorno total</span><strong class="metric-card__value">{{ bt.best_return_strategy }}</strong></div>

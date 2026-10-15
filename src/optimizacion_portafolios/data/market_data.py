@@ -13,6 +13,7 @@ import requests
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
 
+from optimizacion_portafolios.data import price_store
 from optimizacion_portafolios.data.tiingo_prices import (
     PriceSource,
     download_tiingo_crypto_ohlcv,
@@ -128,7 +129,9 @@ def download_prices(
     """Download adjusted closing prices with a consistent ticker-column shape.
 
     Tiingo is used when ``TIINGO_API_KEY`` is set; tickers it does not cover
-    (or for which it returns no data) are downloaded from Yahoo Finance.
+    (or for which it returns no data) are downloaded from Yahoo Finance. When
+    the InsForge price store is configured, tickers with fresh stored coverage
+    are read from it and new downloads are written back (``price_store``).
 
     Results are cached for up to 15 minutes per ``(tickers, start, end)`` (same
     ``cache_window`` scheme as the profile cache) and every call returns an
@@ -146,7 +149,7 @@ def download_prices(
             _price_cache.move_to_end(key)
             return cached.copy()
     # Download outside the lock so slow requests do not serialize other users.
-    prices = _download_prices_uncached(tickers, start, end)
+    prices = _download_prices_persistent(tickers, start, end)
     if not prices.empty:
         with _price_lock:
             _store(_price_cache, key, prices)
@@ -265,6 +268,23 @@ def _download_ohlcv_uncached(ticker: str, start: date, end: date) -> pd.DataFram
     return frame.loc[window].rename_axis(index="Fecha")
 
 
+def _download_prices_persistent(
+    tickers: tuple[str, ...], start: date, end: date
+) -> pd.DataFrame:
+    """Prices from the InsForge store when fresh, downloading only the rest."""
+    stored, pending = price_store.load(tickers, start, end)
+    downloaded = _download_prices_uncached(pending, start, end) if pending else pd.DataFrame()
+    price_store.save(downloaded, start, end)
+    if not stored:
+        return downloaded
+    return _assemble_prices(
+        tickers,
+        {**stored, **{ticker: downloaded[ticker] for ticker in downloaded.columns}},
+        start,
+        end,
+    )
+
+
 def _download_prices_uncached(
     tickers: tuple[str, ...], start: date, end: date
 ) -> pd.DataFrame:
@@ -280,7 +300,13 @@ def _download_prices_uncached(
     yahoo_prices = _download_yfinance_prices(pending, start, end)
     for ticker in yahoo_prices.columns:
         series.setdefault(ticker, yahoo_prices[ticker])
+    return _assemble_prices(tickers, series, start, end)
 
+
+def _assemble_prices(
+    tickers: tuple[str, ...], series: dict[str, pd.Series], start: date, end: date
+) -> pd.DataFrame:
+    """One column per ticker (request order), normalized days within the window."""
     frames = []
     for ticker in tickers:
         if ticker not in series:

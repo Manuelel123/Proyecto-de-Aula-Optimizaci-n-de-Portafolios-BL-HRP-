@@ -15,6 +15,8 @@ from optimizacion_portafolios.data.catalogs import (
     BENCHMARKS,
     UNIVERSOS_BLACK_LITTERMAN,
 )
+from optimizacion_portafolios.web.account.hooks import save_form
+from optimizacion_portafolios.web.account.snapshots import black_litterman_snapshot
 from optimizacion_portafolios.web.black_litterman import bp
 from optimizacion_portafolios.web.black_litterman.services import (
     CSV_FILENAME,
@@ -185,6 +187,14 @@ def black_litterman():
                     as_attachment=True,
                     download_name=REPORT_FILENAME,
                 )
+            result["save"] = save_form(
+                black_litterman_snapshot(
+                    result,
+                    objective_name,
+                    BENCHMARKS[benchmark_name],
+                    risk_free_rate_pct / 100,
+                )
+            )
             history = result["history"]
             if history and not history["has_rolling_sharpe"]:
                 flash(

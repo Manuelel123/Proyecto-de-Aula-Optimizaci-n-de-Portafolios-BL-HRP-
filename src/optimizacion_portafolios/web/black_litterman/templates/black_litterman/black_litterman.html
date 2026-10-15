@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros/forms.html" import universe_select, asset_selector, custom_tickers_input, percent_input, help_tip %}
+{% from "macros/account.html" import save_portfolio_control with context %}
 {% from "macros/charts.html" import plotly_chart, price_explorer %}
 {% block title %}Black-Litterman{% endblock %}
 
@@ -140,15 +141,16 @@
             · {{ objective_name }}
             · Benchmark {{ benchmark_ticker }}
           </p>
-          {% if result.history %}
-            <div class="result-context__actions">
+          <div class="result-context__actions">
+            {% if result.history %}
               <form method="post" class="report-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="universe" value="{{ universe_name }}"><input type="hidden" name="objective" value="{{ objective_name }}"><input type="hidden" name="risk_free_rate" value="{{ risk_free_value }}"><input type="hidden" name="benchmark" value="{{ benchmark_name }}"><input type="hidden" name="custom_tickers" value="{{ custom_tickers_value }}">
                 {% for ticker in view_tickers %}<input type="hidden" name="tickers" value="{{ ticker }}"><input type="hidden" name="view_{{ ticker }}" value="{{ views_values.get(ticker, default_view) }}">{% endfor %}
                 <button class="button button-secondary button-sm" type="submit" name="action" value="download_report"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Descargar informe QuantStats</button>
               </form>
-            </div>
-          {% endif %}
+            {% endif %}
+            {{ save_portfolio_control(result.save) }}
+          </div>
         </div>
         {% if result.excluded_tickers %}<div class="notice notice--warning">Se excluyeron activos sin precios disponibles: {{ result.excluded_tickers|join(', ') }}.</div>{% endif %}
         {% if result.has_negative_weights %}<div class="notice notice--info">El objetivo sin restricción long-only produjo posiciones cortas (pesos negativos).</div>{% endif %}

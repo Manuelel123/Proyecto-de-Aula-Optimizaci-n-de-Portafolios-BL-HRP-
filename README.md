@@ -38,6 +38,19 @@ Yahoo Finance se usa como respaldo:
 
 Las series de ambas fuentes se alinean por fecha (sin hora ni zona horaria). Los errores HTTP de Tiingo distintos de 404 (key inválida, límite de solicitudes, fallas del servidor) se informan como error de descarga y no activan el respaldo.
 
+## Cuentas y base de datos (InsForge)
+
+[InsForge](https://insforge.dev) aporta el login y una base de datos Postgres. Todo es opcional: sin configuración, la app funciona igual que antes, sin cuentas y sin caché persistente.
+
+- **Login:** registro con correo y contraseña verificado con un código de 6 dígitos, recuperación de contraseña con código y acceso con Google o GitHub (OAuth con PKCE). Rutas en `/auth/...`.
+- **Mis portafolios:** los resultados de HRP y Black-Litterman se pueden guardar desde la página del resultado (`/cuenta/portafolios`).
+- **Historial de backtests:** con la sesión iniciada, cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`).
+- **Caché de precios:** los cierres ajustados descargados se guardan en `price_history`. Un ticker se vuelve a descargar cuando su cobertura tiene más de 24 h (`ATLAS_PRICE_DB_TTL_HOURS`), o más de 1 h si el rango llega a hoy.
+
+Configuración local: copia `.env.example` a `.env` y completa las variables. Los valores del proyecto vinculado están en `.insforge/project.json` y en `npx -y @insforge/cli secrets get ANON_KEY`. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor, para la caché de precios, y nunca debe subirse al repositorio.
+
+El esquema está en `migrations/` y se aplica con `npx -y @insforge/cli db migrations up --all`. Las tablas de usuario tienen RLS (cada usuario solo ve sus filas) y las de precios solo son accesibles con la clave de administrador. La configuración de auth, incluidas las URLs de retorno de OAuth permitidas, está en `insforge.toml` (`npx -y @insforge/cli config apply`). Si sirves la app en otra URL, agrega su `/auth/oauth/callback` a `allowed_redirect_urls`.
+
 ## Pruebas
 
 ```powershell

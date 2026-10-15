@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Historial de backtests{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Tu cuenta</p>
+      <h1>Historial de backtests</h1>
+      <p class="lead">Cada backtest HRP que calculas con la sesión iniciada se guarda aquí una sola vez por combinación de activos, periodo y parámetros.</p>
+    </div>
+    <div class="page-header__actions">
+      <a class="button button-secondary" href="{{ url_for('account.portfolios') }}">Mis portafolios</a>
+      <a class="button button-primary" href="{{ url_for('hrp.hrp') }}">Nuevo backtest</a>
+    </div>
+  </header>
+
+  {% if runs %}
+    <div class="data-table-wrap card">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Fecha</th>
+            <th scope="col">Activos</th>
+            <th scope="col">Periodo</th>
+            <th scope="col">Mejor Sharpe</th>
+            <th scope="col" class="num">Sharpe</th>
+            <th scope="col" class="num">Retorno total</th>
+            <th scope="col"><span class="visually-hidden">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td>{{ run.created_at|datetime_short }}</td>
+              <td class="mono">{{ run.tickers|join(', ') }}</td>
+              <td>{{ run.start_date }} — {{ run.end_date }}</td>
+              <td>{{ run.best_strategy or 'N/D' }}</td>
+              <td class="num">{{ run.best.sharpe|ratio if run.best else 'N/D' }}</td>
+              <td class="num">{{ run.best.total_return|pct if run.best else 'N/D' }}</td>
+              <td><a href="{{ url_for('account.backtest_detail', run_id=run.id) }}">Ver detalle</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <p class="empty-state__title">Aún no hay backtests</p>
+      <p>Calcula un portafolio en <a href="{{ url_for('hrp.hrp') }}">HRP</a> con el paso «Backtest de rebalanceo» activado.</p>
+    </div>
+  {% endif %}
+{% endblock %}
