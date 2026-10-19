@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "portfolios/_macros.html" import disclaimer, money %}
+{% from "portfolios/_macros.html" import disclaimer, money, traffic_light %}
 {% block title %}Mis portafolios{% endblock %}
 {% block content %}
   <header class="page-header">
@@ -22,7 +22,7 @@
           <div class="card__body">
             <div class="account-card__head">
               <span class="badge badge--neutral">{{ portfolio.model }}</span>
-              <span class="badge {{ 'badge--success' if portfolio.status == 'active' else 'badge--neutral' }}">{{ portfolio.status_label }}</span>
+              {% if portfolio.alert_level %}{{ traffic_light(portfolio.alert_level, portfolio.alert_label ~ (' · ' ~ portfolio.alert_count ~ ' alertas' if portfolio.alert_count else '')) }}{% else %}<span class="badge badge--neutral">{{ portfolio.status_label }}</span>{% endif %}
             </div>
             <h2 class="account-card__title"><a href="{{ url_for('portfolios.detail', portfolio_id=portfolio.id) }}">{{ portfolio.name }}</a></h2>
             <p class="help-text">{{ portfolio.asset_count }} activos · Benchmark {{ portfolio.benchmark }} · desde {{ portfolio.tracking_start }} · versión {{ portfolio.version_number }}</p>

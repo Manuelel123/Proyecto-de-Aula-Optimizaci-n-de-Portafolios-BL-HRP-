@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "portfolios/_macros.html" import disclaimer %}
+{% from "portfolios/_macros.html" import disclaimer, alert_thresholds %}
 {% block title %}Establecer portafolio óptimo{% endblock %}
 {% block content %}
   <header class="page-header">
@@ -39,6 +39,10 @@
             {% endfor %}
           </select>
         </div>
+        <details class="disclosure">
+          <summary>Umbrales de alerta (valores por defecto)</summary>
+          {{ alert_thresholds(alert_rows) }}
+        </details>
       </div>
       <div class="card__footer">
         <a class="button button-secondary" href="{{ url_for('portfolios.index') }}">Cancelar</a>

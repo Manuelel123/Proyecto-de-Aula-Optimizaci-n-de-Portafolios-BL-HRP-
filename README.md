@@ -89,6 +89,19 @@ Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones s
   Register-ScheduledTask -TaskName "Atlas snapshot" -Action $action -Trigger $trigger
   ```
 
+- **Alertas** (`analytics/alerts.py`): reglas por portafolio con semáforo verde/amarillo/rojo, editables al fijar el portafolio y en `/portafolios/<id>/alertas`. Un nivel se alcanza cuando el valor supera estrictamente su umbral:
+
+  | Regla | Amarillo | Rojo |
+  |---|---|---|
+  | Drawdown actual | > 10 % | > 15 % |
+  | Volatilidad móvil de 21 días frente a su promedio desde la fijación | > 1,5× | > 2× |
+  | Mayor desviación de un peso frente al objetivo | > 5 pp | > 10 pp |
+  | Días seguidos con Sharpe móvil de 126 días negativo | > 63 | > 126 |
+  | Mayor participación de un activo en el riesgo total | > 30 % | > 40 % |
+  | Correlación promedio móvil de 63 días | > 0,70 | > 0,85 |
+  | Días hábiles sin precio nuevo de un activo (posible baja de cotización) | > 2 | > 5 |
+
+  Las reglas se evalúan al abrir el panel y con `flask portfolios snapshot`. Cada evento guarda cuándo se disparó y cuándo se resolvió; un cambio de nivel cierra el evento anterior y abre uno nuevo. No se envían correos ni notificaciones.
 - **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
 
 ## Pruebas
@@ -145,6 +158,7 @@ src/optimizacion_portafolios/
     fx.py                       moneda de cada ticker y conversión diaria a USD
   analytics/
     tracking.py                 seguimiento de portafolios fijados (funciones puras)
+    alerts.py                   reglas de alerta y su evaluación (funciones puras)
     statistics.py               retornos, riesgo y retornos esperados
     volatility.py               volatilidad mensual e histórica por periodo
     performance.py              métricas e informe QuantStats
@@ -166,7 +180,7 @@ src/optimizacion_portafolios/
     auth/                       inicio de sesión con InsForge (Flask-Login, límite de intentos)
     portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
   storage/
-    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot)
+    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
     repositories.py             lecturas y escrituras filtradas por usuario
     migrations/                 revisiones de Flask-Migrate
 ```

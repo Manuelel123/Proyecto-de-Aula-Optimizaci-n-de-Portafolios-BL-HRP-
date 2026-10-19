@@ -5,7 +5,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 from optimizacion_portafolios.storage import repositories
 from optimizacion_portafolios.web.auth.session import current_user_id, login_required
 from optimizacion_portafolios.web.common.forms import normalize_ticker, parse_bounded_float
-from optimizacion_portafolios.web.portfolios import bp, services
+from optimizacion_portafolios.web.portfolios import alerting, bp, services
 from optimizacion_portafolios.web.portfolios.snapshots import unsign
 
 _NAME_MAX = 120
@@ -43,9 +43,12 @@ def fix():
         "benchmark": form["benchmark"],
         "commission_bps": f"{form['commission_bps']:g}",
     }
+    alert_rows = alerting.form_rows()
     if request.form.get("step") == "confirm":
         values = {field: request.form.get(field, values[field]).strip() for field in values}
+        alert_rows = alerting.submitted_rows()
         try:
+            rules = alerting.parse_rules_form()
             name = " ".join(values["name"].split())[:_NAME_MAX] or form["default_name"]
             capital = parse_bounded_float(
                 "capital", values["capital"], 100, 1e12,
@@ -60,14 +63,16 @@ def fix():
             benchmark = normalize_ticker(values["benchmark"])
             portfolio = services.fix_portfolio(
                 current_user_id(), snapshot, name=name, capital=capital,
-                benchmark=benchmark, commission_bps=commission,
+                benchmark=benchmark, commission_bps=commission, alert_rules=rules,
             )
         except ValueError as error:
             flash(str(error), "error")
         else:
             flash(f"«{portfolio.name}» quedó fijado como portafolio óptimo. El seguimiento empieza el {portfolio.tracking_start.isoformat()}.", "success")
             return redirect(url_for("portfolios.detail", portfolio_id=portfolio.id))
-    return render_template("portfolios/fix.html", form=form, values=values, snapshot=token)
+    return render_template(
+        "portfolios/fix.html", form=form, values=values, snapshot=token, alert_rows=alert_rows
+    )
 
 
 @bp.get("/<int:portfolio_id>")
@@ -75,3 +80,32 @@ def fix():
 def detail(portfolio_id: int):
     portfolio = owned_portfolio(portfolio_id)
     return render_template("portfolios/detail.html", portfolio=services.portfolio_detail(portfolio))
+
+
+@bp.route("/<int:portfolio_id>/alertas", methods=["GET", "POST"])
+@login_required
+def alerts(portfolio_id: int):
+    portfolio = owned_portfolio(portfolio_id)
+    alerting.ensure_rules(portfolio)
+    rows = alerting.form_rows(alerting.current_rules(portfolio))
+    if request.method == "POST":
+        try:
+            repositories.set_alert_rules(portfolio, alerting.parse_rules_form())
+        except ValueError as error:
+            flash(str(error), "error")
+            rows = alerting.submitted_rows()
+        else:
+            if portfolio.is_active:
+                try:
+                    alerting.evaluate_portfolio(portfolio, services.analyze(portfolio))
+                except ValueError as error:
+                    flash(f"Umbrales guardados; no se pudieron reevaluar las alertas: {error}", "warning")
+            flash("Umbrales de alerta guardados.", "success")
+            return redirect(url_for("portfolios.alerts", portfolio_id=portfolio.id))
+    return render_template(
+        "portfolios/alerts.html",
+        portfolio=services.portfolio_header(portfolio),
+        rows=rows,
+        status=alerting.status_view(portfolio),
+        history=[alerting.event_row(event) for event in repositories.alert_history(portfolio)],
+    )

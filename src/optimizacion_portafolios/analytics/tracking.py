@@ -416,11 +416,14 @@ def tracking_metrics(
     *,
     rf: float = 0.0,
     turnover: float = 0.0,
+    raw_prices: pd.DataFrame | None = None,
 ) -> dict:
     """Every dashboard metric (``scalars``) plus the series used in charts.
 
     Inputs are daily on business days; ``turnover`` is the cumulative turnover
-    of the portfolio changes. Scalars without enough history are ``None``.
+    of the portfolio changes. ``raw_prices`` (not forward-filled) measures how
+    many business days each held asset has gone without a new price. Scalars
+    without enough history are ``None``.
     """
     returns = daily_returns(values)
     benchmark_returns = daily_returns(benchmark.reindex(values.index).ffill().dropna())
@@ -434,6 +437,7 @@ def tracking_metrics(
     correlation = rolling_average_correlation(asset_returns[held])
     risk = risk_contributions(asset_returns, weights)
     last = lambda series: _number(series.iloc[-1]) if not series.empty else None  # noqa: E731
+    stale = stale_days(raw_prices.reindex(columns=held), values.index) if raw_prices is not None and held else pd.Series(dtype=float)
     scalars = {
         "cumulative_return": cumulative_return(values),
         **{f"return_{key}": value for key, value in period_returns(values).items()},
@@ -441,6 +445,7 @@ def tracking_metrics(
         "volatility": annualized_volatility(returns),
         "rolling_volatility_21": last(rolling_vol[21]),
         "rolling_volatility_63": last(rolling_vol[63]),
+        "average_rolling_volatility_21": _number(rolling_vol[21].mean()) if not rolling_vol[21].empty else None,
         "average_rolling_volatility_63": _number(rolling_vol[63].mean()) if not rolling_vol[63].empty else None,
         "drawdown": drawdown["current"],
         "max_drawdown": drawdown["max"],
@@ -460,6 +465,7 @@ def tracking_metrics(
         "max_abs_drift": _number(drift.abs().max()) if not drift.empty else None,
         "average_correlation": last(correlation),
         "max_risk_share": _number(risk.max()) if not risk.empty else None,
+        "max_stale_days": int(stale.max()) if not stale.empty else 0,
         "turnover": turnover,
         "observations": len(returns),
     }
@@ -480,4 +486,18 @@ def tracking_metrics(
         "drift": drift,
         "return_contributions": return_contributions(holdings),
         "risk_contributions": risk,
+        "context": {
+            "drift_ticker": str(drift.abs().idxmax()) if not drift.empty else None,
+            "risk_ticker": str(risk.idxmax()) if not risk.empty else None,
+            "stale_ticker": str(stale.idxmax()) if not stale.empty and stale.max() > 0 else None,
+        },
     }
+
+
+def stale_days(raw_prices: pd.DataFrame, calendar: pd.DatetimeIndex) -> pd.Series:
+    """Business days of ``calendar`` after the last real price of each column."""
+    days = {}
+    for ticker in raw_prices.columns:
+        last_valid = raw_prices[ticker].last_valid_index()
+        days[ticker] = len(calendar) if last_valid is None else int((calendar > last_valid).sum())
+    return pd.Series(days, dtype=int)

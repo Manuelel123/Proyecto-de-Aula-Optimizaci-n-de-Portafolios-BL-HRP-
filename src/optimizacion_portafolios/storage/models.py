@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from optimizacion_portafolios.storage import db
@@ -49,6 +49,15 @@ class Portfolio(db.Model):
         back_populates="portfolio",
         cascade="all, delete-orphan",
         order_by="PortfolioVersion.number",
+    )
+    alert_rules: Mapped[list[AlertRule]] = relationship(
+        back_populates="portfolio", cascade="all, delete-orphan", order_by="AlertRule.id"
+    )
+    alert_events: Mapped[list[AlertEvent]] = relationship(
+        back_populates="portfolio",
+        cascade="all, delete-orphan",
+        order_by="AlertEvent.triggered_on.desc()",
+        lazy="dynamic",
     )
     snapshots: Mapped[list[DailySnapshot]] = relationship(
         back_populates="portfolio",
@@ -149,3 +158,41 @@ class DailySnapshot(db.Model):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="snapshots")
+
+
+class AlertRule(db.Model):
+    """User-editable thresholds of one alert kind (see ``analytics.alerts``)."""
+
+    __tablename__ = "alert_rules"
+    __table_args__ = (UniqueConstraint("portfolio_id", "kind"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    yellow: Mapped[float | None] = mapped_column(Float, nullable=True)
+    red: Mapped[float | None] = mapped_column(Float, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    portfolio: Mapped[Portfolio] = relationship(back_populates="alert_rules")
+
+
+class AlertEvent(db.Model):
+    """A period during which a rule stayed at one level (open while unresolved)."""
+
+    __tablename__ = "alert_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    level: Mapped[str] = mapped_column(String(8))
+    triggered_on: Mapped[date] = mapped_column(Date)
+    resolved_on: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    message: Mapped[str] = mapped_column(Text)
+    updated_on: Mapped[date] = mapped_column(Date)
+
+    portfolio: Mapped[Portfolio] = relationship(back_populates="alert_events")
+
+    @property
+    def is_open(self) -> bool:
+        return self.resolved_on is None

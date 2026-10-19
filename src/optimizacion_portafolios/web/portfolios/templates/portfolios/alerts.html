@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, traffic_light, alert_thresholds, portfolio_tabs %}
+{% block title %}Alertas · {{ portfolio.name }}{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('portfolios.index') }}">Mis portafolios</a> · {{ portfolio.name }}</p>
+      <h1>Alertas</h1>
+      <p class="lead">Reglas con semáforo verde, amarillo y rojo. Se evalúan al abrir el panel y con el comando diario de snapshots; no se envían correos ni notificaciones.</p>
+    </div>
+    {{ traffic_light(status.level, status.level_label) }}
+  </header>
+  {{ portfolio_tabs(portfolio.id, 'alerts') }}
+  {{ disclaimer() }}
+
+  <form method="post" class="card account-section">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <header class="card__header"><div><h2 class="card__title">Umbrales</h2><p class="card__subtitle">Vacío = sin ese nivel · desmarca una regla para desactivarla</p></div></header>
+    {{ alert_thresholds(rows) }}
+    <div class="card__footer"><button class="button button-primary" type="submit">Guardar umbrales</button></div>
+  </form>
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Alertas activas</h2></div></header>
+    <div class="card__body">
+      {% if status.open %}
+        <ul class="alert-list">
+          {% for event in status.open %}
+            <li>{{ traffic_light(event.level, event.level_label) }} <strong>{{ event.label }}</strong> · {{ event.message }} <span class="help-text">desde {{ event.triggered_on }} · revisada {{ event.updated_on }}</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="help-text">No hay alertas activas.</p>
+      {% endif %}
+    </div>
+  </article>
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Historial</h2><p class="card__subtitle">Cada fila es un periodo en un nivel: cuándo se disparó y cuándo se resolvió</p></div></header>
+    {% if history %}
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th scope="col">Nivel</th><th scope="col">Regla</th><th scope="col">Detalle</th><th scope="col">Disparada</th><th scope="col">Resuelta</th></tr></thead>
+          <tbody>
+            {% for event in history %}
+              <tr>
+                <td>{{ traffic_light(event.level, event.level_label) }}</td>
+                <td>{{ event.label }}</td>
+                <td>{{ event.message }}</td>
+                <td>{{ event.triggered_on }}</td>
+                <td>{{ event.resolved_on or 'Activa' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="card__body"><p class="help-text">Todavía no se ha disparado ninguna alerta.</p></div>
+    {% endif %}
+  </article>
+{% endblock %}

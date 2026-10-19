@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 from yfinance.exceptions import YFException
 
+from optimizacion_portafolios.analytics.alerts import LEVEL_LABELS, overall_level
 from optimizacion_portafolios.analytics.tracking import (
     ROLLING_SHARPE_WINDOW,
     Segment,
@@ -34,6 +35,7 @@ from optimizacion_portafolios.web.common.charts import (
     tracking_value_chart,
     weights_vs_target_chart,
 )
+from optimizacion_portafolios.web.portfolios import alerting
 from optimizacion_portafolios.web.portfolios.snapshots import MODEL_LABELS, default_name
 
 logger = logging.getLogger(__name__)
@@ -90,6 +92,7 @@ def fix_portfolio(
     capital: float,
     benchmark: str,
     commission_bps: float,
+    alert_rules: dict | None = None,
     today: date | None = None,
 ) -> Portfolio:
     """Store the snapshot as version 1, bought at the latest available closes.
@@ -135,7 +138,7 @@ def fix_portfolio(
         "price_date": price_day.date().isoformat(),
         "currency": "USD",
     }
-    return repositories.create_portfolio(
+    portfolio = repositories.create_portfolio(
         user_id,
         name=name,
         model=snapshot["model"],
@@ -148,6 +151,8 @@ def fix_portfolio(
         commission_bps=commission_bps,
         cost=positions.cost,
     )
+    repositories.set_alert_rules(portfolio, alert_rules or alerting.default_rules())
+    return portfolio
 
 
 # ------------------------------------------------------------------ list/detail
@@ -170,8 +175,22 @@ def _summary(portfolio: Portfolio) -> dict:
     }
 
 
+def portfolio_header(portfolio: Portfolio) -> dict:
+    """Summary for sub-pages (alerts, management, versions)."""
+    return _summary(portfolio)
+
+
 def portfolio_list(user_id: str) -> list[dict]:
-    return [_summary(portfolio) for portfolio in repositories.list_portfolios(user_id)]
+    levels = repositories.open_alert_levels(user_id)
+    rows = []
+    for portfolio in repositories.list_portfolios(user_id):
+        row = _summary(portfolio)
+        open_levels = levels.get(portfolio.id, []) if portfolio.is_active else []
+        level = overall_level(open_levels) if portfolio.is_active else None
+        row["alert_level"], row["alert_label"] = level, LEVEL_LABELS.get(level, "")
+        row["alert_count"] = len(open_levels)
+        rows.append(row)
+    return rows
 
 
 def segments(portfolio: Portfolio) -> list[Segment]:
@@ -222,6 +241,7 @@ def valuation(portfolio: Portfolio, today: date | None = None) -> dict:
         "total": total,
         "benchmark": benchmark_series,
         "prices": business_days(prices.sort_index().ffill()).reindex(holdings.index),
+        "raw_prices": business_days(prices.sort_index()),
     }
 
 
@@ -236,6 +256,7 @@ def analyze(portfolio: Portfolio, today: date | None = None) -> dict:
         portfolio.current_version.target_weights,
         rf=risk_free_rate(portfolio),
         turnover=cumulative_turnover(portfolio),
+        raw_prices=valued["raw_prices"],
     )
     return {**valued, "metrics": metrics}
 
@@ -272,7 +293,10 @@ def snapshot_all(today: date | None = None) -> list[tuple[Portfolio, int | str]]
     outcome = []
     for portfolio in repositories.active_portfolios():
         try:
-            outcome.append((portfolio, record_snapshots(portfolio, analyze(portfolio, today))))
+            analysis = analyze(portfolio, today)
+            written = record_snapshots(portfolio, analysis)
+            alerting.evaluate_portfolio(portfolio, analysis)
+            outcome.append((portfolio, written))
         except ValueError as error:
             logger.warning("Snapshot of portfolio %s failed: %s", portfolio.id, error)
             outcome.append((portfolio, str(error)))
@@ -414,9 +438,11 @@ def portfolio_detail(portfolio: Portfolio, today: date | None = None) -> dict:
         view["tracking_error"] = str(error)
         analysis = None
     current = drift = last_close = pd.Series(dtype=float)
+    signals = None
     if analysis is not None:
         if portfolio.is_active:
             record_snapshots(portfolio, analysis)
+            signals = alerting.evaluate_portfolio(portfolio, analysis)
         metrics = analysis["metrics"]
         current, drift = metrics["weights"], metrics["drift"]
         last_close = analysis["prices"].iloc[-1]
@@ -426,6 +452,7 @@ def portfolio_detail(portfolio: Portfolio, today: date | None = None) -> dict:
             "groups": metric_groups(metrics["scalars"]),
             "charts": _charts(portfolio, analysis),
         }
+    view["alerts"] = alerting.status_view(portfolio, signals)
     view["snapshots"] = [
         {"day": s.day.isoformat(), "value": s.value, "benchmark_value": s.benchmark_value, "has_metrics": bool(s.metrics)}
         for s in repositories.latest_snapshots(portfolio, 10)

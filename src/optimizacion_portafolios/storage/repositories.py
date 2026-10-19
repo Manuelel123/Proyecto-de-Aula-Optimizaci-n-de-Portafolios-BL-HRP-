@@ -14,6 +14,8 @@ from sqlalchemy import select
 from optimizacion_portafolios.storage import db
 from optimizacion_portafolios.storage.models import (
     MODELS,
+    AlertEvent,
+    AlertRule,
     DailySnapshot,
     VERSION_REASONS,
     Holding,
@@ -205,3 +207,85 @@ def latest_snapshots(portfolio: Portfolio, limit: int = 10) -> list[DailySnapsho
             .limit(limit)
         )
     )
+
+
+# -------------------------------------------------------------------- alerts
+def set_alert_rules(portfolio: Portfolio, rules: dict[str, tuple[float | None, float | None, bool]]) -> None:
+    """Create or update the rules ``kind -> (yellow, red, enabled)``."""
+    existing = {rule.kind: rule for rule in portfolio.alert_rules}
+    for kind, (yellow, red, enabled) in rules.items():
+        rule = existing.get(kind)
+        if rule is None:
+            portfolio.alert_rules.append(AlertRule(kind=kind, yellow=yellow, red=red, enabled=enabled))
+        else:
+            rule.yellow, rule.red, rule.enabled = yellow, red, enabled
+    db.session.commit()
+
+
+def open_alerts(portfolio: Portfolio) -> list[AlertEvent]:
+    return list(
+        db.session.scalars(
+            select(AlertEvent)
+            .where(AlertEvent.portfolio_id == portfolio.id, AlertEvent.resolved_on.is_(None))
+            .order_by(AlertEvent.triggered_on.desc())
+        )
+    )
+
+
+def alert_history(portfolio: Portfolio, limit: int = 100) -> list[AlertEvent]:
+    return list(
+        db.session.scalars(
+            select(AlertEvent)
+            .where(AlertEvent.portfolio_id == portfolio.id)
+            .order_by(AlertEvent.triggered_on.desc(), AlertEvent.id.desc())
+            .limit(limit)
+        )
+    )
+
+
+def sync_alerts(portfolio: Portfolio, signals, as_of: date) -> list[AlertEvent]:
+    """Open, update or resolve events from today's signals; returns open events.
+
+    A rule keeps one open event per level: a level change resolves the open
+    event on ``as_of`` and opens a new one; green resolves it. Evaluations of
+    an earlier day than an open event's last update are ignored.
+    """
+    open_by_kind = {event.kind: event for event in open_alerts(portfolio)}
+    for signal in signals:
+        event = open_by_kind.get(signal.kind)
+        if event is not None and as_of < event.updated_on:
+            continue
+        if event is not None and (signal.level == "green" or signal.level != event.level):
+            event.resolved_on = as_of
+            event = None
+        if signal.level == "green":
+            continue
+        if event is None:
+            db.session.add(
+                AlertEvent(
+                    portfolio_id=portfolio.id, kind=signal.kind, level=signal.level,
+                    triggered_on=as_of, value=signal.value, message=signal.message, updated_on=as_of,
+                )
+            )
+        else:
+            event.value, event.message, event.updated_on = signal.value, signal.message, as_of
+    # Rules that were disabled or removed resolve their open events.
+    evaluated = {signal.kind for signal in signals}
+    for kind, event in open_by_kind.items():
+        if kind not in evaluated and event.resolved_on is None:
+            event.resolved_on = as_of
+    db.session.commit()
+    return open_alerts(portfolio)
+
+
+def open_alert_levels(user_id: str) -> dict[int, list[str]]:
+    """Open alert levels per portfolio of ``user_id`` (for the list page)."""
+    rows = db.session.execute(
+        select(AlertEvent.portfolio_id, AlertEvent.level)
+        .join(Portfolio, Portfolio.id == AlertEvent.portfolio_id)
+        .where(Portfolio.user_id == user_id, AlertEvent.resolved_on.is_(None))
+    )
+    levels: dict[int, list[str]] = {}
+    for portfolio_id, level in rows:
+        levels.setdefault(portfolio_id, []).append(level)
+    return levels
