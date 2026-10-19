@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "flask>=3.1.2",
     "flask-login>=0.6.3",
     "flask-migrate>=4.1.0",
@@ -34,3 +35,11 @@ optimizacion-portafolios = "optimizacion_portafolios.web:run"
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

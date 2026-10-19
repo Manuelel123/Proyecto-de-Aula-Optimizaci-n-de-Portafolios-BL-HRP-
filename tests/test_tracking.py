@@ -122,10 +122,14 @@ class FixPortfolioFlowTests(AccountTestCase):
         return re.search(r'name="snapshot" value="([^"]+)"', html).group(1)
 
     @patch("optimizacion_portafolios.web.hrp.services.download_prices", side_effect=_prices)
-    def test_anonymous_result_invites_to_sign_in(self, _download):
-        html = self._hrp_page()
-        self.assertIn("Inicia sesión para fijar este portafolio", html)
-        self.assertNotIn('name="snapshot"', html)
+    def test_anonymous_optimization_redirects_to_sign_in(self, download):
+        response = self.post(
+            "/hrp", action="optimize", universe="Portafolio actual", benchmark="S&P 500 (SPY)",
+            start_date="2024-01-01", tickers=["AAPL", "MSFT"], custom_tickers="", backtest="",
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.startswith("/auth/ingresar"))
+        download.assert_not_called()
 
     @patch("optimizacion_portafolios.web.portfolios.services.download_prices", side_effect=_prices)
     @patch("optimizacion_portafolios.web.hrp.services.download_prices", side_effect=_prices)
@@ -142,7 +146,7 @@ class FixPortfolioFlowTests(AccountTestCase):
         )
         self.assertEqual(response.status_code, 302)
         with self.app.app_context():
-            user_id = self.insforge.users["ana@example.com"]["id"]
+            user_id = self.user_id_of()
             portfolio = repositories.list_portfolios(user_id)[0]
             version = portfolio.current_version
             self.assertEqual((portfolio.name, portfolio.model, portfolio.benchmark), ("Mi HRP", "hrp", "SPY"))

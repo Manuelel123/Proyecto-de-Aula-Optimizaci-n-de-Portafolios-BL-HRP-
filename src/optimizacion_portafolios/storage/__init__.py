@@ -1,9 +1,9 @@
-"""Persistence of tracked portfolios (SQLAlchemy models and repositories).
+"""Persistence of users, tracked portfolios and backtest history (SQLAlchemy).
 
 The database lives in ``DATABASE_URL`` (default ``instance/atlas.db``, outside
-version control). Users are InsForge accounts: tables store the InsForge user
-id, so there is no local users table. Schema changes are Flask-Migrate
-revisions in ``storage/migrations``.
+version control). Users are local accounts (``models.User``); owned rows store
+``str(user.id)`` in ``user_id``. Schema changes are Flask-Migrate revisions in
+``storage/migrations``.
 """
 
 import sqlite3

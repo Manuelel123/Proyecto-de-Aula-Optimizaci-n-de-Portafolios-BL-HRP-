@@ -107,7 +107,7 @@ def _crashing_prices(tickers, start, end):
 
 class AlertPagesTests(AccountTestCase):
     def _portfolio(self):
-        user_id = self.insforge.users["ana@example.com"]["id"]
+        user_id = self.user_id_of()
         portfolio = repositories.create_portfolio(
             user_id, name="Seguido", model="hrp", benchmark="SPY", initial_capital=10_000,
             tracking_start=date.today() - timedelta(days=200),
@@ -142,7 +142,7 @@ class AlertPagesTests(AccountTestCase):
         response = self.post(f"/portafolios/{portfolio_id}/alertas", **form)
         self.assertEqual(response.status_code, 302)
         with self.app.app_context():
-            portfolio = repositories.get_portfolio(self.insforge.users["ana@example.com"]["id"], portfolio_id)
+            portfolio = repositories.get_portfolio(self.user_id_of(), portfolio_id)
             rules = alerting.current_rules(portfolio)
             self.assertEqual(rules["drawdown"], (0.40, 0.50, True))
             self.assertEqual(rules["weight_drift"], (None, None, True))  # left empty

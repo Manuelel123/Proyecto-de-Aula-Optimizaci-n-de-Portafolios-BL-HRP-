@@ -72,7 +72,7 @@ class SignalsPageTests(AccountTestCase):
     def test_page_simulates_without_changing_the_portfolio(self, _download):
         self.sign_in()
         with self.app.app_context():
-            user_id = self.insforge.users["ana@example.com"]["id"]
+            user_id = self.user_id_of()
             portfolio_id = repositories.create_portfolio(
                 user_id, name="Seguido", model="hrp", benchmark="SPY", initial_capital=10_000,
                 tracking_start=date.today() - timedelta(days=150),

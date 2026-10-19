@@ -1,8 +1,7 @@
-"""HRP backtest history in InsForge, scoped to one user.
+"""HRP backtest history in the local database, scoped to one user.
 
-Every call takes the signed-in user's access token, so the owner-only RLS
-policies of the tables decide which rows exist; ``user_id`` defaults to
-``auth.uid()`` on insert.
+Every function takes the ``user_id`` (``str(User.id)``) of the signed-in user,
+so another user's run is simply not found.
 """
 
 from __future__ import annotations
@@ -12,17 +11,20 @@ import json
 import math
 from typing import Any
 
-from optimizacion_portafolios.insforge import InsForgeClient, InsForgeError, in_filter
+from sqlalchemy import select
 
-RUN_COLUMNS = (
-    "id,tickers,start_date,end_date,trading_days,lookback,drift_threshold,"
-    "vol_window,vol_threshold,fees,slippage,init_cash,best_strategy,created_at"
-)
-RESULT_COLUMNS = (
-    "run_id,strategy,total_return,cagr,volatility,sharpe,sortino,max_drawdown,"
-    "rebalances,total_costs,rebalance_dates"
-)
+from optimizacion_portafolios.storage import db
+from optimizacion_portafolios.storage.models import BacktestResult, BacktestRun
+
 LIST_LIMIT = 100
+_RUN_FIELDS = (
+    "id", "tickers", "start_date", "end_date", "trading_days", "lookback", "drift_threshold",
+    "vol_window", "vol_threshold", "fees", "slippage", "init_cash", "best_strategy", "created_at",
+)
+_RESULT_FIELDS = (
+    "strategy", "total_return", "cagr", "volatility", "sharpe", "sortino", "max_drawdown",
+    "rebalances", "total_costs", "rebalance_dates",
+)
 
 
 def _number(value: Any) -> float | None:
@@ -36,7 +38,10 @@ def _number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-# ----------------------------------------------------------------- Backtests
+def _row(model, fields) -> dict:
+    return {field: getattr(model, field) for field in fields}
+
+
 def backtest_fingerprint(record: dict) -> str:
     """Stable hash of the inputs of a backtest run (same inputs, same run)."""
     inputs = {key: record.get(key) for key in ("tickers", "start_date", "end_date", "config", "bounds")}
@@ -44,107 +49,96 @@ def backtest_fingerprint(record: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def record_backtest(client: InsForgeClient, token: str, record: dict) -> tuple[str, bool]:
+def _owned_run(user_id: str, run_id: str) -> BacktestRun | None:
+    return db.session.scalar(
+        select(BacktestRun).where(BacktestRun.id == run_id, BacktestRun.user_id == user_id)
+    )
+
+
+def record_backtest(user_id: str, record: dict) -> tuple[str, bool]:
     """Store a backtest run once per distinct inputs; return ``(id, created)``."""
     fingerprint = backtest_fingerprint(record)
-    existing = client.select(
-        "backtest_runs", {"fingerprint": f"eq.{fingerprint}", "select": "id"}, token=token, limit=1
+    existing = db.session.scalar(
+        select(BacktestRun.id).where(
+            BacktestRun.user_id == user_id, BacktestRun.fingerprint == fingerprint
+        )
     )
     if existing:
-        return existing[0]["id"], False
+        return existing, False
     config = record["config"]
-    rows = client.insert(
-        "backtest_runs",
-        [
-            {
-                "fingerprint": fingerprint,
-                "tickers": list(record["tickers"]),
-                "start_date": record["start_date"],
-                "end_date": record["end_date"],
-                "trading_days": int(record["trading_days"]),
-                "lookback": int(config["lookback"]),
-                "drift_threshold": float(config["drift_threshold"]),
-                "vol_window": int(config["vol_window"]),
-                "vol_threshold": _number(config.get("vol_threshold")),
-                "fees": float(config["fees"]),
-                "slippage": float(config["slippage"]),
-                "init_cash": float(config["init_cash"]),
-                "best_strategy": record.get("best_strategy"),
-            }
+    run = BacktestRun(
+        user_id=user_id,
+        fingerprint=fingerprint,
+        tickers=list(record["tickers"]),
+        start_date=record["start_date"],
+        end_date=record["end_date"],
+        trading_days=int(record["trading_days"]),
+        lookback=int(config["lookback"]),
+        drift_threshold=float(config["drift_threshold"]),
+        vol_window=int(config["vol_window"]),
+        vol_threshold=_number(config.get("vol_threshold")),
+        fees=float(config["fees"]),
+        slippage=float(config["slippage"]),
+        init_cash=float(config["init_cash"]),
+        best_strategy=record.get("best_strategy"),
+        results=[
+            BacktestResult(
+                strategy=strategy["strategy"],
+                total_return=_number(strategy.get("total_return")),
+                cagr=_number(strategy.get("cagr")),
+                volatility=_number(strategy.get("volatility")),
+                sharpe=_number(strategy.get("sharpe")),
+                sortino=_number(strategy.get("sortino")),
+                max_drawdown=_number(strategy.get("max_drawdown")),
+                rebalances=strategy.get("rebalances"),
+                total_costs=_number(strategy.get("total_costs")),
+                rebalance_dates=list(strategy.get("rebalance_dates") or []),
+            )
+            for strategy in record["strategies"]
         ],
-        token=token,
     )
-    run_id = rows[0]["id"]
+    db.session.add(run)
     try:
-        client.insert(
-            "backtest_results",
-            [
-                {
-                    "run_id": run_id,
-                    "strategy": strategy["strategy"],
-                    "total_return": _number(strategy.get("total_return")),
-                    "cagr": _number(strategy.get("cagr")),
-                    "volatility": _number(strategy.get("volatility")),
-                    "sharpe": _number(strategy.get("sharpe")),
-                    "sortino": _number(strategy.get("sortino")),
-                    "max_drawdown": _number(strategy.get("max_drawdown")),
-                    "rebalances": strategy.get("rebalances"),
-                    "total_costs": _number(strategy.get("total_costs")),
-                    "rebalance_dates": strategy.get("rebalance_dates") or [],
-                }
-                for strategy in record["strategies"]
-            ],
-            token=token,
-            returning=False,
-        )
-    except InsForgeError:
-        client.delete("backtest_runs", {"id": f"eq.{run_id}"}, token=token)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
         raise
-    return run_id, True
+    return run.id, True
 
 
-def list_backtests(client: InsForgeClient, token: str) -> list[dict]:
-    runs = client.select(
-        "backtest_runs",
-        {"select": RUN_COLUMNS, "order": "created_at.desc"},
-        token=token,
-        limit=LIST_LIMIT,
-    )
-    if not runs:
-        return []
-    results = client.select(
-        "backtest_results",
-        {
-            "run_id": in_filter([run["id"] for run in runs]),
-            "select": "run_id,strategy,total_return,sharpe",
-        },
-        token=token,
-    )
-    by_run: dict[str, list[dict]] = {}
-    for row in results:
-        by_run.setdefault(row["run_id"], []).append(row)
+def list_backtests(user_id: str) -> list[dict]:
+    runs = db.session.scalars(
+        select(BacktestRun)
+        .where(BacktestRun.user_id == user_id)
+        .order_by(BacktestRun.created_at.desc())
+        .limit(LIST_LIMIT)
+    ).all()
+    listing = []
     for run in runs:
-        rows = by_run.get(run["id"], [])
-        best = next((row for row in rows if row["strategy"] == run.get("best_strategy")), None)
-        run["best"] = best
-        run["strategy_count"] = len(rows)
-    return runs
+        row = _row(run, _RUN_FIELDS)
+        best = next((result for result in run.results if result.strategy == run.best_strategy), None)
+        row["best"] = _row(best, _RESULT_FIELDS) if best else None
+        row["strategy_count"] = len(run.results)
+        listing.append(row)
+    return listing
 
 
-def get_backtest(client: InsForgeClient, token: str, run_id: str) -> dict | None:
-    rows = client.select(
-        "backtest_runs", {"id": f"eq.{run_id}", "select": RUN_COLUMNS}, token=token, limit=1
-    )
-    if not rows:
+def get_backtest(user_id: str, run_id: str) -> dict | None:
+    run = _owned_run(user_id, run_id)
+    if run is None:
         return None
-    run = rows[0]
-    run["results"] = client.select(
-        "backtest_results",
-        {"run_id": f"eq.{run_id}", "select": RESULT_COLUMNS, "order": "sharpe.desc.nullslast"},
-        token=token,
-    )
-    return run
+    row = _row(run, _RUN_FIELDS)
+    results = [_row(result, _RESULT_FIELDS) for result in run.results]
+    # Sharpe descending, missing values last.
+    results.sort(key=lambda result: (result["sharpe"] is None, -(result["sharpe"] or 0.0)))
+    row["results"] = results
+    return row
 
 
-def delete_backtest(client: InsForgeClient, token: str, run_id: str) -> bool:
-    return bool(client.delete("backtest_runs", {"id": f"eq.{run_id}"}, token=token))
+def delete_backtest(user_id: str, run_id: str) -> bool:
+    run = _owned_run(user_id, run_id)
+    if run is None:
+        return False
+    db.session.delete(run)
+    db.session.commit()
+    return True

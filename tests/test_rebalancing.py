@@ -104,7 +104,7 @@ class ManagementFlowTests(AccountTestCase):
         return int(response.location.rstrip("/").rsplit("/", 1)[-1])
 
     def _portfolio(self, portfolio_id):
-        return repositories.get_portfolio(self.insforge.users["ana@example.com"]["id"], portfolio_id)
+        return repositories.get_portfolio(self.user_id_of(), portfolio_id)
 
     def _confirm(self, portfolio_id, **form):
         html = self.post(f"/portafolios/{portfolio_id}/gestionar/vista-previa", **form).data.decode()

@@ -2,8 +2,8 @@
 
 After ``MAX_FAILURES`` failed attempts within ``WINDOW`` for the same email or
 the same client IP, sign-in is blocked until the oldest failure leaves the
-window. InsForge rate-limits on its side too; this keeps password guessing from
-reaching it at all. Counters live in memory, so a restart clears them.
+window, even with the right password, which slows down password guessing.
+Counters live in memory, so a restart clears them.
 """
 
 from __future__ import annotations

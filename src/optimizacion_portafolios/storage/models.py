@@ -1,4 +1,4 @@
-"""Tables of tracked ("optimal") portfolios.
+"""Tables of local users, HRP backtest history and tracked ("optimal") portfolios.
 
 ``DailySnapshot`` keeps one row per portfolio and business day (value,
 benchmark value, weights and, for the days it was computed, the metrics), so
@@ -14,13 +14,19 @@ so there is no circular foreign key to keep in sync).
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from flask_login import UserMixin
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from optimizacion_portafolios.storage import db
 
+# Access tiers, lowest to highest. "gestor" is only granted via GESTOR_EMAILS.
+ROLES = ("explorador", "inversionista", "gestor")
+DEFAULT_ROLE = "explorador"
+DEFAULT_PLAN = "piloto"
 MODELS = ("hrp", "black_litterman")
 STATUSES = ("active", "archived")
 VERSION_REASONS = ("fix", "rebalance", "reoptimize", "remove", "add")
@@ -28,6 +34,88 @@ VERSION_REASONS = ("fix", "rebalance", "reoptimize", "remove", "add")
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+class User(UserMixin, db.Model):
+    """Local account: the email is the username; the password is an argon2 hash.
+
+    Rows owned by a user (portfolios, backtests) store ``str(user.id)`` in
+    their ``user_id`` column.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    display_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default=DEFAULT_ROLE, server_default=DEFAULT_ROLE)
+    role_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Commercial plan; stored for later, not enforced yet.
+    plan: Mapped[str] = mapped_column(String(20), default=DEFAULT_PLAN, server_default=DEFAULT_PLAN)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def name(self) -> str:
+        return self.display_name or self.email.split("@")[0]
+
+    def __repr__(self) -> str:  # never includes the password hash
+        return f"<User {self.id} {self.email} {self.role}>"
+
+
+class BacktestRun(db.Model):
+    """One HRP backtest of a user, stored once per distinct inputs (fingerprint)."""
+
+    __tablename__ = "backtest_runs"
+    __table_args__ = (UniqueConstraint("user_id", "fingerprint"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    tickers: Mapped[list] = mapped_column(JSON, default=list)
+    start_date: Mapped[str] = mapped_column(String(10))
+    end_date: Mapped[str] = mapped_column(String(10))
+    trading_days: Mapped[int] = mapped_column(Integer)
+    lookback: Mapped[int] = mapped_column(Integer)
+    drift_threshold: Mapped[float] = mapped_column(Float)
+    vol_window: Mapped[int] = mapped_column(Integer)
+    vol_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fees: Mapped[float] = mapped_column(Float)
+    slippage: Mapped[float] = mapped_column(Float)
+    init_cash: Mapped[float] = mapped_column(Float)
+    best_strategy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+    results: Mapped[list[BacktestResult]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="BacktestResult.id"
+    )
+
+
+class BacktestResult(db.Model):
+    """Metrics of one rebalancing strategy within a ``BacktestRun``."""
+
+    __tablename__ = "backtest_results"
+    __table_args__ = (UniqueConstraint("run_id", "strategy"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("backtest_runs.id", ondelete="CASCADE"), index=True)
+    strategy: Mapped[str] = mapped_column(String(64))
+    total_return: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cagr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    volatility: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sharpe: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sortino: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_drawdown: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rebalances: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_costs: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rebalance_dates: Mapped[list] = mapped_column(JSON, default=list)
+
+    run: Mapped[BacktestRun] = relationship(back_populates="results")
 
 
 class Portfolio(db.Model):

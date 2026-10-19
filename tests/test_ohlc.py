@@ -12,7 +12,7 @@ from requests.exceptions import HTTPError
 from tiingo.restclient import RestClientError
 from yfinance.exceptions import YFRateLimitError
 
-from support import WebTestCase, make_prices
+from support import WebTestCase, create_test_user, login_session, make_prices
 
 from optimizacion_portafolios.data.market_data import (
     OHLCV_COLUMNS,
@@ -271,7 +271,9 @@ class ExplorerControlsMarkupTests(unittest.TestCase):
         self.assertIn('data-ohlc-url="/custom/ohlc"', html)
 
     def test_pages_load_the_indicator_module(self) -> None:
-        html = self.app.test_client().get("/hrp").data.decode()
+        client = self.app.test_client()
+        login_session(client, create_test_user(self.app))
+        html = client.get("/hrp").data.decode()
         self.assertIn("js/indicators.js", html)
         self.assertLess(html.index("js/indicators.js"), html.index("js/charts.js"))
 

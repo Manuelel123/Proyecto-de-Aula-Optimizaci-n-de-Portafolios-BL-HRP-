@@ -38,17 +38,21 @@ Yahoo Finance se usa como respaldo:
 
 Las series de ambas fuentes se alinean por fecha (sin hora ni zona horaria). Los errores HTTP de Tiingo distintos de 404 (key inválida, límite de solicitudes, fallas del servidor) se informan como error de descarga y no activan el respaldo.
 
-## Cuentas y base de datos (InsForge)
+## Usuarios y acceso
 
-[InsForge](https://insforge.dev) aporta el login y una base de datos Postgres. Todo es opcional: sin configuración, la app funciona igual que antes, sin cuentas y sin caché persistente.
+Las cuentas son **locales**: viven en la tabla `users` de la base SQLite (ver la sección siguiente). El correo es el usuario (sin distinguir mayúsculas) y la contraseña se guarda solo como hash argon2id (`argon2-cffi`); nunca en texto plano ni en registros.
 
-- **Login:** registro con correo y contraseña verificado con un código de 6 dígitos, recuperación de contraseña con código y acceso con Google o GitHub (OAuth con PKCE). Rutas en `/auth/...`.
-- **Historial de backtests:** con la sesión iniciada, cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`).
-- **Caché de precios incremental:** los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando.
+- **Todo requiere sesión.** Sin iniciar sesión solo se ven la portada (`/`), `/auth/registro`, `/auth/ingresar` y los archivos estáticos. Las páginas redirigen al inicio de sesión (con `next`) y los endpoints JSON (`/api/...`) responden 401. La regla está en `web/auth/guard.py` (`PUBLIC_ENDPOINTS`, `register_access_check`).
+- **Registro e inicio de sesión:** contraseña de al menos 8 caracteres con letras y números. Tras 5 intentos fallidos en 15 minutos (por correo o por IP) el acceso se bloquea temporalmente. El mensaje de error no revela si el correo existe.
+- **Roles:** `explorador` (por defecto), `inversionista` y `gestor`. `gestor` no se puede elegir: lo reciben solo los correos de `GESTOR_EMAILS` (separados por coma), al registrarse o al iniciar sesión; si un correo sale de la lista, vuelve a `explorador`.
+- **Historial de backtests:** cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`), en la base local.
+- **Migrar portafolios de las antiguas cuentas de InsForge:** registra la cuenta local y ejecuta `flask --app wsgi:app users reassign-portfolios <id_insforge> <correo>`.
 
-Configuración local: copia `.env.example` a `.env` y completa las variables. Los valores del proyecto vinculado están en `.insforge/project.json` y en `npx -y @insforge/cli secrets get ANON_KEY`. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor, para la caché de precios, y nunca debe subirse al repositorio.
+Configuración local: copia `.env.example` a `.env` y completa las variables. Define `FLASK_SECRET_KEY` (si falta, la app avisa en el log y las sesiones se pierden al reiniciar).
 
-El esquema está en `migrations/` y se aplica con `npx -y @insforge/cli db migrations up --all`. Las tablas de usuario tienen RLS (cada usuario solo ve sus filas) y las de precios solo son accesibles con la clave de administrador. La configuración de auth, incluidas las URLs de retorno de OAuth permitidas, está en `insforge.toml` (`npx -y @insforge/cli config apply`). Si sirves la app en otra URL, agrega su `/auth/oauth/callback` a `allowed_redirect_urls`.
+### Caché de precios (InsForge, opcional)
+
+[InsForge](https://insforge.dev) ya no gestiona cuentas: solo aporta, si se configuran `INSFORGE_URL` e `INSFORGE_API_KEY`, una caché persistente de precios en Postgres. Los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor y nunca debe subirse al repositorio. El esquema de esas tablas está en `migrations/` (`npx -y @insforge/cli db migrations up --all`).
 
 ## Portafolios en seguimiento (base de datos local)
 
@@ -113,13 +117,15 @@ Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones s
   - **Versiones:** historial en `/portafolios/<id>/versiones`, con comparación de dos versiones (`?a=1&b=3`).
   - **Archivar:** el portafolio deja de monitorearse (sin snapshots ni alertas) y conserva todo su historial.
 - **Señales** (`/portafolios/<id>/senales`, `models/signals.py`): reglas por activo simuladas con vectorbt (`from_signals` con `group_by` y `cash_sharing`) sobre los pesos vigentes desde la fecha de fijación, frente a comprar y mantener. Un activo está «dentro» mientras se cumplen las reglas activas: media rápida sobre la lenta (50/200 días), volatilidad de 21 días como máximo 2× su mediana y drawdown del activo menor al 20 %. Aparte, un stop-loss del 10 % (dinámico por defecto) cierra la posición. Cada entrada compra peso objetivo × capital, porque el simulador de señales de vectorbt no admite tamaños de porcentaje objetivo. Son sugerencias: nunca modifican el portafolio; para actuar hay que usar Gestionar, que pide confirmación. La primera simulación tarda más mientras numba compila.
-- **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
+- **Usuarios:** son las cuentas locales (`users`). Flask-Login gestiona la sesión (`current_user`) y cada fila guarda `str(users.id)` en `user_id`; un portafolio ajeno responde 404.
 
 ## Pruebas
 
 ```powershell
-uv run python -m unittest discover -s tests
+uv run pytest -q
 ```
+
+`uv run python -m unittest discover -s tests` ejecuta la misma suite sin pytest.
 
 Las pruebas no acceden a la red: las descargas de Tiingo y Yahoo Finance se simulan con `unittest.mock`.
 
@@ -190,11 +196,13 @@ src/optimizacion_portafolios/
     monitoring/                 monitoreo y análisis fundamental
     hrp/                        optimización HRP
     black_litterman/            optimización Black-Litterman
-    auth/                       inicio de sesión con InsForge (Flask-Login, límite de intentos)
+    auth/                       cuentas locales: registro, sesión (Flask-Login), roles, guardia global, límite de intentos
+    account/                    historial de backtests HRP
     portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
   storage/
-    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
+    models.py                   tablas SQLAlchemy (User, BacktestRun, BacktestResult, Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
     repositories.py             lecturas y escrituras filtradas por usuario
+    users.py                    cuentas locales y reasignación de dueño
     migrations/                 revisiones de Flask-Migrate
 ```
 

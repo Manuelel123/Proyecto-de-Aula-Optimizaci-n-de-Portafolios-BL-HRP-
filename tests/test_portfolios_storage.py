@@ -87,8 +87,7 @@ class RepositoryTests(unittest.TestCase):
 
 class PortfolioPagesTests(AccountTestCase):
     def _own_id(self):
-        with self.client.session_transaction() as session:
-            return session["auth"]["user"]["id"]
+        return self.user_id_of()
 
     def test_pages_require_sign_in(self):
         response = self.client.get("/portafolios/")
@@ -113,21 +112,13 @@ class PortfolioPagesTests(AccountTestCase):
         self.assertEqual(self.client.get(f"/portafolios/{other}").status_code, 404)
         self.assertNotIn("Ajeno", self.client.get("/portafolios/").data.decode())
 
-    def test_flask_login_tracks_the_insforge_account(self):
+    def test_flask_login_tracks_the_local_account(self):
         self.sign_in()
         with self.client.session_transaction() as session:
-            self.assertEqual(session["_user_id"], session["auth"]["user"]["id"])
+            self.assertEqual(session["_user_id"], self.user_id_of())
         self.post("/auth/salir")
         with self.client.session_transaction() as session:
             self.assertNotIn("_user_id", session)
-
-    def test_repeated_failures_block_sign_in(self):
-        self.insforge.add_user("ana@example.com", "secreto1")
-        for _ in range(5):
-            self.post("/auth/ingresar", email="ana@example.com", password="mala")
-        response = self.post("/auth/ingresar", email="ana@example.com", password="secreto1")
-        self.assertIn("Demasiados intentos fallidos", response.data.decode())
-        self.assertEqual(self.insforge.calls.count(("sign_in", "ana@example.com")), 5)
 
 
 class ThrottleTests(unittest.TestCase):

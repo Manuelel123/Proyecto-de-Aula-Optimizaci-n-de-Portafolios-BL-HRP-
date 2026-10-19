@@ -31,34 +31,33 @@ class InsForgeClientTests(unittest.TestCase):
     def setUp(self):
         self.http = mock.Mock(spec=requests.Session)
         self.client = InsForgeClient(
-            InsForgeSettings("https://app.insforge.app", "anon-key", "api-key"),
+            InsForgeSettings("https://app.insforge.app", "api-key"),
             session=self.http,
         )
 
-    def test_sign_in_uses_server_client_type_and_anon_key(self):
-        self.http.request.return_value = _response(body={"accessToken": "a", "refreshToken": "r"})
-        self.client.sign_in("ana@example.com", "secret")
-        method, url = self.http.request.call_args.args
-        kwargs = self.http.request.call_args.kwargs
-        self.assertEqual((method, url), ("POST", "https://app.insforge.app/api/auth/sessions"))
-        self.assertEqual(kwargs["params"], {"client_type": "server"})
-        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer anon-key")
-        self.assertEqual(kwargs["json"]["method"], "password")
-
-    def test_error_codes_become_spanish_messages(self):
+    def test_http_errors_keep_status_and_code(self):
         self.http.request.return_value = _response(
-            401, {"error": "INVALID_CREDENTIALS", "message": "Invalid email or password"}
+            401, {"error": "AUTH_UNAUTHORIZED", "message": "Invalid token"}
         )
         with self.assertRaises(InsForgeError) as caught:
-            self.client.sign_in("ana@example.com", "bad")
-        self.assertEqual(caught.exception.status, 401)
-        self.assertEqual(caught.exception.user_message, "Correo o contraseña incorrectos.")
+            self.client.select("price_history")
+        self.assertEqual((caught.exception.status, caught.exception.code), (401, "AUTH_UNAUTHORIZED"))
 
     def test_network_error_has_no_status(self):
         self.http.request.side_effect = requests.ConnectionError("offline")
         with self.assertRaises(InsForgeError) as caught:
-            self.client.public_config()
+            self.client.select("price_history")
         self.assertIsNone(caught.exception.status)
+
+    def test_settings_require_url_and_api_key(self):
+        with mock.patch.dict("os.environ", {"INSFORGE_URL": "https://x.app", "INSFORGE_API_KEY": ""}):
+            self.assertIsNone(InsForgeSettings.from_env())
+        with mock.patch.dict("os.environ", {"INSFORGE_URL": "https://x.app/", "INSFORGE_API_KEY": "k"}):
+            self.assertEqual(InsForgeSettings.from_env(), InsForgeSettings("https://x.app", "k"))
+
+    def test_client_has_no_auth_methods(self):
+        for name in ("sign_in", "sign_up", "refresh", "oauth_url", "public_config", "update"):
+            self.assertFalse(hasattr(self.client, name), name)
 
     def test_select_pages_past_the_postgrest_cap(self):
         first = [{"n": index} for index in range(PAGE_SIZE)]
@@ -71,9 +70,11 @@ class InsForgeClientTests(unittest.TestCase):
             self.http.request.call_args.kwargs["headers"]["Authorization"], "Bearer api-key"
         )
 
-    def test_user_tables_require_a_token(self):
+    def test_missing_api_key_is_rejected_before_any_request(self):
+        client = InsForgeClient(InsForgeSettings("https://app.insforge.app", None), session=self.http)
         with self.assertRaises(InsForgeError):
-            self.client.select("saved_portfolios")
+            client.select("price_history")
+        self.http.request.assert_not_called()
 
     def test_upsert_sets_prefer_header_and_conflict_columns(self):
         self.http.request.return_value = _response(204)

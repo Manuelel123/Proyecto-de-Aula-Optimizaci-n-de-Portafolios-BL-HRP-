@@ -1,14 +1,11 @@
-"""Glue between the HRP page and the user's backtest history (InsForge)."""
+"""Glue between the HRP page and the user's backtest history (local database)."""
 
 import logging
 
-from optimizacion_portafolios.insforge import InsForgeError
+from sqlalchemy.exc import SQLAlchemyError
+
 from optimizacion_portafolios.web.account import repository
-from optimizacion_portafolios.web.auth.session import (
-    access_token,
-    current_user,
-    insforge_client,
-)
+from optimizacion_portafolios.web.auth.session import current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -17,20 +14,17 @@ def record_backtest(backtest: dict | None) -> None:
     """Add a successful backtest to the signed-in user's history.
 
     Sets ``backtest["history"]`` to ``{"id", "created"}`` or ``{"error"}``; does
-    nothing for anonymous users or when accounts are not configured.
+    nothing without a signed-in user.
     """
     if not backtest or backtest.get("error") or "record" not in backtest:
         return
-    client = insforge_client()
-    if client is None or current_user() is None:
+    user_id = current_user_id()
+    if user_id is None:
         return
     try:
-        token = access_token()
-        if token is None:
-            return
-        run_id, created = repository.record_backtest(client, token, backtest["record"])
-    except InsForgeError as error:
-        logger.warning("Recording a backtest failed: %s", error)
-        backtest["history"] = {"error": error.user_message}
+        run_id, created = repository.record_backtest(user_id, backtest["record"])
+    except SQLAlchemyError:
+        logger.exception("Recording a backtest failed")
+        backtest["history"] = {"error": "Error de la base de datos local. Intenta de nuevo."}
         return
     backtest["history"] = {"id": run_id, "created": created}

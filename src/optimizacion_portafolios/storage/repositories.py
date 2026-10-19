@@ -1,6 +1,6 @@
 """Owner-scoped access to tracked portfolios.
 
-Every read takes the InsForge ``user_id`` of the signed-in user, so a route
+Every read takes the ``user_id`` (``str(User.id)``) of the signed-in user, so a route
 can never load another user's portfolio: it simply gets ``None`` (a 404).
 """
 

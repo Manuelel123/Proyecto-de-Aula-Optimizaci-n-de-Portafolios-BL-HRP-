@@ -1,10 +1,8 @@
 {% extends "auth/_layout.html" %}
-{% from "auth/_macros.html" import oauth_buttons %}
 {% block title %}Crear cuenta{% endblock %}
 {% block heading %}Crea tu cuenta{% endblock %}
-{% block intro %}<p class="auth-card__lead">Es gratis. Te enviaremos un código para verificar tu correo.</p>{% endblock %}
+{% block intro %}<p class="auth-card__lead">Tu correo es tu usuario. La contraseña se guarda cifrada (argon2) y nunca en texto plano.</p>{% endblock %}
 {% block form %}
-  {{ oauth_buttons(oauth_providers, next_url) }}
   <form method="post" class="form-stack" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="next" value="{{ next_url }}">
@@ -14,12 +12,12 @@
     </div>
     <div class="form-field">
       <label for="email">Correo electrónico</label>
-      <input id="email" name="email" type="email" autocomplete="email" required value="{{ values.email }}">
+      <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" value="{{ values.email }}">
     </div>
     <div class="form-field">
       <label for="password">Contraseña</label>
-      <input id="password" name="password" type="password" autocomplete="new-password" required{% if password_rules %} aria-describedby="password-help"{% endif %}>
-      {% if password_rules %}<p class="help-text" id="password-help">Debe tener {{ password_rules|join(', ') }}.</p>{% endif %}
+      <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128"{% if password_rules %} aria-describedby="password-help"{% endif %}>
+      {% if password_rules %}<p class="help-text" id="password-help">Debe tener {{ password_rules|join(' y ') }}.</p>{% endif %}
     </div>
     <div class="form-field">
       <label for="password_confirm">Confirma la contraseña</label>
