@@ -130,8 +130,8 @@ def download_prices(
 
     Tiingo is used when ``TIINGO_API_KEY`` is set; tickers it does not cover
     (or for which it returns no data) are downloaded from Yahoo Finance. When
-    the InsForge price store is configured, tickers with fresh stored coverage
-    are read from it and new downloads are written back (``price_store``).
+    the InsForge price store is configured, stored closes are reused and only
+    the missing recent days are downloaded (``price_store.fetch``).
 
     Results are cached for up to 15 minutes per ``(tickers, start, end)`` (same
     ``cache_window`` scheme as the profile cache) and every call returns an
@@ -271,18 +271,11 @@ def _download_ohlcv_uncached(ticker: str, start: date, end: date) -> pd.DataFram
 def _download_prices_persistent(
     tickers: tuple[str, ...], start: date, end: date
 ) -> pd.DataFrame:
-    """Prices from the InsForge store when fresh, downloading only the rest."""
-    stored, pending = price_store.load(tickers, start, end)
-    downloaded = _download_prices_uncached(pending, start, end) if pending else pd.DataFrame()
-    price_store.save(downloaded, start, end)
-    if not stored:
-        return downloaded
-    return _assemble_prices(
-        tickers,
-        {**stored, **{ticker: downloaded[ticker] for ticker in downloaded.columns}},
-        start,
-        end,
-    )
+    """Prices from the InsForge store (incremental), else a direct download."""
+    stored = price_store.fetch(tickers, start, end, _download_prices_uncached)
+    if stored is None:
+        return _download_prices_uncached(tickers, start, end)
+    return stored
 
 
 def _download_prices_uncached(

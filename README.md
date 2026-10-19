@@ -45,7 +45,7 @@ Las series de ambas fuentes se alinean por fecha (sin hora ni zona horaria). Los
 - **Login:** registro con correo y contraseña verificado con un código de 6 dígitos, recuperación de contraseña con código y acceso con Google o GitHub (OAuth con PKCE). Rutas en `/auth/...`.
 - **Mis portafolios:** los resultados de HRP y Black-Litterman se pueden guardar desde la página del resultado (`/cuenta/portafolios`).
 - **Historial de backtests:** con la sesión iniciada, cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`).
-- **Caché de precios:** los cierres ajustados descargados se guardan en `price_history`. Un ticker se vuelve a descargar cuando su cobertura tiene más de 24 h (`ATLAS_PRICE_DB_TTL_HOURS`), o más de 1 h si el rango llega a hoy.
+- **Caché de precios incremental:** los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando.
 
 Configuración local: copia `.env.example` a `.env` y completa las variables. Los valores del proyecto vinculado están en `.insforge/project.json` y en `npx -y @insforge/cli secrets get ANON_KEY`. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor, para la caché de precios, y nunca debe subirse al repositorio.
 

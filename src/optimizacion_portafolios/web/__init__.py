@@ -74,8 +74,17 @@ def _configure_insforge(app: Flask, testing: bool) -> None:
     else:
         settings = InsForgeSettings.from_env()
         client = InsForgeClient(settings) if settings else None
-        ttl = float(os.environ.get("ATLAS_PRICE_DB_TTL_HOURS") or price_store.DEFAULT_TTL_HOURS)
-        price_store.configure(client, ttl)
+        price_store.configure(
+            client,
+            full_refresh_days=float(
+                os.environ.get("ATLAS_PRICE_FULL_REFRESH_DAYS")
+                or price_store.DEFAULT_FULL_REFRESH_DAYS
+            ),
+            intraday_ttl_minutes=float(
+                os.environ.get("ATLAS_PRICE_INTRADAY_TTL_MINUTES")
+                or price_store.DEFAULT_INTRADAY_TTL_MINUTES
+            ),
+        )
     if client is not None:
         app.extensions["insforge"] = client
 

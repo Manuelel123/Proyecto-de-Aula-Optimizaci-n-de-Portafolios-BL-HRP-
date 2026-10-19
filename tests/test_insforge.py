@@ -90,61 +90,114 @@ class InsForgeClientTests(unittest.TestCase):
 
 
 class PriceStoreTests(unittest.TestCase):
+    """Incremental refresh: stored, tail and full downloads per ticker."""
+
     def setUp(self):
         self.fake = FakeInsForge()
-        price_store.configure(self.fake, ttl_hours=24)
+        price_store.configure(self.fake, full_refresh_days=7, intraday_ttl_minutes=60)
         market_data.clear_price_cache()
         self.addCleanup(price_store.configure, None)
         self.addCleanup(market_data.clear_price_cache)
-        self.start, self.end = date(2025, 1, 1), date(2025, 1, 10)
+        self.start, self.end = date(2025, 1, 1), date(2025, 3, 31)
+        self.scale = 1.0
+        self.downloads = []
 
-    def _prices(self, tickers=("AAA", "BBB")):
-        index = pd.bdate_range("2025-01-01", "2025-01-10", name="Fecha")
-        return pd.DataFrame({ticker: range(1, len(index) + 1) for ticker in tickers}, index=index, dtype=float)
+    def _download(self, tickers, start, end):
+        """Deterministic provider: one close per business day, scaled by ``self.scale``."""
+        self.downloads.append((tuple(tickers), start, end))
+        index = pd.bdate_range(start, end, name="Fecha")
+        return pd.DataFrame(
+            {ticker: [self.scale * (100 + day.toordinal() % 97 + offset) for day in index]
+             for offset, ticker in enumerate(tickers)},
+            index=index,
+        )
+
+    def _fetch(self, tickers=("AAA", "BBB"), start=None, end=None):
+        return price_store.fetch(tickers, start or self.start, end or self.end, self._download)
+
+    def _coverage(self, ticker):
+        return next(row for row in self.fake.tables["price_coverage"] if row["ticker"] == ticker)
+
+    def _age(self, ticker, field, **delta):
+        self._coverage(ticker)[field] = (datetime.now(timezone.utc) - timedelta(**delta)).isoformat()
 
     def test_disabled_without_admin_key(self):
         price_store.configure(FakeInsForge(admin_key=None))
         self.assertFalse(price_store.enabled())
+        self.assertIsNone(self._fetch())
 
-    def test_download_is_written_and_then_served_from_the_store(self):
-        with mock.patch.object(market_data, "_download_prices_uncached", return_value=self._prices()) as download:
-            first = market_data.download_prices(("AAA", "BBB"), self.start, self.end)
-        download.assert_called_once()
-        self.assertEqual(len(self.fake.tables["price_history"]), 2 * len(first))
-        market_data.clear_price_cache()
-        with mock.patch.object(market_data, "_download_prices_uncached") as download:
-            second = market_data.download_prices(("AAA", "BBB"), self.start, self.end)
-        download.assert_not_called()
-        pd.testing.assert_frame_equal(first, second, check_freq=False)
+    def test_first_request_downloads_and_the_next_one_reads_the_store(self):
+        first = self._fetch()
+        self.assertEqual(self.downloads, [(("AAA", "BBB"), self.start, self.end)])
+        second = self._fetch()
+        self.assertEqual(len(self.downloads), 1)
+        pd.testing.assert_frame_equal(first, second)
+        self.assertEqual(list(first.columns), ["AAA", "BBB"])
+        self.assertEqual(len(first), len(pd.bdate_range(self.start, self.end)))
 
-    def test_only_missing_tickers_are_downloaded(self):
-        price_store.save(self._prices(("AAA",)), self.start, self.end)
-        with mock.patch.object(
-            market_data, "_download_prices_uncached", return_value=self._prices(("BBB",))
-        ) as download:
-            prices = market_data.download_prices(("AAA", "BBB"), self.start, self.end)
-        self.assertEqual(download.call_args.args[0], ("BBB",))
-        self.assertEqual(list(prices.columns), ["AAA", "BBB"])
+    def test_only_the_recent_tail_is_downloaded(self):
+        self._fetch()
+        later = date(2025, 4, 15)
+        prices = self._fetch(end=later)
+        self.assertEqual(self.downloads[-1], (("AAA", "BBB"), self.end - timedelta(days=7), later))
+        self.assertEqual(len(self.downloads), 2)
+        self.assertEqual(prices.index.max(), pd.Timestamp("2025-04-15"))
+        self.assertEqual(self._coverage("AAA")["end_date"], "2025-04-15")
+        expected = self._download(("AAA", "BBB"), self.start, later)
+        pd.testing.assert_frame_equal(prices, expected, check_freq=False)
 
-    def test_stale_or_short_coverage_is_downloaded_again(self):
-        price_store.save(self._prices(("AAA",)), self.start, self.end)
-        stale = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
-        self.fake.tables["price_coverage"][0]["fetched_at"] = stale
-        self.assertEqual(price_store.load(("AAA",), self.start, self.end)[1], ("AAA",))
-        self.fake.tables["price_coverage"][0]["fetched_at"] = datetime.now(timezone.utc).isoformat()
-        self.assertEqual(price_store.load(("AAA",), self.start, date(2025, 2, 1))[1], ("AAA",))
-        self.assertEqual(price_store.load(("AAA",), self.start, self.end)[1], ())
+    def test_readjusted_overlap_triggers_a_full_download(self):
+        self._fetch()
+        self.scale = 0.99  # a dividend re-adjusted every past close
+        prices = self._fetch(end=date(2025, 4, 15))
+        tail, full = self.downloads[-2], self.downloads[-1]
+        self.assertEqual(tail[1], self.end - timedelta(days=7))
+        self.assertEqual(full, (("AAA", "BBB"), self.start, date(2025, 4, 15)))
+        expected = self._download(("AAA", "BBB"), self.start, date(2025, 4, 15))
+        pd.testing.assert_frame_equal(prices, expected, check_freq=False)
 
-    def test_overlapping_fresh_coverage_is_merged(self):
-        price_store.save(self._prices(("AAA",)), self.start, self.end)
-        price_store.save(self._prices(("AAA",)), date(2025, 1, 5), date(2025, 1, 20))
-        coverage = self.fake.tables["price_coverage"][0]
-        self.assertEqual((coverage["start_date"], coverage["end_date"]), ("2025-01-01", "2025-01-20"))
+    def test_weekly_full_refresh(self):
+        self._fetch()
+        self._age("AAA", "full_refreshed_at", days=8)
+        self._fetch()
+        self.assertEqual(self.downloads[-1], (("AAA",), self.start, self.end))
+        self.assertEqual(len(self.downloads), 2)
 
-    def test_store_failures_fall_back_to_downloads(self):
+    def test_earlier_start_downloads_the_whole_range(self):
+        self._fetch()
+        self._fetch(start=date(2024, 12, 1))
+        self.assertEqual(self.downloads[-1], (("AAA", "BBB"), date(2024, 12, 1), self.end))
+        self.assertEqual(self._coverage("AAA")["start_date"], "2024-12-01")
+
+    def test_range_reaching_today_refreshes_the_tail_after_the_intraday_ttl(self):
+        today = date.today()
+        start = today - timedelta(days=60)
+        self._fetch(("AAA",), start, today)
+        self._fetch(("AAA",), start, today)
+        self.assertEqual(len(self.downloads), 1)
+        self._age("AAA", "fetched_at", hours=2)
+        self._fetch(("AAA",), start, today)
+        self.assertEqual(self.downloads[-1], (("AAA",), today - timedelta(days=7), today))
+
+    def test_tickers_are_planned_independently(self):
+        self._fetch(("AAA",))
+        self._fetch(("AAA", "BBB"))
+        self.assertEqual(self.downloads[-1], (("BBB",), self.start, self.end))
+
+    def test_store_failures_fall_back_to_direct_downloads(self):
         with mock.patch.object(self.fake, "select", side_effect=InsForgeError("down", 503)):
-            stored, pending = price_store.load(("AAA",), self.start, self.end)
-        self.assertEqual((stored, pending), ({}, ("AAA",)))
+            self.assertIsNone(self._fetch())
+        with mock.patch.object(self.fake, "select", side_effect=InsForgeError("down", 503)), \
+                mock.patch.object(market_data, "_download_prices_uncached", side_effect=self._download):
+            prices = market_data.download_prices(("AAA",), self.start, self.end)
+        self.assertEqual(list(prices.columns), ["AAA"])
+
+    def test_download_prices_uses_the_store(self):
+        with mock.patch.object(market_data, "_download_prices_uncached", side_effect=self._download):
+            market_data.download_prices(("AAA", "BBB"), self.start, self.end)
+            market_data.clear_price_cache()
+            market_data.download_prices(("AAA", "BBB"), self.start, self.end)
+        self.assertEqual(len(self.downloads), 1)
 
 
 if __name__ == "__main__":
