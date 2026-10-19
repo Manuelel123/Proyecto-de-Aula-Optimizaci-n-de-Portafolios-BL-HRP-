@@ -18,6 +18,7 @@ from optimizacion_portafolios.data.catalogs import (
 from optimizacion_portafolios.web.account.hooks import record_backtest
 from optimizacion_portafolios.web.auth.permissions import can
 from optimizacion_portafolios.web.common import guided
+from optimizacion_portafolios.web.decisions import log as decision_log
 from optimizacion_portafolios.web.portfolios.snapshots import hrp_snapshot, sign
 from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
@@ -174,6 +175,18 @@ def _guided_hrp():
             except (requests.RequestException, TimeoutError, YFException) as error:
                 logger.exception("Yahoo Finance request failed during guided HRP optimization")
                 raise ValueError(f"No se pudieron descargar los datos: {error}") from error
+            decision_log.record(
+                "hrp",
+                decision_log.hrp_weights(result),
+                {
+                    "mode": "guiada",
+                    "universe": universe_name,
+                    "tickers": result["selected_tickers"],
+                    "start_date": start_date.isoformat(),
+                    "benchmark": guided.GUIDED_BENCHMARK,
+                    "max_weight": max_weight / 100,
+                },
+            )
             names = {row["ticker"]: row["name"] for row in result["allocation_rows"]}
             result["explanation"] = guided.hrp_explanation(result)
             for row in result["explanation"]["rows"]:
@@ -272,6 +285,19 @@ def hrp():
                         )
                     )
                     record_backtest(result["backtest"])
+                    decision_log.record(
+                        "hrp",
+                        decision_log.hrp_weights(result),
+                        {
+                            "mode": "completa",
+                            "universe": universe_name,
+                            "tickers": result["selected_tickers"],
+                            "start_date": start_date.isoformat(),
+                            "benchmark": benchmark_ticker,
+                            "bounds": result["summary"]["bounds"],
+                            "backtest": backtest is not None,
+                        },
+                    )
             except (requests.RequestException, TimeoutError, YFException) as error:
                 logger.exception("Yahoo Finance request failed during HRP optimization")
                 raise ValueError(f"No se pudieron descargar los datos: {error}") from error

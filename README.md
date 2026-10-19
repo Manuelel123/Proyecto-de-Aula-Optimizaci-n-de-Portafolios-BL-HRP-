@@ -64,7 +64,7 @@ Reinicia el servidor después de cambiarla.
 | Mis portafolios | Solo lectura: panel, alertas y versiones | Fijar, editar alertas, gestionar (rebalancear, altas, bajas) y archivar | Todo, más señales |
 | Mercado (incluida Opciones), `/api/historial`, `/api/ohlc` | — | — | Sí |
 | Backtest de HRP e historial de backtests | — | — | Sí |
-| Glosario, Mi perfil | Sí | Sí | Sí |
+| Glosario, Mi perfil, Mi historial de decisiones | Sí | Sí | Sí |
 
 - **Valores fijos de la vista guiada** (`web/common/guided.py`): últimos 2 años de precios (la misma ventana de Black-Litterman, para que los dos métodos sean comparables), benchmark S&P 500 (SPY), HRP sin límites (0 %–100 %; el inversionista puede fijar el peso máximo), Black-Litterman con objetivo «Máximo ratio de Sharpe», tasa libre de riesgo 2 % y **views neutrales**: iguales al retorno de equilibrio de cada activo (una primera ejecución del modelo da el equilibrio, que no depende de las views, y la segunda lo usa como view). El modelo Black-Litterman no admite límites de peso, así que el peso máximo solo se aplica a HRP. Universos: «Acciones y Bitcoin», «Sectores de EE. UU.», «Criptomonedas», «Portafolio actual» y, solo en HRP, «Criptomonedas y commodities» (los futuros no tienen capitalización bursátil).
 - **Explicación de los pesos:** HRP, a partir de la volatilidad anual de cada activo, su correlación promedio con el resto (de la matriz que usó HRP) y su aporte al riesgo; Black-Litterman, a partir del peso de mercado (capitalización), el retorno de equilibrio y la diferencia entre el peso final y el de mercado.
@@ -99,6 +99,7 @@ Las cuentas son **locales**: viven en la tabla `users` de la base SQLite (ver la
   - **Cálculo** (`src/optimizacion_portafolios/profiling/`, sin Flask): cada respuesta vale 1 a 4 según su orden; tolerancia y capacidad se promedian (menos de 2,0 adverso; de 2,0 a menos de 3,0 moderado; 3,0 o más arriesgado). El horizonte pone un tope (menos de 1 año: máximo adverso; 1 a 3 años: máximo moderado; más de 3: sin tope). Perfil final = el más bajo de los tres. Responder «Vendo todo» (pregunta 1) o «Menos de 1» mes de fondo de emergencia (pregunta 6) fuerza adverso. El **factor limitante** es el veto si lo hay; si no, el primero de `veto > horizonte > capacidad > tolerancia` cuyo nivel coincide con el final (el horizonte solo cuenta cuando impone tope). Las preguntas de conocimiento solo sugieren el rol: `inversionista` si la experiencia es «Fondos o acciones» o más y se acierta qué es diversificar; si no, `explorador`. Umbrales, vetos, topes, desempate, regla del rol y explicaciones están en el YAML (con `version`), que se valida al arrancar.
   - **Rol:** el usuario confirma (o cambia) el rol sugerido entre `explorador` e `inversionista`; hasta confirmarlo las herramientas lo llevan a esa pantalla. A un `gestor` no se le pide confirmar ni se le cambia el rol.
   - **Mi perfil** (`/perfil/`, en el menú de usuario): perfil final, factor limitante con su explicación, fecha e historial. Repetir el cuestionario agrega una fila nueva en `perfiles` y deja solo esa como vigente; las anteriores se conservan.
+- **Registro de decisiones** (`/historial`, «Mi historial» en el menú de usuario, todos los roles): cada vez que se genera un portafolio (HRP o Black-Litterman calculado con éxito, en su página o en la comparación, una fila por método) y cada vez que se fija uno, se inserta una fila en la tabla `registro_decisiones` con el usuario, la fecha, el perfil vigente (`perfil_id` y `perfil_final`), el rol, el método, el origen (`hrp`, `black_litterman`, `comparar` o `fijar`), los activos y pesos (JSON) y los parámetros de entrada (universo, fechas, benchmark, límites, objetivo, tasa, views). Es un historial verificable: la app solo inserta y lee (`storage/decisions.py`); el modelo rechaza cualquier actualización o borrado desde el ORM. Descargar el informe QuantStats no cuenta como decisión.
 - **Historial de backtests:** cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`, solo gestor), en la base local.
 - **Migrar portafolios de las antiguas cuentas de InsForge:** registra la cuenta local y ejecuta `flask --app wsgi:app users reassign-portfolios <id_insforge> <correo>`.
 
@@ -249,6 +250,7 @@ src/optimizacion_portafolios/
       forms.py                  lectura y validación de formularios
     main/                       portada (sin sesión), pantalla principal por rol y glosario
     compare/                    comparación HRP vs Black-Litterman (inversionista y gestor)
+    decisions/                  registro de decisiones: Mi historial y el enlace con las páginas de resultados
     monitoring/                 monitoreo y análisis fundamental
     hrp/                        optimización HRP
     black_litterman/            optimización Black-Litterman
@@ -258,8 +260,9 @@ src/optimizacion_portafolios/
     portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
   profiling/                    cuestionario de perfilado (carga y validación del YAML) y cálculo del perfil (sin Flask)
   storage/
+    decisions.py                registro de decisiones (solo inserciones y lecturas)
     profiles.py                 perfiles de riesgo (una sola fila vigente por usuario) y borradores del cuestionario
-    models.py                   tablas SQLAlchemy (User, Profile, ProfileDraft, BacktestRun, BacktestResult, Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
+    models.py                   tablas SQLAlchemy (User, Profile, ProfileDraft, DecisionRecord, BacktestRun, BacktestResult, Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
     repositories.py             lecturas y escrituras filtradas por usuario
     users.py                    cuentas locales y reasignación de dueño
     migrations/                 revisiones de Flask-Migrate

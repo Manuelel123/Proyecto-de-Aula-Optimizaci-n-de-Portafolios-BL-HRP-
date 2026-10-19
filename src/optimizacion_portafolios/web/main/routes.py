@@ -59,6 +59,13 @@ TOOLS = (
         "description": "Los portafolios que fijaste: panel, alertas y versiones.",
     },
     {
+        "key": "history",
+        "endpoint": "decisions.history",
+        "eyebrow": "Registro",
+        "title": "Mi historial",
+        "description": "Cada portafolio que generaste, con fecha, perfil vigente, método, pesos y supuestos.",
+    },
+    {
         "key": "glossary",
         "endpoint": "main.glossary",
         "eyebrow": "Aprende",

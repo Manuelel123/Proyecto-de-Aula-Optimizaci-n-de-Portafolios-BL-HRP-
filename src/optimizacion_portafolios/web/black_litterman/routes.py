@@ -19,6 +19,7 @@ from optimizacion_portafolios.web.portfolios.snapshots import black_litterman_sn
 from optimizacion_portafolios.web.auth.permissions import can
 from optimizacion_portafolios.web.black_litterman import bp
 from optimizacion_portafolios.web.common import guided
+from optimizacion_portafolios.web.decisions import log as decision_log
 from optimizacion_portafolios.web.black_litterman.services import (
     CSV_FILENAME,
     CURRENT_PORTFOLIO,
@@ -88,6 +89,20 @@ def _guided_black_litterman():
                 logger.exception("Yahoo Finance request failed during guided Black-Litterman")
                 raise yahoo_error(error) from error
             result["explanation"] = guided.black_litterman_explanation(result)
+            decision_log.record(
+                "black_litterman",
+                decision_log.black_litterman_weights(result),
+                {
+                    "mode": "guiada",
+                    "universe": universe_name,
+                    "tickers": result["included_tickers"],
+                    "start_date": guided.guided_start().isoformat(),
+                    "benchmark": guided.GUIDED_BENCHMARK,
+                    "objective": guided.GUIDED_OBJECTIVE,
+                    "risk_free_rate": guided.GUIDED_RISK_FREE_PCT / 100,
+                    "views": result["neutral_views"],
+                },
+            )
             if can("fix_portfolio"):
                 result["snapshot"] = sign(
                     black_litterman_snapshot(
@@ -256,6 +271,20 @@ def black_litterman():
                     benchmark=BENCHMARKS[benchmark_name],
                     risk_free_rate=risk_free_rate_pct / 100,
                 )
+            )
+            decision_log.record(
+                "black_litterman",
+                decision_log.black_litterman_weights(result),
+                {
+                    "mode": "completa",
+                    "universe": universe_name,
+                    "tickers": result["included_tickers"],
+                    "start_date": window_start.isoformat(),
+                    "benchmark": BENCHMARKS[benchmark_name],
+                    "objective": objective_name,
+                    "risk_free_rate": risk_free_rate_pct / 100,
+                    "views": views,
+                },
             )
             history = result["history"]
             if history and not history["has_rolling_sharpe"]:

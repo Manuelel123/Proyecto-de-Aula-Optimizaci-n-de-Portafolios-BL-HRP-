@@ -1,4 +1,4 @@
-"""Tables of local users, risk profiles, HRP backtest history and tracked ("optimal") portfolios.
+"""Tables of local users, risk profiles, the decision log, HRP backtest history and tracked ("optimal") portfolios.
 
 ``DailySnapshot`` keeps one row per portfolio and business day (value,
 benchmark value, weights and, for the days it was computed, the metrics), so
@@ -19,6 +19,7 @@ from datetime import date, datetime, timezone
 
 from flask_login import UserMixin
 from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, false, text, true
+from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from optimizacion_portafolios.storage import db
@@ -339,3 +340,48 @@ class ProfileDraft(db.Model):
     # {"capital_rango": ..., "horizonte": ..., "respuestas": {question id: 1..4}}
     datos: Mapped[dict] = mapped_column(JSON, default=dict)
     actualizado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+DECISION_METHODS = ("hrp", "black_litterman")
+# Where the portfolio was generated: a page, the comparison or "fijar".
+DECISION_SOURCES = ("hrp", "black_litterman", "comparar", "fijar")
+
+
+class DecisionRecord(db.Model):
+    """One generated portfolio, kept as a verifiable, append-only history.
+
+    A row is inserted every time HRP or Black-Litterman produces a portfolio
+    (one row per method in the comparison) and when a portfolio is fixed.
+    It stores the user's current profile at that moment (id and
+    ``perfil_final``), the method, the weights and the relevant inputs. Rows
+    are never updated or deleted by the application: the ORM refuses it (see
+    the listeners below) and ``storage.decisions`` only inserts and reads.
+    """
+
+    __tablename__ = "registro_decisiones"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    fecha: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # SET NULL only matters if a profile row were ever removed; perfil_final stays.
+    perfil_id: Mapped[int | None] = mapped_column(ForeignKey("perfiles.id", ondelete="SET NULL"), nullable=True)
+    perfil_final: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    rol: Mapped[str] = mapped_column(String(20))
+    metodo: Mapped[str] = mapped_column(String(20))
+    origen: Mapped[str] = mapped_column(String(20))
+    # {ticker: weight} (fractions that add up to 1).
+    activos: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Inputs that produced the weights (universe, dates, limits, views...).
+    parametros: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class AppendOnlyError(RuntimeError):
+    """Raised when code tries to change or delete a decision record."""
+
+
+def _refuse_change(_mapper, _connection, target) -> None:
+    raise AppendOnlyError(f"El registro de decisiones {target.id} no se puede modificar ni borrar.")
+
+
+event.listen(DecisionRecord, "before_update", _refuse_change)
+event.listen(DecisionRecord, "before_delete", _refuse_change)

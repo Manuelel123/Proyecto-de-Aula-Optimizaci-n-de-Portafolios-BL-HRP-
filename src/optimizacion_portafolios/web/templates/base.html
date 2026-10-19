@@ -68,6 +68,7 @@
                   <p class="user-menu__email">Rol: {{ user_role_label }}</p>
                   <a href="{{ url_for('profile.mine') }}"{% if request.blueprint == 'profile' %} aria-current="page"{% endif %}>Mi perfil</a>
                   <a href="{{ url_for('portfolios.index') }}"{% if request.blueprint == 'portfolios' %} aria-current="page"{% endif %}>Mis portafolios</a>
+                  <a href="{{ url_for('decisions.history') }}"{% if request.blueprint == 'decisions' %} aria-current="page"{% endif %}>Mi historial</a>
                   <a href="{{ url_for('main.glossary') }}"{% if request.endpoint == 'main.glossary' %} aria-current="page"{% endif %}>Glosario</a>
                   {% if can('backtest_history') %}<a href="{{ url_for('account.backtests') }}"{% if request.endpoint and request.endpoint.startswith('account.backtest') %} aria-current="page"{% endif %}>Historial de backtests</a>{% endif %}
                   <form method="post" action="{{ url_for('auth.logout') }}">
@@ -98,6 +99,7 @@
                   {% if current_user.is_authenticated %}
                     <p class="user-menu__email">{{ current_user.email }}</p>
                     <a href="{{ url_for('profile.mine') }}">Mi perfil</a>
+                    <a href="{{ url_for('decisions.history') }}">Mi historial</a>
                     <a href="{{ url_for('main.glossary') }}">Glosario</a>
                     {% if can('backtest_history') %}<a href="{{ url_for('account.backtests') }}">Historial de backtests</a>{% endif %}
                     <form method="post" action="{{ url_for('auth.logout') }}">

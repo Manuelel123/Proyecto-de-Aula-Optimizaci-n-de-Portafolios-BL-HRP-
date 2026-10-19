@@ -94,6 +94,7 @@ class RoleTestCase(unittest.TestCase):
 PAGES = {
     "/": ROLES,
     "/glosario": ROLES,
+    "/historial": ROLES,
     "/perfil/": ROLES,
     "/hrp": ROLES,
     "/black-litterman": ROLES,

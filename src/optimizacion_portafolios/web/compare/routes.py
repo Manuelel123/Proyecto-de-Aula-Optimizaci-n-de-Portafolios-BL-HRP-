@@ -7,6 +7,7 @@ from optimizacion_portafolios.web.auth.permissions import can
 from optimizacion_portafolios.web.common import guided
 from optimizacion_portafolios.web.common.forms import universes_payload
 from optimizacion_portafolios.web.compare import bp, services
+from optimizacion_portafolios.web.decisions import log as decision_log
 from optimizacion_portafolios.web.portfolios.snapshots import (
     black_litterman_snapshot,
     hrp_snapshot,
@@ -41,6 +42,27 @@ def _snapshots(comparison: dict, universe_name: str) -> None:
         )
 
 
+def _record(comparison: dict, universe_name: str, max_weight: float) -> None:
+    """One decision-log row per method that produced a portfolio."""
+    common = {
+        "universe": universe_name,
+        "start_date": guided.guided_start().isoformat(),
+        "benchmark": guided.GUIDED_BENCHMARK,
+    }
+    for method in comparison["ok"]:
+        run = comparison["methods"][method]
+        params = {**common, "tickers": list(run["weights"])}
+        if method == "hrp":
+            params["max_weight"] = max_weight / 100
+        else:
+            params.update(
+                objective=guided.GUIDED_OBJECTIVE,
+                risk_free_rate=guided.GUIDED_RISK_FREE_PCT / 100,
+                views=run["result"]["neutral_views"],
+            )
+        decision_log.record(method, run["weights"], params, source="comparar")
+
+
 @bp.route("/comparar", methods=["GET", "POST"])
 def compare():
     universes = guided.GUIDED_UNIVERSES
@@ -64,6 +86,7 @@ def compare():
                 comparison = None
             else:
                 _snapshots(comparison, universe_name)
+                _record(comparison, universe_name, max_weight)
     return render_template(
         "compare/compare.html",
         universes=universes,

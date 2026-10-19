@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "macros/learning.html" import educational_notice %}
+{% block title %}Mi historial{% endblock %}
+
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Cuenta</p>
+      <h1>Mi historial de decisiones</h1>
+      <p class="lead">Cada portafolio que generaste con HRP o Black-Litterman queda registrado con la fecha, tu perfil vigente en ese momento, el método, los pesos y los supuestos. Es un historial verificable: no se puede editar ni borrar.</p>
+    </div>
+    <div class="page-header__actions"><a class="button button-secondary" href="{{ url_for('profile.mine') }}">Mi perfil</a></div>
+  </header>
+  {{ educational_notice() }}
+
+  {% if rows %}
+    <p class="help-text">{{ total }} registro{{ 's' if total != 1 }}{% if total > limit %} · se muestran los {{ limit }} más recientes{% endif %}.</p>
+    <div class="data-table-wrap account-section">
+      <table class="data-table decision-table" id="decision-log">
+        <thead>
+          <tr>
+            <th scope="col">Fecha</th>
+            <th scope="col">Método</th>
+            <th scope="col">Origen</th>
+            <th scope="col">Perfil vigente</th>
+            <th scope="col">Rol</th>
+            <th scope="col">Activos y pesos</th>
+            <th scope="col">Supuestos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr data-decision="{{ row.id }}">
+              <td>{{ row.fecha|datetime_short }}</td>
+              <td><span class="badge badge--neutral">{{ row.method }}</span></td>
+              <td>{{ row.source }}</td>
+              <td>{{ row.profile }}{% if row.profile_id %} <span class="help-text">(#{{ row.profile_id }})</span>{% endif %}</td>
+              <td>{{ row.role }}</td>
+              <td>
+                <ul class="weight-chips">
+                  {% for ticker, weight in row.weights[:8] %}<li><span class="mono">{{ ticker }}</span> {{ weight|pct(1) }}</li>{% endfor %}
+                  {% if row.weights|length > 8 %}<li class="weight-chips__more">+{{ row.weights|length - 8 }}</li>{% endif %}
+                </ul>
+              </td>
+              <td>
+                {% if row.params %}
+                  <details class="decision-params"><summary>Ver</summary>
+                    <dl class="metric-list">{% for label, value in row.params %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+                  </details>
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <p class="empty-state__title">Todavía no hay registros</p>
+      <p>Calcula un portafolio en <a href="{{ url_for('hrp.hrp') }}">HRP</a> o <a href="{{ url_for('black_litterman.black_litterman') }}">Black-Litterman</a> y aparecerá aquí.</p>
+    </div>
+  {% endif %}
+{% endblock %}

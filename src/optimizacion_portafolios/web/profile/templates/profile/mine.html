@@ -9,6 +9,7 @@
       <p class="lead">Tu perfil de riesgo vigente: <strong>{{ view.final_label }}</strong>, calculado el {{ view.profile.fecha|datetime_short }}. Rol: {{ role_label }}.</p>
     </div>
     <div class="page-header__actions">
+      <a class="button button-secondary" href="{{ url_for('decisions.history') }}">Mi historial de decisiones</a>
       {% if not is_gestor %}<a class="button button-secondary" href="{{ url_for('profile.result') }}">Cambiar rol</a>{% endif %}
     </div>
   </header>

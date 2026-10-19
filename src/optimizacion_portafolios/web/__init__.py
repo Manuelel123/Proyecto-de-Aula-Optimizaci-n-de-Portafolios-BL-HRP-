@@ -219,6 +219,7 @@ def _register_blueprints(app: Flask) -> None:
     from optimizacion_portafolios.web.portfolios import bp as portfolios_bp
     from optimizacion_portafolios.web.black_litterman import bp as black_litterman_bp
     from optimizacion_portafolios.web.compare import bp as compare_bp
+    from optimizacion_portafolios.web.decisions import bp as decisions_bp
     from optimizacion_portafolios.web.history import bp as history_bp
     from optimizacion_portafolios.web.hrp import bp as hrp_bp
     from optimizacion_portafolios.web.main import bp as main_bp
@@ -230,6 +231,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(hrp_bp)
     app.register_blueprint(black_litterman_bp)
     app.register_blueprint(compare_bp)
+    app.register_blueprint(decisions_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)

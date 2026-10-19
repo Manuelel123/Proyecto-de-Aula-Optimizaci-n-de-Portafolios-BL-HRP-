@@ -44,7 +44,7 @@ class WebInterfaceTests(WebTestCase):
         html = self.client.get("/").get_data(as_text=True)
         modules = re.findall(r'<a class="module-card" href="([^"]+)"', html)
         self.assertEqual(
-            modules, ["/hrp", "/black-litterman", "/comparar", "/monitoring", "/portafolios/", "/glosario"]
+            modules, ["/hrp", "/black-litterman", "/comparar", "/monitoring", "/portafolios/", "/historial", "/glosario"]
         )
         self.assertIn("Tu perfil vigente: Moderado", html)
 
