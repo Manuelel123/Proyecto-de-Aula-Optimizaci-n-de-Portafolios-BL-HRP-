@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, money, traffic_light %}
+{% block title %}Mis portafolios{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Seguimiento</p>
+      <h1>Mis portafolios</h1>
+      <p class="lead">Portafolios que fijaste como óptimos desde HRP o Black-Litterman y que se monitorean desde la fecha de fijación.</p>
+    </div>
+    <div class="page-header__actions">
+      <a class="button button-secondary" href="{{ url_for('black_litterman.black_litterman') }}">Black-Litterman</a>
+      <a class="button button-primary" href="{{ url_for('hrp.hrp') }}">Optimizar con HRP</a>
+    </div>
+  </header>
+  {{ disclaimer() }}
+
+  {% if portfolios %}
+    <div class="account-grid">
+      {% for portfolio in portfolios %}
+        <article class="card account-card">
+          <div class="card__body">
+            <div class="account-card__head">
+              <span class="badge badge--neutral">{{ portfolio.model }}</span>
+              {% if portfolio.alert_level %}{{ traffic_light(portfolio.alert_level, portfolio.alert_label ~ (' · ' ~ portfolio.alert_count ~ ' alertas' if portfolio.alert_count else '')) }}{% else %}<span class="badge badge--neutral">{{ portfolio.status_label }}</span>{% endif %}
+            </div>
+            <h2 class="account-card__title"><a href="{{ url_for('portfolios.detail', portfolio_id=portfolio.id) }}">{{ portfolio.name }}</a></h2>
+            <p class="help-text">{{ portfolio.asset_count }} activos · Benchmark {{ portfolio.benchmark }} · desde {{ portfolio.tracking_start }} · versión {{ portfolio.version_number }}</p>
+            <ul class="weight-chips" aria-label="Activos">
+              {% for ticker in portfolio.tickers[:6] %}<li class="mono">{{ ticker }}</li>{% endfor %}
+              {% if portfolio.tickers|length > 6 %}<li class="weight-chips__more">+{{ portfolio.tickers|length - 6 }}</li>{% endif %}
+            </ul>
+            <dl class="account-metrics">
+              <div><dt>Capital inicial</dt><dd>{{ money(portfolio.initial_capital) }}</dd></div>
+            </dl>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <p class="empty-state__title">Aún no tienes portafolios en seguimiento</p>
+      <p>Calcula un portafolio en <a href="{{ url_for('hrp.hrp') }}">HRP</a> o <a href="{{ url_for('black_litterman.black_litterman') }}">Black-Litterman</a> y usa «Establecer como portafolio óptimo» en el resultado.</p>
+    </div>
+  {% endif %}
+{% endblock %}

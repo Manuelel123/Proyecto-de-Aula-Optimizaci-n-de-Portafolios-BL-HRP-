@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, money, portfolio_tabs %}
+{% block title %}Vista previa · {{ portfolio.name }}{% endblock %}
+{% block content %}
+  {% set labels = {"rebalance": "Rebalanceo", "reoptimize": "Re-optimización", "remove": "Eliminación de activos", "add": "Alta de activos"} %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('portfolios.index') }}">Mis portafolios</a> · {{ portfolio.name }}</p>
+      <h1>Vista previa: {{ labels.get(preview.reason, preview.reason) }}</h1>
+      <p class="lead">Operaciones a los cierres del {{ preview.effective_date }}. Nada cambia hasta que confirmes.</p>
+    </div>
+  </header>
+  {{ portfolio_tabs(portfolio.id, 'manage') }}
+  {{ disclaimer() }}
+
+  <div class="kpi-grid">
+    <div class="metric-card"><span class="metric-card__label">Valor antes</span><strong class="metric-card__value">{{ money(preview.value_before) }}</strong></div>
+    <div class="metric-card"><span class="metric-card__label">Costo estimado</span><strong class="metric-card__value">{{ money(preview.cost) }}</strong><span class="metric-card__context">{{ '%g'|format(portfolio.commission_bps) }} pb sobre lo operado</span></div>
+    <div class="metric-card"><span class="metric-card__label">Valor después</span><strong class="metric-card__value">{{ money(preview.value_after) }}</strong></div>
+    <div class="metric-card"><span class="metric-card__label">Turnover</span><strong class="metric-card__value">{{ preview.turnover|pct(1) }}</strong><span class="metric-card__context">Una vía: mitad de lo operado / valor</span></div>
+  </div>
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Pesos antes y después</h2></div></header>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr><th scope="col">Activo</th><th scope="col" class="num">Antes</th><th scope="col" class="num">Después</th><th scope="col" class="num">Cambio</th></tr></thead>
+        <tbody>
+          {% for row in preview.weights %}
+            <tr>
+              <th scope="row" class="mono">{{ row.ticker }}</th>
+              <td class="num">{{ row.before|pct }}</td>
+              <td class="num">{{ row.after|pct }}</td>
+              <td class="num {{ 'is-positive' if row.change > 0 else 'is-negative' if row.change < 0 else '' }}">{{ '%+.2f'|format(row.change * 100) }} pp</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Operaciones</h2><p class="card__subtitle">Ventas primero; precios en USD</p></div></header>
+    {% if preview.trades %}
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th scope="col">Operación</th><th scope="col">Activo</th><th scope="col" class="num">Unidades</th><th scope="col" class="num">Precio</th><th scope="col" class="num">Monto</th><th scope="col" class="num">Comisión</th></tr></thead>
+          <tbody>
+            {% for trade in preview.trades %}
+              <tr>
+                <td><span class="badge {{ 'badge--danger' if trade.side == 'sell' else 'badge--success' }}">{{ 'Venta' if trade.side == 'sell' else 'Compra' }}</span></td>
+                <td class="mono">{{ trade.ticker }}</td>
+                <td class="num">{{ '{:,.4f}'.format(trade.units) }}</td>
+                <td class="num">{{ money(trade.price) }}</td>
+                <td class="num">{{ money(trade.amount) }}</td>
+                <td class="num">{{ money(trade.cost) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="card__body"><p class="help-text">El portafolio ya coincide con los pesos objetivo: no hay operaciones.</p></div>
+    {% endif %}
+  </article>
+
+  <form method="post" action="{{ url_for('portfolios.confirm', portfolio_id=portfolio.id) }}" class="card account-section">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="card__body">
+      <div class="form-field">
+        <label for="note">Motivo o nota (opcional)</label>
+        <textarea id="note" name="note" maxlength="500" placeholder="Por ejemplo: la desviación de pesos superó 5 pp"></textarea>
+      </div>
+    </div>
+    <div class="card__footer">
+      <a class="button button-secondary" href="{{ url_for('portfolios.manage', portfolio_id=portfolio.id) }}">Volver</a>
+      <button class="button button-primary" type="submit">Confirmar y crear la versión</button>
+    </div>
+  </form>
+{% endblock %}

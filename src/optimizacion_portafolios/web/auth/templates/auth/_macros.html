@@ -1,0 +1,11 @@
+{# Sign-in helpers shared by the auth pages. #}
+{% macro oauth_buttons(providers, next_url="") %}
+  {% if providers %}
+    <div class="auth-oauth">
+      {% for provider, label in providers %}
+        <a class="button button-secondary button-block" href="{{ url_for('auth.oauth_start', provider=provider, next=next_url or None) }}">Continuar con {{ label }}</a>
+      {% endfor %}
+    </div>
+    <p class="auth-divider"><span>o con tu correo</span></p>
+  {% endif %}
+{% endmacro %}

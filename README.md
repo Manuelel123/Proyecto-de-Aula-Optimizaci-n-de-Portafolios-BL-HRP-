@@ -38,6 +38,83 @@ Yahoo Finance se usa como respaldo:
 
 Las series de ambas fuentes se alinean por fecha (sin hora ni zona horaria). Los errores HTTP de Tiingo distintos de 404 (key inválida, límite de solicitudes, fallas del servidor) se informan como error de descarga y no activan el respaldo.
 
+## Cuentas y base de datos (InsForge)
+
+[InsForge](https://insforge.dev) aporta el login y una base de datos Postgres. Todo es opcional: sin configuración, la app funciona igual que antes, sin cuentas y sin caché persistente.
+
+- **Login:** registro con correo y contraseña verificado con un código de 6 dígitos, recuperación de contraseña con código y acceso con Google o GitHub (OAuth con PKCE). Rutas en `/auth/...`.
+- **Historial de backtests:** con la sesión iniciada, cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`).
+- **Caché de precios incremental:** los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando.
+
+Configuración local: copia `.env.example` a `.env` y completa las variables. Los valores del proyecto vinculado están en `.insforge/project.json` y en `npx -y @insforge/cli secrets get ANON_KEY`. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor, para la caché de precios, y nunca debe subirse al repositorio.
+
+El esquema está en `migrations/` y se aplica con `npx -y @insforge/cli db migrations up --all`. Las tablas de usuario tienen RLS (cada usuario solo ve sus filas) y las de precios solo son accesibles con la clave de administrador. La configuración de auth, incluidas las URLs de retorno de OAuth permitidas, está en `insforge.toml` (`npx -y @insforge/cli config apply`). Si sirves la app en otra URL, agrega su `/auth/oauth/callback` a `allowed_redirect_urls`.
+
+## Portafolios en seguimiento (base de datos local)
+
+Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones se guardan en una base SQL local con Flask-SQLAlchemy:
+
+- **Ubicación:** `DATABASE_URL` (por defecto `sqlite:///instance/atlas.db`; la carpeta `instance/` está fuera del control de versiones). `ATLAS_INSTANCE_PATH` cambia la carpeta `instance/`.
+- **Migraciones:** son revisiones de Flask-Migrate en `src/optimizacion_portafolios/storage/migrations`. La app aplica las pendientes al arrancar; se desactiva con `ATLAS_AUTO_MIGRATE=0`. Para hacerlo a mano:
+
+  ```powershell
+  uv run flask --app wsgi:app db upgrade --directory src/optimizacion_portafolios/storage/migrations
+  ```
+
+  Tras cambiar `storage/models.py`, genera la revisión con `db migrate -m "..."` y el mismo `--directory`.
+- **Fijar un portafolio óptimo:** en los resultados de HRP y Black-Litterman, con la sesión iniciada, el botón «Establecer como portafolio óptimo» pide nombre, capital nocional (100 000 USD por defecto), benchmark y comisión (10 pb por defecto). Se guardan el modelo, todos sus parámetros (universo, fechas, límites de peso, views, objetivo, tasa libre de riesgo), los pesos objetivo, los últimos precios de cierre y las unidades (capital neto de comisión × peso / precio). La fecha de esos precios es el inicio del seguimiento.
+- **Valoración:** comprar y mantener en USD con las unidades vigentes. Los cierres son ajustados, así que los dividendos se reinvierten implícitamente; un activo que deja de cotizar conserva su último precio. Los precios en otra moneda se convierten con el tipo de cambio diario de Yahoo (`{CCY}USD=X`); los precios en peniques (`GBp`) se dividen entre 100.
+- **Métricas de seguimiento** (`analytics/tracking.py`, días hábiles, 252 por año): retorno acumulado, del mes, del año y del último año (N/D hasta tener un año), CAGR y contribución al retorno por activo; volatilidad anualizada y móvil (21 y 63 días), drawdown actual, máximo y su duración, VaR y CVaR históricos al 95 % (diarios), semidesviación y contribución al riesgo; Sharpe, Sortino (QuantStats), Calmar y Sharpe móvil de 126 días; beta, alpha de Jensen, tracking error, information ratio y capturas alcista y bajista frente al benchmark; desviación de pesos, índice Herfindahl, número efectivo de activos, correlación promedio móvil (63 días) y rotación acumulada. La tasa libre de riesgo es la del modelo (Black-Litterman) o 0.
+- **Fotos diarias (snapshots):** cada día valorado guarda valor, valor del benchmark, pesos y, el último día, todas las métricas (`DailySnapshot`). Los días pasados no se reescriben aunque el proveedor revise sus precios; solo se actualiza la foto del último día. Al abrir el panel se guardan las fotos que falten.
+
+  ```powershell
+  uv run flask --app wsgi:app portfolios snapshot            # hasta hoy
+  uv run flask --app wsgi:app portfolios snapshot --date 2026-10-16
+  ```
+
+  El comando termina con código 1 si algún portafolio falla (el resto se guarda igual).
+
+  **Programarlo en Windows (Programador de tareas):** abre «Programador de tareas» → «Crear tarea básica…», nombre `Atlas snapshot`, desencadenador «Diariamente» a las 18:30 (después del cierre de EE. UU.), acción «Iniciar un programa» con:
+
+  - Programa: `powershell.exe`
+  - Argumentos: `-NoProfile -Command "uv run flask --app wsgi:app portfolios snapshot *>> instance\snapshot.log"`
+  - Iniciar en: la carpeta del proyecto (donde están `wsgi.py` y `.env`).
+
+  O con PowerShell, desde la carpeta del proyecto:
+
+  ```powershell
+  $action = New-ScheduledTaskAction -Execute "powershell.exe" -WorkingDirectory (Get-Location) `
+    -Argument '-NoProfile -Command "uv run flask --app wsgi:app portfolios snapshot *>> instance\snapshot.log"'
+  $trigger = New-ScheduledTaskTrigger -Daily -At 6:30pm
+  Register-ScheduledTask -TaskName "Atlas snapshot" -Action $action -Trigger $trigger
+  ```
+
+- **Alertas** (`analytics/alerts.py`): reglas por portafolio con semáforo verde/amarillo/rojo, editables al fijar el portafolio y en `/portafolios/<id>/alertas`. Un nivel se alcanza cuando el valor supera estrictamente su umbral:
+
+  | Regla | Amarillo | Rojo |
+  |---|---|---|
+  | Drawdown actual | > 10 % | > 15 % |
+  | Volatilidad móvil de 21 días frente a su promedio desde la fijación | > 1,5× | > 2× |
+  | Mayor desviación de un peso frente al objetivo | > 5 pp | > 10 pp |
+  | Días seguidos con Sharpe móvil de 126 días negativo | > 63 | > 126 |
+  | Mayor participación de un activo en el riesgo total | > 30 % | > 40 % |
+  | Correlación promedio móvil de 63 días | > 0,70 | > 0,85 |
+  | Días hábiles sin precio nuevo de un activo (posible baja de cotización) | > 2 | > 5 |
+
+  Las reglas se evalúan al abrir el panel y con `flask portfolios snapshot`. Cada evento guarda cuándo se disparó y cuándo se resolvió; un cambio de nivel cierra el evento anterior y abre uno nuevo. No se envían correos ni notificaciones.
+- **Gestión** (`/portafolios/<id>/gestionar`, lógica en `models/rebalancing.py`): cada cambio crea una versión nueva con motivo, fecha, pesos, unidades, operaciones y costo, sin reiniciar el seguimiento.
+  - **Rebalancear:** a los pesos objetivo vigentes o re-optimizando con el mismo modelo (HRP con la misma longitud de ventana; Black-Litterman con sus views, objetivo y tasa libre de riesgo) y datos hasta hoy.
+  - **Eliminar activos:** el peso liberado se reparte en proporción o re-optimizando con los activos restantes.
+  - **Agregar activos:** con peso manual (el resto se reduce en proporción) o re-optimizando con el nuevo universo (en Black-Litterman hay que indicar la view del activo nuevo). El ticker se valida descargando sus precios.
+  - **Vista previa:** antes de confirmar se muestran los pesos antes y después, las compras y ventas, el turnover (de una vía: la mitad de lo operado sobre el valor) y el costo (comisión del portafolio en pb sobre cada monto operado). La vista previa queda firmada; si el portafolio cambia antes de confirmar, se rechaza.
+  - Se respetan los límites de peso de HRP (`WeightBounds`) en todas las operaciones; si no existe una asignación que los cumpla, el cambio se rechaza con un mensaje.
+  - Las operaciones usan el último cierre disponible. Si el mercado está abierto, ese precio todavía puede moverse y la valoración del día se ajustará al cierre.
+  - El valor es continuo: el día del cambio, el portafolio vale lo que valía antes menos el costo.
+  - **Versiones:** historial en `/portafolios/<id>/versiones`, con comparación de dos versiones (`?a=1&b=3`).
+  - **Archivar:** el portafolio deja de monitorearse (sin snapshots ni alertas) y conserva todo su historial.
+- **Señales** (`/portafolios/<id>/senales`, `models/signals.py`): reglas por activo simuladas con vectorbt (`from_signals` con `group_by` y `cash_sharing`) sobre los pesos vigentes desde la fecha de fijación, frente a comprar y mantener. Un activo está «dentro» mientras se cumplen las reglas activas: media rápida sobre la lenta (50/200 días), volatilidad de 21 días como máximo 2× su mediana y drawdown del activo menor al 20 %. Aparte, un stop-loss del 10 % (dinámico por defecto) cierra la posición. Cada entrada compra peso objetivo × capital, porque el simulador de señales de vectorbt no admite tamaños de porcentaje objetivo. Son sugerencias: nunca modifican el portafolio; para actuar hay que usar Gestionar, que pide confirmación. La primera simulación tarda más mientras numba compila.
+- **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
+
 ## Pruebas
 
 ```powershell
@@ -89,12 +166,17 @@ src/optimizacion_portafolios/
     catalogs.py                 universos, benchmarks y periodos de volatilidad
     market_data.py              precios (Tiingo + respaldo Yahoo) y perfiles con caché
     tiingo_prices.py            cliente Tiingo y enrutamiento de tickers por fuente
+    fx.py                       moneda de cada ticker y conversión diaria a USD
   analytics/
+    tracking.py                 seguimiento de portafolios fijados (funciones puras)
+    alerts.py                   reglas de alerta y su evaluación (funciones puras)
     statistics.py               retornos, riesgo y retornos esperados
     volatility.py               volatilidad mensual e histórica por periodo
     performance.py              métricas e informe QuantStats
   models/
     hrp.py                      pesos HRP y contribuciones
+    rebalancing.py              cambios de portafolio: límites, operaciones, costo y turnover
+    signals.py                  señales de entrada y salida por activo (vectorbt)
     black_litterman.py          prior de equilibrio, views y optimización
     arima.py                    flujo Box-Jenkins (pendiente de integrar en la web)
   web/
@@ -108,6 +190,12 @@ src/optimizacion_portafolios/
     monitoring/                 monitoreo y análisis fundamental
     hrp/                        optimización HRP
     black_litterman/            optimización Black-Litterman
+    auth/                       inicio de sesión con InsForge (Flask-Login, límite de intentos)
+    portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
+  storage/
+    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
+    repositories.py             lecturas y escrituras filtradas por usuario
+    migrations/                 revisiones de Flask-Migrate
 ```
 
 Cada módulo web (`main`, `monitoring`, `hrp`, `black_litterman`) sigue la misma forma:

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, portfolio_tabs %}
+{% block title %}Gestionar · {{ portfolio.name }}{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('portfolios.index') }}">Mis portafolios</a> · {{ portfolio.name }}</p>
+      <h1>Gestionar el portafolio</h1>
+      <p class="lead">Cada cambio se opera a los últimos precios de cierre, paga una comisión de {{ '%g'|format(portfolio.commission_bps) }} pb sobre lo operado y crea una nueva versión. Antes de confirmar verás una vista previa.{% if has_bounds %} Se respetan los límites de peso del modelo.{% endif %}</p>
+    </div>
+  </header>
+  {{ portfolio_tabs(portfolio.id, 'manage') }}
+  {{ disclaimer() }}
+
+  <div class="manage-grid">
+    <form method="post" action="{{ url_for('portfolios.preview', portfolio_id=portfolio.id) }}" class="card" data-loading-title="Preparando la vista previa">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="rebalance">
+      <header class="card__header"><div><h2 class="card__title">Rebalancear</h2><p class="card__subtitle">Volver a los pesos objetivo o re-optimizar con datos actualizados</p></div></header>
+      <div class="card__body form-stack">
+        <label class="inline-check"><input type="radio" name="rebalance_method" value="targets"{% if values.get('rebalance_method', 'targets') == 'targets' %} checked{% endif %}> A los pesos objetivo vigentes</label>
+        <label class="inline-check"><input type="radio" name="rebalance_method" value="reoptimize"{% if values.get('rebalance_method') == 'reoptimize' %} checked{% endif %}> Re-optimizar con {{ portfolio.model }} y la ventana de datos actualizada</label>
+      </div>
+      <div class="card__footer"><button class="button button-primary" type="submit" name="step" value="optimize">Ver vista previa</button></div>
+    </form>
+
+    <form method="post" action="{{ url_for('portfolios.preview', portfolio_id=portfolio.id) }}" class="card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="remove">
+      <header class="card__header"><div><h2 class="card__title">Eliminar activos</h2><p class="card__subtitle">Se venden por completo y su peso se reparte</p></div></header>
+      <div class="card__body form-stack">
+        <fieldset class="check-list">
+          <legend class="field-label">Activos a eliminar</legend>
+          {% for ticker, weight in holdings %}
+            <label class="inline-check"><input type="checkbox" name="remove" value="{{ ticker }}"{% if ticker in values.getlist('remove') %} checked{% endif %}> <span class="mono">{{ ticker }}</span> <span class="help-text">{{ weight|pct }}</span></label>
+          {% endfor %}
+        </fieldset>
+        <label class="inline-check"><input type="radio" name="remove_method" value="proportional"{% if values.get('remove_method', 'proportional') == 'proportional' %} checked{% endif %}> Repartir el peso proporcionalmente</label>
+        <label class="inline-check"><input type="radio" name="remove_method" value="reoptimize"{% if values.get('remove_method') == 'reoptimize' %} checked{% endif %}> Re-optimizar con los activos restantes</label>
+      </div>
+      <div class="card__footer"><button class="button button-primary" type="submit">Ver vista previa</button></div>
+    </form>
+
+    <form method="post" action="{{ url_for('portfolios.preview', portfolio_id=portfolio.id) }}" class="card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="add">
+      <header class="card__header"><div><h2 class="card__title">Agregar activos</h2><p class="card__subtitle">El ticker se valida descargando sus precios</p></div></header>
+      <div class="card__body form-stack">
+        <div class="form-field">
+          <label for="add_tickers">Ticker(s)</label>
+          <input id="add_tickers" name="add_tickers" type="text" placeholder="NVDA, BTC-USD" value="{{ values.get('add_tickers', '') }}" autocapitalize="characters">
+          <p class="help-text">Separa varios con comas. Los precios en otra moneda se convierten a USD.</p>
+        </div>
+        <label class="inline-check"><input type="radio" name="add_method" value="manual"{% if values.get('add_method', 'manual') == 'manual' %} checked{% endif %}> Peso manual (el resto se reduce en proporción)</label>
+        <div class="form-field">
+          <label for="add_weight">Peso de cada activo nuevo</label>
+          <div class="input-affix"><input class="input-affix__input" id="add_weight" name="add_weight" type="number" step="any" min="0.01" max="99.99" inputmode="decimal" value="{{ values.get('add_weight', '10') }}"><span class="input-affix__suffix" aria-hidden="true">%</span></div>
+        </div>
+        <label class="inline-check"><input type="radio" name="add_method" value="reoptimize"{% if values.get('add_method') == 'reoptimize' %} checked{% endif %}> Re-optimizar con el nuevo universo</label>
+        {% if portfolio.model == 'Black-Litterman' %}
+          <div class="form-field">
+            <label for="add_view">View anual del activo nuevo (para re-optimizar)</label>
+            <div class="input-affix"><input class="input-affix__input" id="add_view" name="add_view" type="number" step="any" min="-100" max="1000" inputmode="decimal" value="{{ values.get('add_view', '') }}"><span class="input-affix__suffix" aria-hidden="true">%</span></div>
+          </div>
+        {% endif %}
+      </div>
+      <div class="card__footer"><button class="button button-primary" type="submit">Ver vista previa</button></div>
+    </form>
+  </div>
+
+  <article class="card account-section danger-zone">
+    <header class="card__header"><div><h2 class="card__title">Archivar</h2><p class="card__subtitle">Deja de monitorearse (sin snapshots ni alertas) y conserva todo su historial</p></div></header>
+    <div class="card__footer">
+      <form method="post" action="{{ url_for('portfolios.archive', portfolio_id=portfolio.id) }}" data-confirm="¿Archivar este portafolio? Dejará de monitorearse y no admitirá cambios.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="button button-danger" type="submit">Archivar portafolio</button>
+      </form>
+    </div>
+  </article>
+{% endblock %}

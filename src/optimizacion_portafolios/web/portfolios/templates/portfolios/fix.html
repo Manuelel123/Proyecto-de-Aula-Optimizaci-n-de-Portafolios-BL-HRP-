@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, alert_thresholds %}
+{% block title %}Establecer portafolio óptimo{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">{{ form.model }} · {{ form.weights|length }} activos</p>
+      <h1>Establecer como portafolio óptimo</h1>
+      <p class="lead">El portafolio se compra hoy con los últimos precios de cierre disponibles (en USD) y desde esa fecha se monitorea como comprar y mantener.</p>
+    </div>
+  </header>
+  {{ disclaimer() }}
+
+  <div class="fix-layout">
+    <form method="post" class="card" novalidate>
+      <div class="card__body form-stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="snapshot" value="{{ snapshot }}">
+        <div class="form-field">
+          <label for="name">Nombre</label>
+          <input id="name" name="name" type="text" maxlength="120" required value="{{ values.name }}">
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="capital">Capital inicial nocional (USD)</label>
+            <input id="capital" name="capital" type="number" min="100" step="any" inputmode="decimal" required value="{{ values.capital }}">
+          </div>
+          <div class="form-field">
+            <label for="commission_bps">Comisión (puntos básicos)</label>
+            <input id="commission_bps" name="commission_bps" type="number" min="0" max="500" step="any" inputmode="decimal" value="{{ values.commission_bps }}" aria-describedby="commission-help">
+            <p class="help-text" id="commission-help">Se descuenta de la compra inicial y de cada rebalanceo. 10 pb = 0,10 %.</p>
+          </div>
+        </div>
+        <div class="form-field">
+          <label for="benchmark">Benchmark</label>
+          <select id="benchmark" name="benchmark">
+            {% for ticker, label in form.benchmarks %}
+              <option value="{{ ticker }}"{% if ticker == values.benchmark %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <details class="disclosure">
+          <summary>Umbrales de alerta (valores por defecto)</summary>
+          {{ alert_thresholds(alert_rows) }}
+        </details>
+      </div>
+      <div class="card__footer">
+        <a class="button button-secondary" href="{{ url_for('portfolios.index') }}">Cancelar</a>
+        <button class="button button-primary" type="submit" name="step" value="confirm">Fijar y empezar el seguimiento</button>
+      </div>
+    </form>
+
+    <article class="card">
+      <header class="card__header"><div><h2 class="card__title">Pesos objetivo</h2><p class="card__subtitle">Resultado del modelo que se va a fijar</p></div></header>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th scope="col">Activo</th><th scope="col" class="num">Peso</th></tr></thead>
+          <tbody>
+            {% for ticker, weight in form.weights %}
+              <tr><th scope="row" class="mono">{{ ticker }}</th><td class="num">{{ weight|pct }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+{% endblock %}

@@ -15,6 +15,8 @@ from optimizacion_portafolios.data.catalogs import (
     BENCHMARKS,
     UNIVERSOS_HRP,
 )
+from optimizacion_portafolios.web.account.hooks import record_backtest
+from optimizacion_portafolios.web.portfolios.snapshots import hrp_snapshot, sign
 from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
     normalize_ticker,
@@ -212,6 +214,12 @@ def hrp():
                         backtest=backtest,
                     )
                     missing = result["missing"]
+                    result["snapshot"] = sign(
+                        hrp_snapshot(
+                            result, universe=universe_name, start_date=start_date.isoformat()
+                        )
+                    )
+                    record_backtest(result["backtest"])
             except (requests.RequestException, TimeoutError, YFException) as error:
                 logger.exception("Yahoo Finance request failed during HRP optimization")
                 raise ValueError(f"No se pudieron descargar los datos: {error}") from error

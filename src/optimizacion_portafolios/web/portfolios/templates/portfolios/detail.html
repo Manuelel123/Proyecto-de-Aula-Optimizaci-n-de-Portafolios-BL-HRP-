@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, money, traffic_light, portfolio_tabs %}
+{% from "macros/charts.html" import plotly_chart %}
+{% block title %}{{ portfolio.name }}{% endblock %}
+{% block content %}
+  {% set tracking = portfolio.tracking %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('portfolios.index') }}">Mis portafolios</a> · {{ portfolio.model }} · {{ portfolio.status_label }}</p>
+      <h1>{{ portfolio.name }}</h1>
+      <p class="lead">Seguimiento desde {{ portfolio.tracking_start }} · Benchmark {{ portfolio.benchmark_label }} · versión {{ portfolio.version.number }} ({{ portfolio.version.reason }}, {{ portfolio.version.effective_date }})</p>
+    </div>
+    {{ traffic_light(portfolio.alerts.level, portfolio.alerts.level_label) }}
+  </header>
+  {{ portfolio_tabs(portfolio.id, 'detail') }}
+  {{ disclaimer() }}
+
+  {% if portfolio.alerts.open %}
+    <div class="notice notice--{{ 'danger' if portfolio.alerts.level == 'red' else 'warning' }}" role="status">
+      <strong>{{ portfolio.alerts.open|length }} alerta{{ 's' if portfolio.alerts.open|length != 1 }} activa{{ 's' if portfolio.alerts.open|length != 1 }}:</strong>
+      {% for event in portfolio.alerts.open %}{{ event.message }}{{ '; ' if not loop.last }}{% endfor %}.
+      <a href="{{ url_for('portfolios.alerts', portfolio_id=portfolio.id) }}">Ver alertas</a>
+    </div>
+  {% endif %}
+
+  {% if portfolio.tracking_error %}
+    <div class="notice notice--warning" role="status">No se pudo valorar el portafolio: {{ portfolio.tracking_error }}</div>
+  {% endif %}
+
+  <div class="kpi-grid">
+    <div class="metric-card metric-card--highlight">
+      <span class="metric-card__label">Valor actual</span>
+      <strong class="metric-card__value">{{ money(tracking.value if tracking else none) }}</strong>
+      <span class="metric-card__context">Capital inicial {{ money(portfolio.initial_capital) }}{% if tracking %} · al {{ tracking.end.strftime('%Y-%m-%d') }}{% endif %}</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-card__label">Retorno acumulado</span>
+      <strong class="metric-card__value {{ 'is-positive' if tracking and tracking.total_return >= 0 else 'is-negative' if tracking else '' }}">{{ tracking.total_return|pct if tracking else 'N/D' }}</strong>
+      <span class="metric-card__context">Neto de comisiones</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-card__label">Benchmark</span>
+      <strong class="metric-card__value">{{ tracking.benchmark_return|pct if tracking else 'N/D' }}</strong>
+      <span class="metric-card__context">{{ portfolio.benchmark_label }}</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-card__label">Frente al benchmark</span>
+      <strong class="metric-card__value {{ 'is-positive' if tracking and tracking.excess_return is not none and tracking.excess_return >= 0 else 'is-negative' if tracking and tracking.excess_return is not none else '' }}">{{ tracking.excess_return|pct if tracking else 'N/D' }}</strong>
+      <span class="metric-card__context">{{ tracking.days if tracking else 0 }} días de seguimiento</span>
+    </div>
+  </div>
+
+  {% if tracking %}
+    {% set charts = tracking.charts %}
+    <div class="chart-grid">
+      {{ plotly_chart("tracking_value", charts.value, "Valor del portafolio", subtitle="Comprar y mantener en USD · punteada = benchmark con el mismo capital · guías = cambios del portafolio") }}
+      {{ plotly_chart("tracking_drawdown", charts.drawdown, "Drawdown", subtitle="Caída desde el máximo previo") }}
+      {{ plotly_chart("tracking_volatility", charts.volatility, "Volatilidad móvil", subtitle="Anualizada · ventanas de 21 y 63 días") }}
+      {{ plotly_chart("tracking_sharpe", charts.sharpe, "Sharpe móvil de 126 días", subtitle="Disponible con al menos 126 días de seguimiento") }}
+      {{ plotly_chart("tracking_weights", charts.weights, "Pesos actuales frente a objetivo", subtitle="Barras = peso actual · marca = peso objetivo") }}
+      {{ plotly_chart("tracking_risk", charts.risk, "Contribución al riesgo", subtitle="Participación en la varianza del portafolio · marca = peso actual") }}
+      {{ plotly_chart("tracking_returns", charts.returns, "Contribución al retorno", subtitle="Aporte de cada activo al retorno acumulado") }}
+      {{ plotly_chart("tracking_correlation", charts.correlation, "Correlación promedio móvil", subtitle="Promedio de las correlaciones por pares · 63 días") }}
+    </div>
+    {% if not charts.sharpe or not charts.correlation %}
+      <p class="help-text">Algunas métricas móviles necesitan más historia: {{ tracking.days }} días de seguimiento hasta ahora.</p>
+    {% endif %}
+
+    {% if portfolio.alerts.rules %}
+      <article class="card account-section">
+        <header class="card__header"><div><h2 class="card__title">Semáforo de reglas</h2><p class="card__subtitle">Valor actual de cada regla activa · <a href="{{ url_for('portfolios.alerts', portfolio_id=portfolio.id) }}">editar umbrales</a></p></div></header>
+        <ul class="rule-lights">
+          {% for rule in portfolio.alerts.rules %}
+            <li>{{ traffic_light(rule.level, rule.level_label) }}<span>{{ rule.label }}</span><strong>{{ rule.value }}</strong></li>
+          {% endfor %}
+        </ul>
+      </article>
+    {% endif %}
+
+    <section class="metric-groups" aria-label="Métricas de seguimiento">
+      {% for group in tracking.groups %}
+        <article class="card">
+          <header class="card__header"><h2 class="card__title">{{ group.title }}</h2></header>
+          <dl class="metric-list">
+            {% for label, value in group.metrics %}
+              <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+            {% endfor %}
+          </dl>
+        </article>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Posiciones vigentes</h2><p class="card__subtitle">Versión {{ portfolio.version.number }} · comisión {{ '%g'|format(portfolio.commission_bps) }} pb</p></div></header>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Activo</th>
+            <th scope="col" class="num">Peso objetivo</th>
+            <th scope="col" class="num">Peso actual</th>
+            <th scope="col" class="num">Desviación</th>
+            <th scope="col" class="num">Unidades</th>
+            <th scope="col" class="num">Precio de entrada</th>
+            <th scope="col" class="num">Último precio</th>
+            <th scope="col" class="num">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for holding in portfolio.holdings %}
+            <tr>
+              <th scope="row" class="mono">{{ holding.ticker }}</th>
+              <td class="num">{{ holding.target_weight|pct }}</td>
+              <td class="num">{{ holding.current_weight|pct }}</td>
+              <td class="num">{% if holding.drift is not none %}{{ '%+.2f'|format(holding.drift * 100) }} pp{% else %}N/D{% endif %}</td>
+              <td class="num">{{ '{:,.4f}'.format(holding.units) }}</td>
+              <td class="num">{{ money(holding.entry_price) }}</td>
+              <td class="num">{{ money(holding.last_price) }}</td>
+              <td class="num">{{ money(holding.value) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  {% if portfolio.snapshots %}
+    <article class="card account-section">
+      <header class="card__header"><div><h2 class="card__title">Fotos diarias</h2><p class="card__subtitle">Últimos días guardados · el historial no cambia aunque el proveedor revise sus precios</p></div></header>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th scope="col">Día</th><th scope="col" class="num">Valor</th><th scope="col" class="num">Benchmark</th><th scope="col">Métricas</th></tr></thead>
+          <tbody>
+            {% for snapshot in portfolio.snapshots %}
+              <tr><td>{{ snapshot.day }}</td><td class="num">{{ money(snapshot.value) }}</td><td class="num">{{ money(snapshot.benchmark_value) }}</td><td>{{ 'Sí' if snapshot.has_metrics else '—' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  {% endif %}
+{% endblock %}
+{% block page_scripts %}
+  {% include "macros/chart_scripts.html" %}
+{% endblock %}

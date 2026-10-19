@@ -10,25 +10,49 @@ import matplotlib
 # any module (including QuantStats) imports pyplot.
 matplotlib.use("Agg")
 
+from datetime import datetime, timedelta
+
 from flask import Flask, abort, render_template, request, session
 
 
 def create_app(test_config: dict | None = None) -> Flask:
-    app = Flask(__name__, instance_relative_config=True)
+    testing = bool(test_config and test_config.get("TESTING"))
+    if not testing:
+        # Local secrets (.env in the working directory) never override
+        # variables already set.
+        from dotenv import find_dotenv, load_dotenv
+
+        load_dotenv(find_dotenv(usecwd=True))
+    # instance/ (local database) sits next to .env in the working directory.
+    app = Flask(
+        __name__,
+        instance_relative_config=True,
+        instance_path=os.path.abspath(os.environ.get("ATLAS_INSTANCE_PATH") or "instance"),
+    )
+    secure_cookies = os.environ.get("FLASK_SESSION_COOKIE_SECURE", "").lower() in {"1", "true"}
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32),
         MAX_CONTENT_LENGTH=1 * 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=os.environ.get(
-            "FLASK_SESSION_COOKIE_SECURE", ""
-        ).lower()
-        in {"1", "true"},
+        SESSION_COOKIE_SECURE=secure_cookies,
+        REMEMBER_COOKIE_HTTPONLY=True,
+        REMEMBER_COOKIE_SAMESITE="Lax",
+        REMEMBER_COOKIE_SECURE=secure_cookies,
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+        SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL")
+        or "sqlite:///" + os.path.join(app.instance_path, "atlas.db"),
     )
+    if testing:
+        # Tests get a private in-memory database unless they pass their own.
+        app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite://"
     if test_config:
         app.config.update(test_config)
 
+    _configure_insforge(app, testing)
+    _configure_storage(app, testing)
     _register_blueprints(app)
+    _register_template_helpers(app)
     _register_csrf_protection(app)
     _register_error_handlers(app)
     _warm_up_backtest_engine(app)
@@ -48,7 +72,100 @@ def _warm_up_backtest_engine(app: Flask) -> None:
     warm_up_in_background()
 
 
+def _configure_storage(app: Flask, testing: bool) -> None:
+    """SQLite (or ``DATABASE_URL``) for tracked portfolios, plus Flask-Login.
+
+    Pending migrations are applied at start-up (disable with
+    ``ATLAS_AUTO_MIGRATE=0``); tests create the tables directly.
+    """
+    from optimizacion_portafolios.storage import MIGRATIONS_DIRECTORY, db, migrate
+    from optimizacion_portafolios.storage import models  # noqa: F401  (registers tables)
+    from optimizacion_portafolios.web.auth.session import login_manager
+
+    os.makedirs(app.instance_path, exist_ok=True)
+    db.init_app(app)
+    migrate.init_app(app, db, directory=MIGRATIONS_DIRECTORY, render_as_batch=True)
+    login_manager.init_app(app)
+    with app.app_context():
+        if testing:
+            db.create_all()
+        elif os.environ.get("ATLAS_AUTO_MIGRATE", "1") != "0" and os.path.isdir(
+            os.path.join(MIGRATIONS_DIRECTORY, "versions")
+        ):
+            from flask_migrate import upgrade
+
+            upgrade(directory=MIGRATIONS_DIRECTORY)
+
+
+def _configure_insforge(app: Flask, testing: bool) -> None:
+    """InsForge client for accounts and the persistent price cache (optional).
+
+    Reads ``INSFORGE_URL``, ``INSFORGE_ANON_KEY`` and ``INSFORGE_API_KEY``. Tests
+    pass a client (or nothing) in ``app.config["INSFORGE_CLIENT"]`` instead.
+    """
+    from optimizacion_portafolios.data import price_store
+    from optimizacion_portafolios.insforge import InsForgeClient, InsForgeSettings
+
+    if testing:
+        client = app.config.get("INSFORGE_CLIENT")
+    else:
+        settings = InsForgeSettings.from_env()
+        client = InsForgeClient(settings) if settings else None
+        price_store.configure(
+            client,
+            full_refresh_days=float(
+                os.environ.get("ATLAS_PRICE_FULL_REFRESH_DAYS")
+                or price_store.DEFAULT_FULL_REFRESH_DAYS
+            ),
+            intraday_ttl_minutes=float(
+                os.environ.get("ATLAS_PRICE_INTRADAY_TTL_MINUTES")
+                or price_store.DEFAULT_INTRADAY_TTL_MINUTES
+            ),
+        )
+    if client is not None:
+        app.extensions["insforge"] = client
+
+
+def _register_template_helpers(app: Flask) -> None:
+    @app.context_processor
+    def inject_accounts():
+        # ``current_user`` comes from Flask-Login's own context processor.
+        return {"accounts_enabled": "insforge" in app.extensions}
+
+    def _number(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @app.template_filter("pct")
+    def percent(value, decimals=2):
+        number = _number(value)
+        return "N/D" if number is None else f"{number * 100:.{decimals}f} %"
+
+    @app.template_filter("ratio")
+    def ratio(value):
+        number = _number(value)
+        return "N/D" if number is None else f"{number:.3f}"
+
+    @app.template_filter("money")
+    def money(value):
+        number = _number(value)
+        return "N/D" if number is None else f"${number:,.2f}"
+
+    @app.template_filter("datetime_short")
+    def datetime_short(value):
+        try:
+            moment = datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone()
+        except ValueError:
+            return value
+        return moment.strftime("%Y-%m-%d %H:%M")
+
+
 def _register_blueprints(app: Flask) -> None:
+    from optimizacion_portafolios.web.account import bp as account_bp
+    from optimizacion_portafolios.web.auth import bp as auth_bp
+    from optimizacion_portafolios.web.portfolios import bp as portfolios_bp
     from optimizacion_portafolios.web.black_litterman import bp as black_litterman_bp
     from optimizacion_portafolios.web.history import bp as history_bp
     from optimizacion_portafolios.web.hrp import bp as hrp_bp
@@ -60,6 +177,9 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(hrp_bp)
     app.register_blueprint(black_litterman_bp)
     app.register_blueprint(history_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(account_bp)
+    app.register_blueprint(portfolios_bp)
 
 
 def _register_csrf_protection(app: Flask) -> None:

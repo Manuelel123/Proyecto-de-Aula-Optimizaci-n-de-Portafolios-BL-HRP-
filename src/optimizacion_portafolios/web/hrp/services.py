@@ -301,6 +301,52 @@ def backtest_view(
         "init_cash": config.init_cash,
         "from_cache": from_cache,
         "seconds": seconds,
+        "record": _backtest_record(result, best),
+    }
+
+
+def _metric(row: pd.Series, column: str):
+    value = row.get(column)
+    return None if value is None or pd.isna(value) else float(value)
+
+
+def _backtest_record(result: BacktestResult, best: str | None) -> dict:
+    """JSON-ready summary of a backtest for the user's history (InsForge)."""
+    config = result.config
+    strategies = []
+    for label, row in result.metrics.iterrows():
+        dates = result.rebalance_dates.get(label, [])
+        rebalances = row.get("Rebalanceos")
+        strategies.append(
+            {
+                "strategy": str(label),
+                "total_return": _metric(row, "Retorno total"),
+                "cagr": _metric(row, "CAGR"),
+                "volatility": _metric(row, "Volatilidad anualizada"),
+                "sharpe": _metric(row, "Ratio de Sharpe"),
+                "sortino": _metric(row, "Ratio de Sortino"),
+                "max_drawdown": _metric(row, "Máxima caída"),
+                "rebalances": None if rebalances is None or pd.isna(rebalances) else int(rebalances),
+                "total_costs": _metric(row, "Costos totales"),
+                "rebalance_dates": [day.date().isoformat() for day in dates],
+            }
+        )
+    return {
+        "tickers": list(result.assets),
+        "start_date": result.start.date().isoformat(),
+        "end_date": result.end.date().isoformat(),
+        "trading_days": len(result.values),
+        "config": {
+            "lookback": config.lookback,
+            "drift_threshold": config.drift_threshold,
+            "vol_window": config.vol_window,
+            "vol_threshold": config.vol_threshold,
+            "fees": config.fees,
+            "slippage": config.slippage,
+            "init_cash": config.init_cash,
+        },
+        "best_strategy": best,
+        "strategies": strategies,
     }
 
 
@@ -322,7 +368,18 @@ def run_backtest_section(
         return {"error": f"No se pudieron descargar los datos del backtest: {error}"}
     except ValueError as error:
         return {"error": str(error)}
-    return backtest_view(result, from_cache, time.perf_counter() - started)
+    view = backtest_view(result, from_cache, time.perf_counter() - started)
+    view["record"]["bounds"] = _bounds_record(bounds)
+    return view
+
+
+def _bounds_record(bounds: WeightBounds) -> dict:
+    return {
+        "min_weight": bounds.min_weight,
+        "max_weight": bounds.max_weight,
+        "asset_min_weights": dict(sorted(bounds.asset_min_weights.items())),
+        "asset_max_weights": dict(sorted(bounds.asset_max_weights.items())),
+    }
 
 
 def run_hrp(
@@ -396,6 +453,7 @@ def run_hrp(
         "returns_box": returns_box_chart(returns),
         "returns_matrix": _returns_matrix(run, benchmark, chart_names),
     }
+    portfolio_metrics = calculate_quantstats_metrics(run.portfolio_returns)["Valor"]
     risk_shares = contributions["Contribución al riesgo"]
     top_risk = str(risk_shares.idxmax()) if risk_shares.notna().any() else None
 
@@ -412,7 +470,7 @@ def run_hrp(
                 {column: format_percent for column in contributions.columns},
             ),
             "metrics": metrics_html(
-                calculate_quantstats_metrics(run.portfolio_returns).rename(
+                portfolio_metrics.to_frame("Valor").rename(
                     index={_QUANTSTATS_SORTINO: _QUANTSTATS_SORTINO_LABEL}
                 )
             ),
@@ -441,6 +499,17 @@ def run_hrp(
         "has_rolling_sharpe": has_rolling_sharpe,
         "selected_tickers": assets,
         "benchmark": benchmark,
+        "summary": {
+            "weights": {ticker: float(weight) for ticker, weight in weights.items()},
+            "bounds": _bounds_record(bounds.restricted_to(assets)),
+            "metrics": {
+                "expected_return": portfolio_metrics.get("Retorno anual compuesto"),
+                "volatility": portfolio_metrics.get("Volatilidad anualizada"),
+                "sharpe": portfolio_metrics.get("Ratio de Sharpe"),
+                "sortino": portfolio_metrics.get(_QUANTSTATS_SORTINO),
+                "max_drawdown": portfolio_metrics.get("Máxima caída"),
+            },
+        },
         "backtest": (
             run_backtest_section(assets, start_date, bounds, backtest)
             if backtest is not None

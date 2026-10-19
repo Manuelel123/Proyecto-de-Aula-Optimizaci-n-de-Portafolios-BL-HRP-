@@ -326,12 +326,10 @@ def run_black_litterman(
             aligned[benchmark],
             rolling_period=ROLLING_SHARPE_PERIOD,
         )
+        historical_metrics = calculate_quantstats_metrics(aligned[_PORTFOLIO_COLUMN])
         history = {
-            "metrics": metrics_html(
-                calculate_quantstats_metrics(aligned[_PORTFOLIO_COLUMN]).rename(
-                    index=_HISTORICAL_LABELS
-                )
-            ),
+            "metrics": metrics_html(historical_metrics.rename(index=_HISTORICAL_LABELS)),
+            "max_drawdown": float(historical_metrics.loc["Máxima caída", "Valor"]),
             "charts": history_charts,
             "observations": len(aligned),
             "start": display_date(aligned.index[0]),
@@ -359,6 +357,8 @@ def run_black_litterman(
             "end": display_date(today),
             "effective_start": display_date(prices.index[0]),
             "effective_end": display_date(prices.index[-1]),
+            "effective_start_iso": prices.index[0].date().isoformat(),
+            "effective_end_iso": prices.index[-1].date().isoformat(),
             "observations": len(returns),
         },
         "allocation_rows": allocation_rows,

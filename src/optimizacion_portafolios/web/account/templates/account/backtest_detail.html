@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Backtest {{ run.start_date }} — {{ run.end_date }}{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('account.backtests') }}">Historial de backtests</a></p>
+      <h1>Backtest HRP · {{ run.tickers|length }} activos</h1>
+      <p class="lead"><span class="mono">{{ run.tickers|join(', ') }}</span> · {{ run.start_date }} — {{ run.end_date }} · {{ run.trading_days }} días · calculado el {{ run.created_at|datetime_short }}</p>
+    </div>
+  </header>
+
+  <dl class="account-metrics account-metrics--wide card">
+    <div><dt>Ventana de estimación</dt><dd>{{ run.lookback }} días</dd></div>
+    <div><dt>Umbral de desviación</dt><dd>{{ '%.1f'|format(run.drift_threshold * 100) }} pp</dd></div>
+    <div><dt>Volatilidad</dt><dd>{{ run.vol_window }} días · umbral {{ run.vol_threshold|pct(1) if run.vol_threshold is not none else 'automático' }}</dd></div>
+    <div><dt>Costos</dt><dd>Comisión {{ run.fees|pct }} · slippage {{ run.slippage|pct }}</dd></div>
+    <div><dt>Capital inicial</dt><dd>{{ run.init_cash|money }}</dd></div>
+  </dl>
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Resultados por estrategia</h2><p class="card__subtitle">Ordenados por ratio de Sharpe</p></div></header>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Estrategia</th>
+            <th scope="col" class="num">Retorno total</th>
+            <th scope="col" class="num">CAGR</th>
+            <th scope="col" class="num">Volatilidad</th>
+            <th scope="col" class="num">Sharpe</th>
+            <th scope="col" class="num">Sortino</th>
+            <th scope="col" class="num">Máxima caída</th>
+            <th scope="col" class="num">Rebalanceos</th>
+            <th scope="col" class="num">Costos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in run.results %}
+            <tr>
+              <th scope="row">{{ result.strategy }}{% if result.strategy == run.best_strategy %} <span class="badge badge--success">Mejor Sharpe</span>{% endif %}</th>
+              <td class="num">{{ result.total_return|pct }}</td>
+              <td class="num">{{ result.cagr|pct }}</td>
+              <td class="num">{{ result.volatility|pct }}</td>
+              <td class="num">{{ result.sharpe|ratio }}</td>
+              <td class="num">{{ result.sortino|ratio }}</td>
+              <td class="num">{{ result.max_drawdown|pct }}</td>
+              <td class="num">{{ result.rebalances if result.rebalances is not none else 'N/D' }}</td>
+              <td class="num">{{ result.total_costs|money }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Fechas de rebalanceo</h2><p class="card__subtitle">Sin contar la compra inicial</p></div></header>
+    <div class="card__body">
+      {% for result in run.results if result.rebalance_dates %}
+        <details class="rebalance-dates">
+          <summary>{{ result.strategy }} · {{ result.rebalance_dates|length }} fechas</summary>
+          <p class="rebalance-dates__list">{{ result.rebalance_dates|join(', ') }}</p>
+        </details>
+      {% else %}
+        <p class="help-text">Ninguna estrategia rebalanceó en el periodo.</p>
+      {% endfor %}
+    </div>
+  </article>
+
+  <div class="account-actions">
+    <form method="post" action="{{ url_for('account.delete_backtest', run_id=run.id) }}" data-confirm="¿Eliminar este backtest del historial?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="button button-danger button-sm" type="submit">Eliminar del historial</button>
+    </form>
+  </div>
+{% endblock %}

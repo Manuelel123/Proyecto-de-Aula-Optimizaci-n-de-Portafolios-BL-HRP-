@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, money, portfolio_tabs %}
+{% from "macros/charts.html" import plotly_chart %}
+{% block title %}Señales · {{ portfolio.name }}{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('portfolios.index') }}">Mis portafolios</a> · {{ portfolio.name }}</p>
+      <h1>Señales de entrada y salida</h1>
+      <p class="lead">Reglas por activo (tendencia, volatilidad, drawdown y stop-loss) simuladas con vectorbt sobre los pesos vigentes desde la fecha de fijación, frente a comprar y mantener.</p>
+    </div>
+  </header>
+  {{ portfolio_tabs(portfolio.id, 'signals') }}
+  {{ disclaimer() }}
+  <div class="notice notice--warning" role="note">Son sugerencias: nunca modifican el portafolio. Para actuar sobre ellas usa <a href="{{ url_for('portfolios.manage', portfolio_id=portfolio.id) }}">Gestionar</a>, que pide confirmación.</div>
+
+  <form method="get" class="card account-section" data-loading-title="Simulando señales">
+    <input type="hidden" name="submitted" value="1">
+    <header class="card__header"><div><h2 class="card__title">Reglas</h2><p class="card__subtitle">Vacío = regla desactivada · comisión del portafolio: {{ '%g'|format(portfolio.commission_bps) }} pb</p></div></header>
+    <div class="card__body signal-form">
+      <fieldset class="form-stack">
+        <legend class="field-label"><label class="inline-check"><input type="checkbox" name="use_trend" value="1"{% if values.use_trend %} checked{% endif %}> Tendencia: media rápida sobre la lenta</label></legend>
+        <div class="form-row">
+          <div class="form-field"><label for="fast_ma">Media rápida (días)</label><input id="fast_ma" name="fast_ma" type="number" min="2" step="1" value="{{ values.fast_ma }}"></div>
+          <div class="form-field"><label for="slow_ma">Media lenta (días)</label><input id="slow_ma" name="slow_ma" type="number" min="3" step="1" value="{{ values.slow_ma }}"></div>
+        </div>
+      </fieldset>
+      <fieldset class="form-stack">
+        <legend class="field-label">Volatilidad</legend>
+        <div class="form-row">
+          <div class="form-field"><label for="vol_window">Ventana (días)</label><input id="vol_window" name="vol_window" type="number" min="5" step="1" value="{{ values.vol_window }}"></div>
+          <div class="form-field"><label for="vol_multiple">Salir si supera × su mediana</label><input id="vol_multiple" name="vol_multiple" type="number" min="0.1" step="any" value="{{ values.vol_multiple }}"></div>
+        </div>
+      </fieldset>
+      <fieldset class="form-stack">
+        <legend class="field-label">Caídas</legend>
+        <div class="form-row">
+          <div class="form-field"><label for="drawdown_exit">Salir con drawdown del activo mayor a</label><div class="input-affix"><input class="input-affix__input" id="drawdown_exit" name="drawdown_exit" type="number" min="0.1" step="any" value="{{ values.drawdown_exit }}"><span class="input-affix__suffix" aria-hidden="true">%</span></div></div>
+          <div class="form-field"><label for="stop_loss">Stop-loss</label><div class="input-affix"><input class="input-affix__input" id="stop_loss" name="stop_loss" type="number" min="0.1" step="any" value="{{ values.stop_loss }}"><span class="input-affix__suffix" aria-hidden="true">%</span></div></div>
+        </div>
+        <label class="inline-check"><input type="checkbox" name="trailing_stop" value="1"{% if values.trailing_stop %} checked{% endif %}> Stop dinámico (trailing): se mide desde el máximo de la posición</label>
+      </fieldset>
+    </div>
+    <div class="card__footer"><button class="button button-primary" type="submit" value="analyze">Simular</button></div>
+  </form>
+
+  {% if result %}
+    <div class="kpi-grid account-section">
+      <div class="metric-card"><span class="metric-card__label">Con señales</span><strong class="metric-card__value">{{ result.signals_return|pct }}</strong><span class="metric-card__context">{{ result.start }} — {{ result.end }}</span></div>
+      <div class="metric-card"><span class="metric-card__label">Comprar y mantener</span><strong class="metric-card__value">{{ result.hold_return|pct }}</strong></div>
+      <div class="metric-card"><span class="metric-card__label">Diferencia</span><strong class="metric-card__value {{ 'is-positive' if result.difference >= 0 else 'is-negative' }}">{{ '%+.2f'|format(result.difference * 100) }} pp</strong></div>
+      <div class="metric-card"><span class="metric-card__label">Operaciones</span><strong class="metric-card__value">{{ result.trades|length }}</strong></div>
+    </div>
+
+    <div class="chart-grid">
+      {{ plotly_chart("signals_equity", result.charts.equity, "Valor con señales frente a comprar y mantener", subtitle="Mismo capital inicial · punteada = comprar y mantener") }}
+      {{ plotly_chart("signals_drawdown", result.charts.drawdown, "Drawdown", subtitle="Caída desde el máximo de cada estrategia") }}
+    </div>
+
+    <article class="card account-section">
+      <header class="card__header"><div><h2 class="card__title">Métricas</h2></div></header>
+      <div class="data-table-wrap">{{ result.metrics_table }}</div>
+    </article>
+
+    <article class="card account-section">
+      <header class="card__header"><div><h2 class="card__title">Estado sugerido por activo</h2><p class="card__subtitle">Según las reglas al último cierre</p></div></header>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th scope="col">Activo</th><th scope="col">Sugerencia</th><th scope="col">Posición simulada</th><th scope="col">Último cambio de estado</th></tr></thead>
+          <tbody>
+            {% for row in result.suggestions %}
+              <tr>
+                <th scope="row" class="mono">{{ row.ticker }}</th>
+                <td><span class="badge {{ 'badge--success' if row.state == 'Mantener' else 'badge--warning' }}">{{ row.state }}</span></td>
+                <td>{{ row.position }}</td>
+                <td>{{ row.last_switch }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="card account-section">
+      <header class="card__header"><div><h2 class="card__title">Operaciones simuladas</h2></div></header>
+      {% if result.trades %}
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead><tr><th scope="col">Activo</th><th scope="col">Entrada</th><th scope="col">Salida</th><th scope="col" class="num">Precio de entrada</th><th scope="col" class="num">Precio de salida</th><th scope="col" class="num">Retorno</th><th scope="col">Estado</th></tr></thead>
+            <tbody>
+              {% for trade in result.trades %}
+                <tr>
+                  <th scope="row" class="mono">{{ trade.ticker }}</th>
+                  <td>{{ trade.entry }}</td>
+                  <td>{{ trade.exit or '—' }}</td>
+                  <td class="num">{{ money(trade.entry_price) }}</td>
+                  <td class="num">{{ money(trade.exit_price) }}</td>
+                  <td class="num {{ 'is-positive' if trade['return'] >= 0 else 'is-negative' }}">{{ trade['return']|pct }}</td>
+                  <td>{{ trade.status }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="card__body"><p class="help-text">Las reglas no generaron operaciones en el periodo.</p></div>
+      {% endif %}
+    </article>
+  {% endif %}
+{% endblock %}
+{% block page_scripts %}
+  {% include "macros/chart_scripts.html" %}
+{% endblock %}
