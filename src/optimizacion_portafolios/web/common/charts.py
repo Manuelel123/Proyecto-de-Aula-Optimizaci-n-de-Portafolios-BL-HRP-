@@ -832,6 +832,26 @@ def tracking_value_chart(
     return figure_payload(figure)
 
 
+def rolling_lines_chart(
+    series: dict[str, pd.Series], value_format: str = ".1%", reference: float | None = None
+) -> Markup | None:
+    """One line per rolling series (e.g. 21/63-day volatility); optional guide."""
+    figure = _figure(hovermode="x unified", showlegend=len(series) > 1, margin={"t": 32})
+    palette = iter(theme.SERIES)
+    for name, values in series.items():
+        values = _clean(values)
+        if values.empty:
+            continue
+        figure.add_trace(_line(values.index, values.to_numpy(), name, next(palette, theme.TEXT_2), 1.8, "solid", value_format))
+    if not figure.data:
+        return None
+    if reference is not None:
+        figure.add_hline(y=reference, line={"color": theme.TEXT_3, "width": 1, "dash": "dash"})
+    _time_series_axes(figure, value_format.replace("1%", "0%"))
+    figure.update_yaxes(hoverformat=value_format)
+    return figure_payload(figure)
+
+
 def weights_vs_target_chart(current: pd.Series, target: dict[str, float]) -> Markup | None:
     """Current weight per asset (bars) with its target weight (tick marker)."""
     tickers = sorted(set(_clean(current).index.astype(str)) | set(target), key=lambda t: -target.get(t, 0.0))

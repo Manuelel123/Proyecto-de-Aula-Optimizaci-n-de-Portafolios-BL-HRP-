@@ -64,6 +64,31 @@ Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones s
   Tras cambiar `storage/models.py`, genera la revisión con `db migrate -m "..."` y el mismo `--directory`.
 - **Fijar un portafolio óptimo:** en los resultados de HRP y Black-Litterman, con la sesión iniciada, el botón «Establecer como portafolio óptimo» pide nombre, capital nocional (100 000 USD por defecto), benchmark y comisión (10 pb por defecto). Se guardan el modelo, todos sus parámetros (universo, fechas, límites de peso, views, objetivo, tasa libre de riesgo), los pesos objetivo, los últimos precios de cierre y las unidades (capital neto de comisión × peso / precio). La fecha de esos precios es el inicio del seguimiento.
 - **Valoración:** comprar y mantener en USD con las unidades vigentes. Los cierres son ajustados, así que los dividendos se reinvierten implícitamente; un activo que deja de cotizar conserva su último precio. Los precios en otra moneda se convierten con el tipo de cambio diario de Yahoo (`{CCY}USD=X`); los precios en peniques (`GBp`) se dividen entre 100.
+- **Métricas de seguimiento** (`analytics/tracking.py`, días hábiles, 252 por año): retorno acumulado, del mes, del año y del último año (N/D hasta tener un año), CAGR y contribución al retorno por activo; volatilidad anualizada y móvil (21 y 63 días), drawdown actual, máximo y su duración, VaR y CVaR históricos al 95 % (diarios), semidesviación y contribución al riesgo; Sharpe, Sortino (QuantStats), Calmar y Sharpe móvil de 126 días; beta, alpha de Jensen, tracking error, information ratio y capturas alcista y bajista frente al benchmark; desviación de pesos, índice Herfindahl, número efectivo de activos, correlación promedio móvil (63 días) y rotación acumulada. La tasa libre de riesgo es la del modelo (Black-Litterman) o 0.
+- **Fotos diarias (snapshots):** cada día valorado guarda valor, valor del benchmark, pesos y, el último día, todas las métricas (`DailySnapshot`). Los días pasados no se reescriben aunque el proveedor revise sus precios; solo se actualiza la foto del último día. Al abrir el panel se guardan las fotos que falten.
+
+  ```powershell
+  uv run flask --app wsgi:app portfolios snapshot            # hasta hoy
+  uv run flask --app wsgi:app portfolios snapshot --date 2026-10-16
+  ```
+
+  El comando termina con código 1 si algún portafolio falla (el resto se guarda igual).
+
+  **Programarlo en Windows (Programador de tareas):** abre «Programador de tareas» → «Crear tarea básica…», nombre `Atlas snapshot`, desencadenador «Diariamente» a las 18:30 (después del cierre de EE. UU.), acción «Iniciar un programa» con:
+
+  - Programa: `powershell.exe`
+  - Argumentos: `-NoProfile -Command "uv run flask --app wsgi:app portfolios snapshot *>> instance\snapshot.log"`
+  - Iniciar en: la carpeta del proyecto (donde están `wsgi.py` y `.env`).
+
+  O con PowerShell, desde la carpeta del proyecto:
+
+  ```powershell
+  $action = New-ScheduledTaskAction -Execute "powershell.exe" -WorkingDirectory (Get-Location) `
+    -Argument '-NoProfile -Command "uv run flask --app wsgi:app portfolios snapshot *>> instance\snapshot.log"'
+  $trigger = New-ScheduledTaskTrigger -Daily -At 6:30pm
+  Register-ScheduledTask -TaskName "Atlas snapshot" -Action $action -Trigger $trigger
+  ```
+
 - **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
 
 ## Pruebas
@@ -141,7 +166,7 @@ src/optimizacion_portafolios/
     auth/                       inicio de sesión con InsForge (Flask-Login, límite de intentos)
     portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
   storage/
-    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction)
+    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot)
     repositories.py             lecturas y escrituras filtradas por usuario
     migrations/                 revisiones de Flask-Migrate
 ```

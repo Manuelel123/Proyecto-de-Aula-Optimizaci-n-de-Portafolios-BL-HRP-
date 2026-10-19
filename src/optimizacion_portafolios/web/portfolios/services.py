@@ -10,14 +10,15 @@ import requests
 from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.tracking import (
+    ROLLING_SHARPE_WINDOW,
     Segment,
-    current_weights,
+    business_days,
     holding_values,
     initial_positions,
     last_prices,
     rebased,
+    tracking_metrics,
     tracking_summary,
-    weight_drift,
 )
 from optimizacion_portafolios.data.catalogs import BENCHMARKS
 from optimizacion_portafolios.data.fx import prices_in_usd
@@ -25,7 +26,14 @@ from optimizacion_portafolios.data.market_data import download_prices
 from optimizacion_portafolios.storage import repositories
 from optimizacion_portafolios.storage.models import Portfolio
 from optimizacion_portafolios.storage.repositories import HoldingData, TransactionData
-from optimizacion_portafolios.web.common.charts import tracking_value_chart, weights_vs_target_chart
+from optimizacion_portafolios.web.common.charts import (
+    contribution_chart,
+    drawdown_chart,
+    rolling_lines_chart,
+    rolling_sharpe_chart,
+    tracking_value_chart,
+    weights_vs_target_chart,
+)
 from optimizacion_portafolios.web.portfolios.snapshots import MODEL_LABELS, default_name
 
 logger = logging.getLogger(__name__)
@@ -103,7 +111,7 @@ def fix_portfolio(
         raise ValueError("No hay precios recientes para: " + ", ".join(missing))
     if benchmark not in benchmark_prices or benchmark_prices[benchmark].dropna().empty:
         raise ValueError(f"No hay precios recientes para el benchmark {benchmark}.")
-    price_day, closes = last_prices(prices)
+    price_day, closes = last_prices(business_days(prices.sort_index().ffill()))
     positions = initial_positions(capital, weights, closes, commission_bps)
     total_weight = sum(weights.values())
     holdings = [
@@ -173,11 +181,24 @@ def segments(portfolio: Portfolio) -> list[Segment]:
     ]
 
 
-def valuation(portfolio: Portfolio, today: date | None = None) -> dict:
-    """Daily buy-and-hold valuation since the fixing date (USD).
+def risk_free_rate(portfolio: Portfolio) -> float:
+    """Yearly rf of the model inputs (Black-Litterman); 0 when not given."""
+    first = portfolio.versions[0].params if portfolio.versions else {}
+    try:
+        return float((first or {}).get("risk_free_rate") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
-    Returns ``values`` (per-asset frame), ``total``, ``benchmark`` (rebased to
-    the initial capital) and the prices used; raises ``ValueError``.
+
+def cumulative_turnover(portfolio: Portfolio) -> float:
+    return float(sum(version.turnover for version in portfolio.versions[1:]))
+
+
+def valuation(portfolio: Portfolio, today: date | None = None) -> dict:
+    """Daily buy-and-hold valuation since the fixing date (USD, business days).
+
+    Returns ``holdings`` (per-asset values), ``total``, ``benchmark`` (rebased
+    to the initial capital) and the asset ``prices``; raises ``ValueError``.
     """
     end = today or date.today()
     start = portfolio.tracking_start
@@ -187,17 +208,192 @@ def valuation(portfolio: Portfolio, today: date | None = None) -> dict:
         benchmark = _usd_prices((portfolio.benchmark,), start, end)
     except DOWNLOAD_ERRORS as error:
         raise ValueError(f"No se pudieron descargar los precios: {error}") from error
-    values = holding_values(prices, segments(portfolio))
-    total = values.sum(axis=1).rename("Portafolio")
+    holdings = business_days(holding_values(prices, segments(portfolio)))
+    if holdings.empty:
+        raise ValueError("Todavía no hay precios desde la fecha de fijación.")
+    total = holdings.sum(axis=1).rename("Portafolio")
     benchmark_series = (
-        rebased(benchmark[portfolio.benchmark], portfolio.initial_capital, pd.Timestamp(start))
+        rebased(business_days(benchmark[portfolio.benchmark]), portfolio.initial_capital, pd.Timestamp(start))
         if portfolio.benchmark in benchmark.columns
         else pd.Series(dtype=float)
     )
-    return {"values": values, "total": total, "benchmark": benchmark_series, "prices": prices}
+    return {
+        "holdings": holdings,
+        "total": total,
+        "benchmark": benchmark_series,
+        "prices": business_days(prices.sort_index().ffill()).reindex(holdings.index),
+    }
+
+
+def analyze(portfolio: Portfolio, today: date | None = None) -> dict:
+    """Valuation plus every tracking metric (see ``analytics.tracking``)."""
+    valued = valuation(portfolio, today)
+    metrics = tracking_metrics(
+        valued["total"],
+        valued["holdings"],
+        valued["prices"],
+        valued["benchmark"],
+        portfolio.current_version.target_weights,
+        rf=risk_free_rate(portfolio),
+        turnover=cumulative_turnover(portfolio),
+    )
+    return {**valued, "metrics": metrics}
+
+
+def snapshot_rows(portfolio: Portfolio, analysis: dict) -> list[dict]:
+    """One snapshot per valued day; only the last day carries the metrics."""
+    holdings, total = analysis["holdings"], analysis["total"]
+    benchmark = analysis["benchmark"].reindex(total.index).ffill()
+    weights = holdings.div(total, axis=0)
+    last_day = total.index[-1]
+    rows = []
+    for day, value in total.items():
+        day_weights = weights.loc[day]
+        rows.append(
+            {
+                "day": day.date(),
+                "value": float(value),
+                "benchmark_value": float(benchmark.loc[day]) if pd.notna(benchmark.get(day)) else None,
+                "weights": {ticker: float(w) for ticker, w in day_weights.items() if abs(w) > 0},
+                "metrics": analysis["metrics"]["scalars"] if day == last_day else None,
+            }
+        )
+    return rows
+
+
+def record_snapshots(portfolio: Portfolio, analysis: dict) -> int:
+    """Store missing daily snapshots and refresh the latest day's one."""
+    rows = snapshot_rows(portfolio, analysis)
+    return repositories.save_snapshots(portfolio, rows, refresh_day=rows[-1]["day"])
+
+
+def snapshot_all(today: date | None = None) -> list[tuple[Portfolio, int | str]]:
+    """Snapshot every active portfolio; returns ``(portfolio, rows | error)``."""
+    outcome = []
+    for portfolio in repositories.active_portfolios():
+        try:
+            outcome.append((portfolio, record_snapshots(portfolio, analyze(portfolio, today))))
+        except ValueError as error:
+            logger.warning("Snapshot of portfolio %s failed: %s", portfolio.id, error)
+            outcome.append((portfolio, str(error)))
+    return outcome
+
+
+# ---------------------------------------------------------------- view model
+def _pct(value, decimals: int = 2) -> str:
+    return "N/D" if value is None else f"{value * 100:.{decimals}f} %"
+
+
+def _ratio(value) -> str:
+    return "N/D" if value is None else f"{value:.2f}"
+
+
+def _days(value) -> str:
+    return "N/D" if value is None else f"{int(value)} días"
+
+
+def metric_groups(scalars: dict) -> list[dict]:
+    """Dashboard metric cards grouped by category, already formatted."""
+    s = scalars
+    return [
+        {
+            "title": "Rentabilidad",
+            "metrics": [
+                ("Retorno acumulado", _pct(s["cumulative_return"])),
+                ("Mes en curso", _pct(s["return_mtd"])),
+                ("Año en curso (YTD)", _pct(s["return_ytd"])),
+                ("Último año", _pct(s["return_one_year"])),
+                ("CAGR", _pct(s["cagr"])),
+            ],
+        },
+        {
+            "title": "Riesgo",
+            "metrics": [
+                ("Volatilidad anualizada", _pct(s["volatility"])),
+                ("Volatilidad móvil 21 d", _pct(s["rolling_volatility_21"])),
+                ("Volatilidad móvil 63 d", _pct(s["rolling_volatility_63"])),
+                ("Drawdown actual", _pct(s["drawdown"])),
+                ("Máximo drawdown", _pct(s["max_drawdown"])),
+                ("Duración máx. del drawdown", _days(s["max_drawdown_days"])),
+                ("VaR 95 % diario (histórico)", _pct(s["var_95"])),
+                ("CVaR 95 % diario (histórico)", _pct(s["cvar_95"])),
+                ("Semidesviación anualizada", _pct(s["semideviation"])),
+            ],
+        },
+        {
+            "title": "Ajustadas por riesgo",
+            "metrics": [
+                ("Ratio de Sharpe", _ratio(s["sharpe"])),
+                ("Ratio de Sortino", _ratio(s["sortino"])),
+                ("Ratio de Calmar", _ratio(s["calmar"])),
+                ("Sharpe móvil 126 d", _ratio(s["rolling_sharpe_126"])),
+            ],
+        },
+        {
+            "title": "Frente al benchmark",
+            "metrics": [
+                ("Beta", _ratio(s["beta"])),
+                ("Alpha de Jensen (anual)", _pct(s["alpha"])),
+                ("Tracking error", _pct(s["tracking_error"])),
+                ("Information ratio", _ratio(s["information_ratio"])),
+                ("Captura alcista", _pct(s["upside_capture"], 0)),
+                ("Captura bajista", _pct(s["downside_capture"], 0)),
+            ],
+        },
+        {
+            "title": "Estructura",
+            "metrics": [
+                ("Desviación máxima de peso", "N/D" if s["max_abs_drift"] is None else f"{s['max_abs_drift'] * 100:.2f} pp"),
+                ("Índice Herfindahl", "N/D" if s["herfindahl"] is None else f"{s['herfindahl']:.3f}"),
+                ("Número efectivo de activos", _ratio(s["effective_assets"])),
+                ("Correlación promedio 63 d", _ratio(s["average_correlation"])),
+                ("Mayor contribución al riesgo", _pct(s["max_risk_share"], 1)),
+                ("Rotación acumulada", _pct(s["turnover"], 1)),
+            ],
+        },
+    ]
+
+
+def _charts(portfolio: Portfolio, analysis: dict) -> dict:
+    metrics = analysis["metrics"]
+    series = metrics["series"]
+    weights = metrics["weights"]
+    benchmark_label = _BENCHMARK_LABELS.get(portfolio.benchmark, portfolio.benchmark)
+    contributions = pd.DataFrame(
+        {"Contribución al riesgo": metrics["risk_contributions"], "Peso actual": weights}
+    ).dropna(subset=["Contribución al riesgo"])
+    charts = {
+        "value": tracking_value_chart(
+            analysis["total"],
+            analysis["benchmark"],
+            [(v.effective_date, REASON_LABELS.get(v.reason, v.reason)) for v in portfolio.versions[1:]],
+            benchmark_name=benchmark_label,
+        ),
+        "drawdown": drawdown_chart(series["returns"]),
+        "volatility": rolling_lines_chart(
+            {f"{window} días": values for window, values in series["rolling_volatility"].items()}
+        ),
+        "sharpe": rolling_sharpe_chart(
+            series["returns"].rename("Portafolio"),
+            series["benchmark_returns"].rename(benchmark_label),
+            ROLLING_SHARPE_WINDOW,
+        ),
+        "correlation": rolling_lines_chart({"Correlación promedio": series["average_correlation"]}, ".2f"),
+        "weights": weights_vs_target_chart(weights, portfolio.current_version.target_weights),
+        "risk": contribution_chart(contributions, "Contribución al riesgo", compare="Peso actual")
+        if not contributions.empty
+        else None,
+        "returns": contribution_chart(
+            metrics["return_contributions"].to_frame(), "Contribución al retorno"
+        )
+        if not metrics["return_contributions"].empty
+        else None,
+    }
+    return {key: chart for key, chart in charts.items() if chart is not None}
 
 
 def portfolio_detail(portfolio: Portfolio, today: date | None = None) -> dict:
+    """Dashboard view model; stores the snapshots missing up to the last valued day."""
     version = portfolio.current_version
     view = {
         **_summary(portfolio),
@@ -213,46 +409,41 @@ def portfolio_detail(portfolio: Portfolio, today: date | None = None) -> dict:
         "tracking_error": None,
     }
     try:
-        valued = valuation(portfolio, today)
+        analysis = analyze(portfolio, today)
     except ValueError as error:
         view["tracking_error"] = str(error)
-        valued = None
-    target = version.target_weights
-    if valued is not None and not valued["total"].empty:
-        values, total = valued["values"], valued["total"]
-        current = current_weights(values)
-        drift = weight_drift(current, target)
-        last_close = valued["prices"].ffill().iloc[-1]
+        analysis = None
+    current = drift = last_close = pd.Series(dtype=float)
+    if analysis is not None:
+        if portfolio.is_active:
+            record_snapshots(portfolio, analysis)
+        metrics = analysis["metrics"]
+        current, drift = metrics["weights"], metrics["drift"]
+        last_close = analysis["prices"].iloc[-1]
         view["tracking"] = {
-            **tracking_summary(total, valued["benchmark"], portfolio.initial_capital),
-            "charts": {
-                key: chart
-                for key, chart in {
-                    "value": tracking_value_chart(
-                        total,
-                        valued["benchmark"],
-                        [(v.effective_date, REASON_LABELS.get(v.reason, v.reason)) for v in portfolio.versions[1:]],
-                        benchmark_name=_BENCHMARK_LABELS.get(portfolio.benchmark, portfolio.benchmark),
-                    ),
-                    "weights": weights_vs_target_chart(current, target),
-                }.items()
-                if chart is not None
-            },
+            **tracking_summary(analysis["total"], analysis["benchmark"], portfolio.initial_capital),
+            "metrics": metrics["scalars"],
+            "groups": metric_groups(metrics["scalars"]),
+            "charts": _charts(portfolio, analysis),
         }
-    else:
-        current, drift, last_close = pd.Series(dtype=float), pd.Series(dtype=float), pd.Series(dtype=float)
-    view["holdings"] = [
-        {
-            "ticker": holding.ticker,
-            "target_weight": holding.target_weight,
-            "current_weight": float(current.get(holding.ticker, float("nan"))) if not current.empty else None,
-            "drift": float(drift.get(holding.ticker, float("nan"))) if not drift.empty else None,
-            "units": holding.units,
-            "entry_price": holding.entry_price,
-            "last_price": float(last_close.get(holding.ticker)) if holding.ticker in last_close else None,
-        }
-        for holding in version.holdings
+    view["snapshots"] = [
+        {"day": s.day.isoformat(), "value": s.value, "benchmark_value": s.benchmark_value, "has_metrics": bool(s.metrics)}
+        for s in repositories.latest_snapshots(portfolio, 10)
     ]
-    for row in view["holdings"]:
-        row["value"] = row["units"] * row["last_price"] if row["last_price"] is not None else None
+    view["holdings"] = []
+    for holding in version.holdings:
+        price = last_close.get(holding.ticker)
+        price = float(price) if price is not None and pd.notna(price) else None
+        view["holdings"].append(
+            {
+                "ticker": holding.ticker,
+                "target_weight": holding.target_weight,
+                "current_weight": float(current[holding.ticker]) if holding.ticker in current else None,
+                "drift": float(drift[holding.ticker]) if holding.ticker in drift else None,
+                "units": holding.units,
+                "entry_price": holding.entry_price,
+                "last_price": price,
+                "value": holding.units * price if price is not None else None,
+            }
+        )
     return view

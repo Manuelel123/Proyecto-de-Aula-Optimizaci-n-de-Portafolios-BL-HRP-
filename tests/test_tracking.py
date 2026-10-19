@@ -160,6 +160,12 @@ class FixPortfolioFlowTests(AccountTestCase):
         self.assertIn('id="chart-tracking_value"', detail)
         self.assertIn('id="chart-tracking_weights"', detail)
         self.assertIn("Capital nocional", detail)
+        for title in ("Rentabilidad", "Riesgo", "Ajustadas por riesgo", "Frente al benchmark", "Estructura"):
+            self.assertIn(title, detail)
+        with self.app.app_context():
+            snapshots = repositories.latest_snapshots(repositories.get_portfolio(user_id, portfolio_id), 5)
+            self.assertEqual(len(snapshots), 1)  # fixed today: one valued day
+            self.assertIsNotNone(snapshots[0].metrics)
         listing = self.client.get("/portafolios/").data.decode()
         self.assertIn("Mi HRP", listing)
 

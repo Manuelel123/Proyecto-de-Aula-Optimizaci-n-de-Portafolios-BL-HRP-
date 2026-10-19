@@ -14,6 +14,7 @@ from sqlalchemy import select
 from optimizacion_portafolios.storage import db
 from optimizacion_portafolios.storage.models import (
     MODELS,
+    DailySnapshot,
     VERSION_REASONS,
     Holding,
     Portfolio,
@@ -163,3 +164,44 @@ def archive_portfolio(portfolio: Portfolio, when) -> None:
     portfolio.status = "archived"
     portfolio.archived_at = when
     db.session.commit()
+
+
+def snapshot_days(portfolio: Portfolio) -> set[date]:
+    return set(db.session.scalars(select(DailySnapshot.day).where(DailySnapshot.portfolio_id == portfolio.id)))
+
+
+def save_snapshots(portfolio: Portfolio, rows: list[dict], refresh_day: date | None = None) -> int:
+    """Insert the snapshots of new days; only ``refresh_day`` may be overwritten.
+
+    Older snapshots are history and never change, even if the provider later
+    revises its prices. Returns the number of rows written.
+    """
+    existing = {
+        snapshot.day: snapshot
+        for snapshot in db.session.scalars(
+            select(DailySnapshot).where(DailySnapshot.portfolio_id == portfolio.id)
+        )
+    }
+    written = 0
+    for row in rows:
+        stored = existing.get(row["day"])
+        if stored is None:
+            db.session.add(DailySnapshot(portfolio_id=portfolio.id, **row))
+            written += 1
+        elif row["day"] == refresh_day:
+            for key, value in row.items():
+                setattr(stored, key, value)
+            written += 1
+    db.session.commit()
+    return written
+
+
+def latest_snapshots(portfolio: Portfolio, limit: int = 10) -> list[DailySnapshot]:
+    return list(
+        db.session.scalars(
+            select(DailySnapshot)
+            .where(DailySnapshot.portfolio_id == portfolio.id)
+            .order_by(DailySnapshot.day.desc())
+            .limit(limit)
+        )
+    )

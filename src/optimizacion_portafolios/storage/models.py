@@ -1,5 +1,9 @@
 """Tables of tracked ("optimal") portfolios.
 
+``DailySnapshot`` keeps one row per portfolio and business day (value,
+benchmark value, weights and, for the days it was computed, the metrics), so
+the history survives later changes in the provider's data.
+
 A ``Portfolio`` is a sequence of ``PortfolioVersion`` rows: fixing the
 portfolio creates version 1, and every rebalance, removal or addition creates
 the next one with its ``Holding`` rows (target weight, units, entry price) and
@@ -45,6 +49,12 @@ class Portfolio(db.Model):
         back_populates="portfolio",
         cascade="all, delete-orphan",
         order_by="PortfolioVersion.number",
+    )
+    snapshots: Mapped[list[DailySnapshot]] = relationship(
+        back_populates="portfolio",
+        cascade="all, delete-orphan",
+        order_by="DailySnapshot.day",
+        lazy="dynamic",
     )
 
     @property
@@ -121,3 +131,21 @@ class Transaction(db.Model):
     cost: Mapped[float] = mapped_column(Float, default=0.0)
 
     version: Mapped[PortfolioVersion] = relationship(back_populates="transactions")
+
+
+class DailySnapshot(db.Model):
+    __tablename__ = "daily_snapshots"
+    __table_args__ = (UniqueConstraint("portfolio_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    value: Mapped[float] = mapped_column(Float)
+    benchmark_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weights: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Scalar metrics as of ``day``; None for days backfilled without them.
+    metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    portfolio: Mapped[Portfolio] = relationship(back_populates="snapshots")
