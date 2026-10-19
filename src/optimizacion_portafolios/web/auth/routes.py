@@ -22,7 +22,12 @@ from optimizacion_portafolios.web.auth.passwords import (
     verify_password,
 )
 from optimizacion_portafolios.web.auth.roles import initial_role, sync_gestor_role
-from optimizacion_portafolios.web.auth.session import login_user, logout_user, safe_next
+from optimizacion_portafolios.web.auth.session import (
+    after_login_response,
+    login_user,
+    logout_user,
+    safe_next,
+)
 from optimizacion_portafolios.web.auth.throttle import login_throttle
 
 logger = logging.getLogger(__name__)
@@ -43,7 +48,7 @@ def _email_field() -> str:
 def _finish_sign_in(user, next_url: str | None):
     login_user(user)
     flash(f"Hola, {user.name}. Sesión iniciada.", "success")
-    return redirect(safe_next(next_url))
+    return after_login_response(user) or redirect(safe_next(next_url))
 
 
 @bp.route("/ingresar", methods=["GET", "POST"])

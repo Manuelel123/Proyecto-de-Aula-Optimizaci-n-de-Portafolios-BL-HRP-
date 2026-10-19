@@ -86,7 +86,8 @@ class RegistrationTests(AccountTestCase):
     def test_register_creates_user_and_signs_in(self):
         response = self.register(email="  Nueva@Example.COM ", name="Nueva")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(urlsplit(response.location).path, "/")
+        # A new account has no risk profile yet: straight to the questionnaire.
+        self.assertEqual(urlsplit(response.location).path, "/perfil/cuestionario")
         user = self.user("nueva@example.com")
         self.assertEqual(user.email, "nueva@example.com")
         self.assertEqual(user.display_name, "Nueva")

@@ -45,6 +45,10 @@ Las cuentas son **locales**: viven en la tabla `users` de la base SQLite (ver la
 - **Todo requiere sesión.** Sin iniciar sesión solo se ven la portada (`/`), `/auth/registro`, `/auth/ingresar` y los archivos estáticos. Las páginas redirigen al inicio de sesión (con `next`) y los endpoints JSON (`/api/...`) responden 401. La regla está en `web/auth/guard.py` (`PUBLIC_ENDPOINTS`, `register_access_check`).
 - **Registro e inicio de sesión:** contraseña de al menos 8 caracteres con letras y números. Tras 5 intentos fallidos en 15 minutos (por correo o por IP) el acceso se bloquea temporalmente. El mensaje de error no revela si el correo existe.
 - **Roles:** `explorador` (por defecto), `inversionista` y `gestor`. `gestor` no se puede elegir: lo reciben solo los correos de `GESTOR_EMAILS` (separados por coma), al registrarse o al iniciar sesión; si un correo sale de la lista, vuelve a `explorador`.
+- **Perfil de riesgo obligatorio:** tras el primer inicio de sesión cada usuario responde una sola vez el cuestionario de `config/cuestionario.yaml` (capital disponible en COP, horizonte, 5 preguntas de tolerancia, 3 de capacidad y 2 de conocimiento). Sin perfil vigente ninguna herramienta abre: el access check `require_current_profile` (`web/profile/access.py`) redirige al cuestionario (los `/api/...` responden 403); solo quedan libres la portada, el propio perfilado, cerrar sesión y los estáticos. El progreso se guarda en cada paso (`perfil_borradores`) y se retoma en el siguiente ingreso. En los ingresos siguientes el perfil guardado se carga en `session["perfil"]` (y en la variable de plantilla `current_profile`) y la app va directo al inicio.
+  - **Cálculo** (`src/optimizacion_portafolios/profiling/`, sin Flask): cada respuesta vale 1 a 4 según su orden; tolerancia y capacidad se promedian (menos de 2,0 adverso; de 2,0 a menos de 3,0 moderado; 3,0 o más arriesgado). El horizonte pone un tope (menos de 1 año: máximo adverso; 1 a 3 años: máximo moderado; más de 3: sin tope). Perfil final = el más bajo de los tres. Responder «Vendo todo» (pregunta 1) o «Menos de 1» mes de fondo de emergencia (pregunta 6) fuerza adverso. El **factor limitante** es el veto si lo hay; si no, el primero de `veto > horizonte > capacidad > tolerancia` cuyo nivel coincide con el final (el horizonte solo cuenta cuando impone tope). Las preguntas de conocimiento solo sugieren el rol: `inversionista` si la experiencia es «Fondos o acciones» o más y se acierta qué es diversificar; si no, `explorador`. Umbrales, vetos, topes, desempate, regla del rol y explicaciones están en el YAML (con `version`), que se valida al arrancar.
+  - **Rol:** el usuario confirma (o cambia) el rol sugerido entre `explorador` e `inversionista`; hasta confirmarlo las herramientas lo llevan a esa pantalla. A un `gestor` no se le pide confirmar ni se le cambia el rol.
+  - **Mi perfil** (`/perfil/`, en el menú de usuario): perfil final, factor limitante con su explicación, fecha e historial. Repetir el cuestionario agrega una fila nueva en `perfiles` y deja solo esa como vigente; las anteriores se conservan.
 - **Historial de backtests:** cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`), en la base local.
 - **Migrar portafolios de las antiguas cuentas de InsForge:** registra la cuenta local y ejecuta `flask --app wsgi:app users reassign-portfolios <id_insforge> <correo>`.
 
@@ -156,10 +160,11 @@ analytics  →  estadísticas, volatilidad y métricas de desempeño
 data       →  catálogos de activos y acceso a Tiingo/Yahoo Finance
 ```
 
-`data`, `analytics` y `models` no importan Flask: se pueden usar desde un notebook, un script o las pruebas sin levantar la aplicación.
+`data`, `analytics`, `models` y `profiling` no importan Flask: se pueden usar desde un notebook, un script o las pruebas sin levantar la aplicación.
 
 ```text
 wsgi.py                         punto de entrada WSGI (Flask CLI y Waitress)
+config/cuestionario.yaml        preguntas, opciones, umbrales, vetos y reglas del perfil de riesgo
 tests/
   support.py                    precios sintéticos y cliente Flask con CSRF
   test_market_data.py           capa data
@@ -197,10 +202,13 @@ src/optimizacion_portafolios/
     hrp/                        optimización HRP
     black_litterman/            optimización Black-Litterman
     auth/                       cuentas locales: registro, sesión (Flask-Login), roles, guardia global, límite de intentos
+    profile/                    perfil de riesgo: cuestionario por pasos, resultado, confirmación de rol, Mi perfil
     account/                    historial de backtests HRP
     portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
+  profiling/                    cuestionario de perfilado (carga y validación del YAML) y cálculo del perfil (sin Flask)
   storage/
-    models.py                   tablas SQLAlchemy (User, BacktestRun, BacktestResult, Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
+    profiles.py                 perfiles de riesgo (una sola fila vigente por usuario) y borradores del cuestionario
+    models.py                   tablas SQLAlchemy (User, Profile, ProfileDraft, BacktestRun, BacktestResult, Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
     repositories.py             lecturas y escrituras filtradas por usuario
     users.py                    cuentas locales y reasignación de dueño
     migrations/                 revisiones de Flask-Migrate

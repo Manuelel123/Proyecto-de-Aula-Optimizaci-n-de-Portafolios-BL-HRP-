@@ -63,6 +63,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     _configure_price_store(testing)
     _configure_storage(app, testing)
     _register_access_guard(app)
+    _register_profile_requirement(app)
     _register_blueprints(app)
     _register_template_helpers(app)
     _register_csrf_protection(app)
@@ -144,6 +145,19 @@ def _register_access_guard(app: Flask) -> None:
     guard.init_app(app)
 
 
+def _register_profile_requirement(app: Flask) -> None:
+    """No tool without a current risk profile (``web.profile.access``).
+
+    Registers the ``require_current_profile`` access check (first, before any
+    role check), the after-sign-in hook that fills ``session["perfil"]`` and
+    the ``current_profile`` template variable. Loads and validates
+    ``config/cuestionario.yaml`` (or ``QUESTIONNAIRE_PATH``) at start-up.
+    """
+    from optimizacion_portafolios.web.profile import access
+
+    access.init_app(app)
+
+
 def _register_template_helpers(app: Flask) -> None:
     @app.context_processor
     def inject_accounts():
@@ -196,6 +210,7 @@ def _register_blueprints(app: Flask) -> None:
     from optimizacion_portafolios.web.hrp import bp as hrp_bp
     from optimizacion_portafolios.web.main import bp as main_bp
     from optimizacion_portafolios.web.monitoring import bp as monitoring_bp
+    from optimizacion_portafolios.web.profile import bp as profile_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(monitoring_bp)
@@ -205,6 +220,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
     app.register_blueprint(portfolios_bp)
+    app.register_blueprint(profile_bp)
 
 
 def _register_csrf_protection(app: Flask) -> None:

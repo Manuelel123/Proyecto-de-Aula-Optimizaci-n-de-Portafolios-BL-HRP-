@@ -1,0 +1,37 @@
+{# Shared pieces of the profiling pages. #}
+
+{% macro disclaimer(text) %}
+  <p class="notice notice--info portfolio-disclaimer" role="note">{{ text }}</p>
+{% endmacro %}
+
+{% macro radio_group(name, legend, options, selected, invalid=False, help=None) %}
+  {# options: iterable of (value, label) #}
+  <fieldset class="check-list form-field" id="campo-{{ name }}"{% if invalid %} aria-invalid="true" aria-describedby="error-{{ name }}"{% endif %}>
+    <legend class="field-label">{{ legend }}</legend>
+    {% if help %}<p class="help-text">{{ help }}</p>{% endif %}
+    {% for value, label in options %}
+      <label class="inline-check"><input type="radio" name="{{ name }}" value="{{ value }}"{% if selected is not none and value|string == selected|string %} checked{% endif %} required> {{ label }}</label>
+    {% endfor %}
+    {% if invalid %}<p class="field-error" id="error-{{ name }}">Elige una opción.</p>{% endif %}
+  </fieldset>
+{% endmacro %}
+
+{% macro profile_summary(view) %}
+  <dl class="metric-list">
+    <div><dt>Perfil final</dt><dd>{{ view.final_label }}</dd></div>
+    <div><dt>Tolerancia al riesgo</dt><dd>{{ view.tolerance[1] }} · {{ view.tolerance[0] }} de 4</dd></div>
+    <div><dt>Capacidad de asumir pérdidas</dt><dd>{{ view.capacity[1] }} · {{ view.capacity[0] }} de 4</dd></div>
+    <div><dt>Horizonte</dt><dd>{{ view.horizon[0] }} · {{ view.horizon[1] }}</dd></div>
+    <div><dt>Capital disponible</dt><dd>{{ view.capital }}</dd></div>
+    <div><dt>Fecha</dt><dd>{{ view.profile.fecha|datetime_short }}</dd></div>
+  </dl>
+{% endmacro %}
+
+{% macro limiting_factor(view) %}
+  <div class="notice {{ 'notice--warning' if view.is_veto else 'notice--info' }}" role="status">
+    <div>
+      <p><strong>Factor limitante: {{ view.factor_label }}.</strong></p>
+      <p>{{ view.explanation }}</p>
+    </div>
+  </div>
+{% endmacro %}

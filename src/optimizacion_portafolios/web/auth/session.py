@@ -12,7 +12,7 @@ from functools import wraps
 from urllib.parse import urlsplit
 
 import flask_login
-from flask import flash, jsonify, redirect, request, session, url_for
+from flask import current_app, flash, jsonify, redirect, request, session, url_for
 from flask_login import LoginManager
 
 from optimizacion_portafolios.storage import db
@@ -22,6 +22,7 @@ from optimizacion_portafolios.storage.users import get_user
 # Session keys left by the former InsForge sign-in; removed on sight.
 LEGACY_SESSION_KEYS = ("auth", "auth_pending_email", "auth_reset_email", "auth_oauth")
 LOGIN_MESSAGE = "Inicia sesión para continuar."
+_AFTER_LOGIN_KEY = "after_login_hooks"
 
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
@@ -59,6 +60,24 @@ def login_user(user: User) -> None:
     db.session.commit()
     flask_login.login_user(user)
     session.permanent = True
+
+
+def register_after_login(app, hook) -> None:
+    """Run ``hook(user)`` right after every sign-in (form login or sign-up).
+
+    The hook may refresh session data (e.g. the risk profile) and may return a
+    response to send instead of the usual redirect to ``next``.
+    """
+    app.extensions.setdefault(_AFTER_LOGIN_KEY, []).append(hook)
+
+
+def after_login_response(user: User):
+    """First non-None response of the registered after-login hooks."""
+    for hook in current_app.extensions.get(_AFTER_LOGIN_KEY, []):
+        response = hook(user)
+        if response is not None:
+            return response
+    return None
 
 
 def logout_user() -> None:

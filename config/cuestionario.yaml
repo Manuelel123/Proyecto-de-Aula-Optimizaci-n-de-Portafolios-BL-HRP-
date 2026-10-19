@@ -1,0 +1,181 @@
+# Cuestionario de perfilado de riesgo (lo lee optimizacion_portafolios.profiling).
+#
+# Reglas generales (las aplica el código; los datos están aquí):
+# - Cada respuesta vale de 1 a 4 según su posición en `opciones` (la primera vale 1).
+# - Los bloques con `afecta_perfil: true` se promedian; el promedio se compara con
+#   `umbrales` para obtener el nivel del bloque.
+# - Perfil final = el nivel más bajo entre los bloques y el tope del horizonte.
+# - Un veto fuerza el nivel más bajo (el primero de `niveles`).
+# - Si cambia una pregunta, una opción o una regla, sube `version`: los perfiles
+#   guardados conservan la versión con la que se respondieron y los borradores
+#   de una versión anterior se descartan.
+version: 1
+
+# Niveles de perfil, del más bajo al más alto.
+niveles:
+  - id: adverso
+    etiqueta: Adverso al riesgo
+    descripcion: Prioriza conservar el capital; acepta poca variación aunque eso limite la ganancia.
+  - id: moderado
+    etiqueta: Moderado
+    descripcion: Busca crecer con caídas acotadas; acepta algo de variación a cambio de más retorno esperado.
+  - id: arriesgado
+    etiqueta: Arriesgado
+    descripcion: Acepta caídas fuertes y prolongadas a cambio de un mayor potencial de ganancia.
+
+# Promedio mínimo de un bloque para alcanzar cada nivel (el primer nivel no lleva umbral).
+# Menos de 2,0 = adverso; de 2,0 a menos de 3,0 = moderado; 3,0 o más = arriesgado.
+umbrales:
+  moderado: 2.0
+  arriesgado: 3.0
+
+datos_previos:
+  capital:
+    texto: ¿Cuánto capital tiene disponible para invertir?
+    opciones:
+      - id: menos_1m
+        texto: Menos de 1 millón de pesos
+      - id: 1m_5m
+        texto: De 1 a 5 millones de pesos
+      - id: 5m_20m
+        texto: De 5 a 20 millones de pesos
+      - id: 20m_100m
+        texto: De 20 a 100 millones de pesos
+      - id: mas_100m
+        texto: Más de 100 millones de pesos
+  horizonte:
+    texto: ¿Durante cuánto tiempo piensa mantener este dinero invertido?
+    # nivel_maximo: tope que impone el horizonte al perfil (null = sin tope).
+    opciones:
+      - id: menos_1
+        texto: Menos de 1 año
+        nivel_maximo: adverso
+      - id: de_1_a_3
+        texto: 1 a 3 años
+        nivel_maximo: moderado
+      - id: mas_3
+        texto: Más de 3 años
+        nivel_maximo: null
+
+bloques:
+  - id: tolerancia
+    titulo: Tolerancia al riesgo
+    descripcion: Cómo se siente y qué haría frente a las caídas.
+    afecta_perfil: true
+    preguntas:
+      - id: p1
+        texto: Su inversión cae 20 % en tres meses. ¿Qué hace?
+        opciones: [Vendo todo, Vendo una parte, Mantengo, Compro más]
+      - id: p2
+        texto: ¿Qué busca con este dinero?
+        opciones:
+          - No perder lo que tengo
+          - Crecer poco a poco con caídas pequeñas
+          - Crecer bastante aceptando caídas fuertes
+          - Máxima ganancia aunque pueda perder gran parte
+      - id: p3
+        texto: ¿Qué escenario a un año prefiere?
+        opciones:
+          - Entre +4 % y -1 %
+          - Entre +8 % y -6 %
+          - Entre +15 % y -15 %
+          - Entre +30 % y -30 %
+      - id: p4
+        texto: Si su inversión estuviera abajo 12 meses seguidos, ¿cómo reaccionaría?
+        opciones:
+          - Sacaría el dinero
+          - Me preocuparía, esperaría poco
+          - Esperaría
+          - Lo vería como oportunidad
+      - id: p5
+        texto: ¿Con cuál frase se identifica más?
+        opciones:
+          - '"Prefiero no arriesgar"'
+          - '"Acepto algo de riesgo por algo más"'
+          - '"Asumo riesgo si hay buen potencial"'
+          - '"El riesgo es parte de ganar mucho"'
+  - id: capacidad
+    titulo: Capacidad de asumir pérdidas
+    descripcion: Cuánto podría perder sin afectar su vida diaria.
+    afecta_perfil: true
+    preguntas:
+      - id: p6
+        texto: ¿Cuántos meses de gastos tiene en un fondo de emergencia aparte?
+        opciones: [Menos de 1, 1 a 3, 3 a 6, Más de 6]
+      - id: p7
+        texto: ¿Qué parte de sus ahorros es este dinero?
+        opciones: [Todos, Más de la mitad, Entre 20 % y 50 %, Menos de 20 %]
+      - id: p8
+        texto: ¿Cómo son sus ingresos?
+        opciones: [Inestables, Variables, Estables, Estables y con otras fuentes]
+  - id: conocimiento
+    titulo: Conocimiento
+    descripcion: Solo sirve para sugerir cómo usar la herramienta; no cambia su perfil de riesgo.
+    afecta_perfil: false
+    preguntas:
+      - id: k1
+        texto: ¿Qué experiencia previa tiene invirtiendo?
+        opciones:
+          - Nunca he invertido
+          - Ahorros y CDT
+          - Fondos o acciones
+          - Más de 3 años en acciones o ETF
+      - id: k2
+        texto: En inversiones, ¿qué significa diversificar?
+        opciones:
+          - Poner todo el dinero en la acción que más subió el último año
+          - Repartir el dinero entre activos que no se mueven igual, para que una caída no afecte todo
+          - Cambiar de inversión cada semana para aprovechar las subidas
+          - Invertir solo en activos de un mismo sector que se conoce bien
+        correcta: 2  # posición de la respuesta correcta (1 a 4)
+
+# Respuestas que fuerzan el perfil más bajo, sin importar el resto.
+vetos:
+  - pregunta: p1
+    opcion: Vendo todo
+    explicacion: >-
+      Respondió que vendería todo si su inversión cae 20 %. Con esa reacción, una
+      estrategia con caídas lo llevaría a vender en el peor momento, así que el
+      perfil se fija en adverso al riesgo.
+  - pregunta: p6
+    opcion: Menos de 1
+    explicacion: >-
+      Tiene menos de un mes de gastos en un fondo de emergencia. Ante un imprevisto
+      tendría que retirar la inversión aunque esté en pérdida, así que el perfil se
+      fija en adverso al riesgo.
+
+# Factor limitante: qué determinó el perfil final.
+# Si varios factores dan el mismo nivel final, gana el primero de `desempate`:
+# primero un veto; luego el horizonte (solo si impone un tope), luego la capacidad
+# (restricciones objetivas) y por último la tolerancia (preferencia personal).
+factor_limitante:
+  desempate: [veto, horizonte, capacidad, tolerancia]
+  etiquetas:
+    veto: Respuesta determinante
+    horizonte: Horizonte de inversión
+    capacidad: Capacidad de asumir pérdidas
+    tolerancia: Tolerancia al riesgo
+  # Plantillas: {perfil}, {horizonte}, {puntaje_tolerancia}, {puntaje_capacidad},
+  # {nivel_tolerancia} y {nivel_capacidad}. Los vetos usan su propia explicación.
+  explicaciones:
+    horizonte: >-
+      Piensa mantener el dinero invertido {horizonte}. En un plazo así no hay tiempo
+      suficiente para recuperarse de una caída fuerte, por eso el perfil no puede
+      pasar de «{perfil}».
+    capacidad: >-
+      Su capacidad de asumir pérdidas (promedio {puntaje_capacidad} de 4) es la que
+      marca el límite: por su fondo de emergencia, la parte de sus ahorros que
+      invierte y la estabilidad de sus ingresos, una pérdida grande afectaría su vida
+      diaria. Por eso el perfil no pasa de «{perfil}».
+    tolerancia: >-
+      Su perfil lo define su tolerancia al riesgo (promedio {puntaje_tolerancia} de 4):
+      es lo que usted dijo que estaría dispuesto a soportar en las caídas. Su
+      perfil queda en «{perfil}».
+
+# Rol sugerido según el bloque de conocimiento (el usuario lo confirma o cambia).
+rol_sugerido:
+  experiencia: k1
+  experiencia_minima: Fondos o acciones   # esta opción o una posterior
+  pregunta_control: k2                    # debe responderse con la opción `correcta`
+  si_cumple: inversionista
+  si_no: explorador

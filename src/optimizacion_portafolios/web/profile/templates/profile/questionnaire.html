@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "profile/_macros.html" import radio_group %}
+{% block title %}Perfil de riesgo{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Perfil de riesgo · Paso {{ step + 1 }} de {{ titles|length }}</p>
+      <h1>{{ titles[step] }}</h1>
+      <p class="lead">{{ intro }} Tu avance se guarda en cada paso: puedes salir y continuar después.</p>
+    </div>
+  </header>
+
+  {% if repeating %}
+    <p class="notice notice--info portfolio-disclaimer">Estás repitiendo el cuestionario. Tu perfil actual sigue vigente hasta que termines; al terminar, el anterior queda guardado en tu historial.</p>
+  {% endif %}
+
+  <nav class="segmented" aria-label="Pasos del cuestionario">
+    {% for title in titles %}
+      {% if loop.index0 <= reached and loop.index0 != step %}
+        <a href="{{ url_for('profile.questionnaire', paso=loop.index0) }}">{{ loop.index }}. {{ title }}</a>
+      {% else %}
+        <a{% if loop.index0 == step %} class="is-active" aria-current="step"{% else %} aria-disabled="true"{% endif %}>{{ loop.index }}. {{ title }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+
+  <form method="post" action="{{ url_for('profile.save_step') }}" class="card account-section" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="paso" value="{{ step }}">
+    <div class="card__body form-stack">
+      {% for field in fields %}
+        {{ radio_group(field.name, field.legend, field.options, field.selected, field.name in missing, field.help) }}
+      {% endfor %}
+    </div>
+    <div class="card__footer">
+      {% if step > 0 %}
+        <button class="button button-secondary" type="submit" name="accion" value="anterior" formnovalidate>Anterior</button>
+      {% endif %}
+      <button class="button button-primary" type="submit" name="accion" value="siguiente">{{ 'Ver mi perfil' if is_last else 'Siguiente' }}</button>
+    </div>
+  </form>
+{% endblock %}

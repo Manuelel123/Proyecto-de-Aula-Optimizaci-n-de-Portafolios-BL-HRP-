@@ -6,6 +6,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
+from optimizacion_portafolios.profiling import evaluate, load_questionnaire
+from optimizacion_portafolios.storage.profiles import get_current_profile, save_profile
 from optimizacion_portafolios.storage.users import create_user, get_user_by_email
 from optimizacion_portafolios.web import create_app
 from optimizacion_portafolios.web.auth.passwords import hash_password
@@ -32,16 +34,43 @@ def create_test_user(
     password: str = TEST_PASSWORD,
     *,
     role: str = "explorador",
-    role_confirmed: bool = False,
+    role_confirmed: bool | None = None,
     display_name: str | None = "Ana",
+    profile: bool = True,
 ) -> str:
-    """Add a local user straight to the database; return ``str(user.id)``."""
+    """Add a local user straight to the database; return ``str(user.id)``.
+
+    By default the user has already been profiled: a current risk profile
+    (``TEST_PROFILE_ANSWERS``) and a confirmed role, so the tools are open.
+    Pass ``profile=False`` for a brand-new user (no profile, unconfirmed role).
+    """
+    if role_confirmed is None:
+        role_confirmed = profile
     password_hash = _TEST_PASSWORD_HASH if password == TEST_PASSWORD else hash_password(password)
     with app.app_context():
         user = get_user_by_email(email) or create_user(
             email, password_hash, display_name=display_name, role=role, role_confirmed=role_confirmed
         )
+        if profile and get_current_profile(user.id) is None:
+            add_test_profile(app, user.id)
         return str(user.id)
+
+
+# Complete answers of a "moderado" profile (limited by capacity), horizon over 3 years.
+TEST_PROFILE_CAPITAL = "5m_20m"
+TEST_PROFILE_HORIZON = "mas_3"
+TEST_PROFILE_ANSWERS = {
+    "p1": 3, "p2": 2, "p3": 3, "p4": 3, "p5": 2,
+    "p6": 2, "p7": 2, "p8": 3,
+    "k1": 3, "k2": 2,
+}
+
+
+def add_test_profile(app, user_id, *, capital=TEST_PROFILE_CAPITAL, horizon=TEST_PROFILE_HORIZON, answers=None):
+    """Save a current profile for ``user_id`` (as if the questionnaire was completed)."""
+    with app.app_context():
+        result = evaluate(load_questionnaire(), capital, horizon, answers or TEST_PROFILE_ANSWERS)
+        return save_profile(user_id, result).id
 
 
 def login_session(client, user_id: str) -> None:

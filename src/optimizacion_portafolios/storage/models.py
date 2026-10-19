@@ -1,4 +1,4 @@
-"""Tables of local users, HRP backtest history and tracked ("optimal") portfolios.
+"""Tables of local users, risk profiles, HRP backtest history and tracked ("optimal") portfolios.
 
 ``DailySnapshot`` keeps one row per portfolio and business day (value,
 benchmark value, weights and, for the days it was computed, the metrics), so
@@ -18,7 +18,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from flask_login import UserMixin
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, false
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, false, text, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from optimizacion_portafolios.storage import db
@@ -284,3 +284,58 @@ class AlertEvent(db.Model):
     @property
     def is_open(self) -> bool:
         return self.resolved_on is None
+
+
+class Profile(db.Model):
+    """One completed risk questionnaire of a user (never overwritten).
+
+    Repeating the questionnaire adds a row and marks only that one as
+    ``vigente`` (``storage.profiles.save_profile``). Column names follow the
+    questionnaire's vocabulary (Spanish). Levels are the ids of
+    ``config/cuestionario.yaml`` (``adverso``, ``moderado``, ``arriesgado``);
+    ``nivel_horizonte`` is the horizon cap (the highest level when uncapped).
+    """
+
+    __tablename__ = "perfiles"
+    __table_args__ = (
+        # At most one current profile per user.
+        Index(
+            "uq_perfiles_vigente",
+            "usuario_id",
+            unique=True,
+            sqlite_where=text("vigente = 1"),
+            postgresql_where=text("vigente"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    fecha: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    version_cuestionario: Mapped[str] = mapped_column(String(20))
+    capital_rango: Mapped[str] = mapped_column(String(32))
+    horizonte: Mapped[str] = mapped_column(String(32))
+    respuestas: Mapped[dict] = mapped_column(JSON, default=dict)
+    puntaje_tolerancia: Mapped[float] = mapped_column(Float)
+    puntaje_capacidad: Mapped[float] = mapped_column(Float)
+    nivel_tolerancia: Mapped[str] = mapped_column(String(20))
+    nivel_capacidad: Mapped[str] = mapped_column(String(20))
+    nivel_horizonte: Mapped[str] = mapped_column(String(20))
+    perfil_final: Mapped[str] = mapped_column(String(20))
+    factor_limitante: Mapped[str] = mapped_column(String(20))
+    rol_sugerido: Mapped[str] = mapped_column(String(20))
+    vigente: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+
+
+class ProfileDraft(db.Model):
+    """Unfinished questionnaire of a user (one per user), resumed on the next visit."""
+
+    __tablename__ = "perfil_borradores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    version_cuestionario: Mapped[str] = mapped_column(String(20))
+    # Index of the next step to answer (0 = prior data).
+    paso: Mapped[int] = mapped_column(Integer, default=0)
+    # {"capital_rango": ..., "horizonte": ..., "respuestas": {question id: 1..4}}
+    datos: Mapped[dict] = mapped_column(JSON, default=dict)
+    actualizado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

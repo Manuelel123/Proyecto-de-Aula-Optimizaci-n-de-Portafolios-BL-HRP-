@@ -1,0 +1,381 @@
+"""Load and validate the risk-profiling questionnaire (``config/cuestionario.yaml``).
+
+Questions, options, thresholds, vetoes, horizon caps, the limiting-factor
+tie-break and the suggested-role rule all live in the YAML file; this module
+turns it into immutable objects and raises ``QuestionnaireError`` with a clear
+message when the file is malformed. No Flask imports.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from fractions import Fraction
+from functools import lru_cache
+from pathlib import Path
+
+import yaml
+
+# <repo>/config/cuestionario.yaml (this file is <repo>/src/optimizacion_portafolios/profiling/).
+DEFAULT_PATH = Path(__file__).resolve().parents[3] / "config" / "cuestionario.yaml"
+PATH_ENV_VAR = "ATLAS_QUESTIONNAIRE_PATH"
+OPTIONS_PER_QUESTION = 4
+# Roles the questionnaire may suggest ("gestor" is never suggested nor chosen).
+SUGGESTABLE_ROLES = ("explorador", "inversionista")
+VETO_FACTOR = "veto"
+HORIZON_FACTOR = "horizonte"
+PRIOR_STEP = "datos_previos"
+
+
+class QuestionnaireError(ValueError):
+    """The questionnaire file is missing or malformed."""
+
+
+@dataclass(frozen=True)
+class Level:
+    id: str
+    label: str
+    description: str
+
+
+@dataclass(frozen=True)
+class Choice:
+    """An option of the prior data (capital range or horizon)."""
+
+    id: str
+    text: str
+    max_level: str | None = None  # horizon cap; None = no cap
+
+
+@dataclass(frozen=True)
+class Question:
+    id: str
+    text: str
+    options: tuple[str, ...]  # option n (1-based) is worth n points
+    correct: int | None = None
+
+
+@dataclass(frozen=True)
+class Block:
+    id: str
+    title: str
+    description: str
+    affects_profile: bool
+    questions: tuple[Question, ...]
+
+
+@dataclass(frozen=True)
+class Veto:
+    question: str
+    option: int  # 1-based position
+    option_text: str
+    explanation: str
+
+
+@dataclass(frozen=True)
+class RoleRule:
+    experience_question: str
+    min_experience: int  # 1-based position; this option or a later one
+    control_question: str
+    if_met: str
+    otherwise: str
+
+
+@dataclass(frozen=True)
+class Questionnaire:
+    version: str
+    levels: tuple[Level, ...]
+    thresholds: tuple[tuple[str, Fraction], ...]  # (level id, minimum average), ascending
+    capital_text: str
+    capital_options: tuple[Choice, ...]
+    horizon_text: str
+    horizon_options: tuple[Choice, ...]
+    blocks: tuple[Block, ...]
+    vetoes: tuple[Veto, ...]
+    tiebreak: tuple[str, ...]
+    factor_labels: dict
+    explanations: dict
+    role_rule: RoleRule
+    source: str = ""
+
+    # Lookups -----------------------------------------------------------------
+    @property
+    def level_ids(self) -> tuple[str, ...]:
+        return tuple(level.id for level in self.levels)
+
+    def level(self, level_id: str) -> Level:
+        for level in self.levels:
+            if level.id == level_id:
+                return level
+        raise KeyError(level_id)
+
+    def level_rank(self, level_id: str) -> int:
+        return self.level_ids.index(level_id)
+
+    def question(self, question_id: str) -> Question:
+        for block in self.blocks:
+            for question in block.questions:
+                if question.id == question_id:
+                    return question
+        raise KeyError(question_id)
+
+    def block(self, block_id: str) -> Block:
+        for block in self.blocks:
+            if block.id == block_id:
+                return block
+        raise KeyError(block_id)
+
+    @property
+    def scored_blocks(self) -> tuple[Block, ...]:
+        return tuple(block for block in self.blocks if block.affects_profile)
+
+    @property
+    def question_ids(self) -> tuple[str, ...]:
+        return tuple(question.id for block in self.blocks for question in block.questions)
+
+    def capital(self, choice_id: str) -> Choice:
+        return _find_choice(self.capital_options, choice_id)
+
+    def horizon(self, choice_id: str) -> Choice:
+        return _find_choice(self.horizon_options, choice_id)
+
+    @property
+    def steps(self) -> tuple[str, ...]:
+        """Wizard steps: the prior data, then one step per block."""
+        return (PRIOR_STEP, *(block.id for block in self.blocks))
+
+
+def _find_choice(choices: tuple[Choice, ...], choice_id: str) -> Choice:
+    for choice in choices:
+        if choice.id == choice_id:
+            return choice
+    raise KeyError(choice_id)
+
+
+# Parsing -----------------------------------------------------------------------
+def _fail(source: str, message: str):
+    raise QuestionnaireError(f"{source}: {message}")
+
+
+def _text(source: str, value, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        _fail(source, f"falta el texto de {where} (debe ser una cadena no vacía).")
+    return " ".join(value.split())
+
+
+def _mapping(source: str, value, where: str) -> dict:
+    if not isinstance(value, dict):
+        _fail(source, f"«{where}» debe ser un mapa (clave: valor).")
+    return value
+
+
+def _sequence(source: str, value, where: str) -> list:
+    if not isinstance(value, list) or not value:
+        _fail(source, f"«{where}» debe ser una lista no vacía.")
+    return value
+
+
+def _identifier(source: str, value, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        _fail(source, f"{where} necesita un «id» de texto (use comillas si parece un número).")
+    return value.strip()
+
+
+def _unique(source: str, ids: list[str], where: str) -> None:
+    seen = set()
+    for item in ids:
+        if item in seen:
+            _fail(source, f"id repetido «{item}» en {where}.")
+        seen.add(item)
+
+
+def parse_questionnaire(data, source: str = "cuestionario") -> Questionnaire:
+    """Validate the YAML structure ``data`` and build a ``Questionnaire``."""
+    data = _mapping(source, data, "raíz del archivo")
+    version = data.get("version")
+    if version is None or isinstance(version, bool) or str(version).strip() == "":
+        _fail(source, "falta «version».")
+    version = str(version).strip()
+
+    levels = []
+    for index, raw in enumerate(_sequence(source, data.get("niveles"), "niveles"), start=1):
+        raw = _mapping(source, raw, f"niveles[{index}]")
+        level_id = _identifier(source, raw.get("id"), f"niveles[{index}]")
+        levels.append(Level(level_id, _text(source, raw.get("etiqueta"), f"nivel {level_id}"),
+                            _text(source, raw.get("descripcion"), f"la descripción del nivel {level_id}")))
+    if len(levels) < 2:
+        _fail(source, "«niveles» necesita al menos dos niveles.")
+    level_ids = [level.id for level in levels]
+    _unique(source, level_ids, "niveles")
+
+    raw_thresholds = _mapping(source, data.get("umbrales"), "umbrales")
+    if set(raw_thresholds) != set(level_ids[1:]):
+        _fail(source, f"«umbrales» debe tener exactamente los niveles {', '.join(level_ids[1:])} "
+                      f"(el primero, {level_ids[0]}, no lleva umbral).")
+    thresholds = []
+    previous = Fraction(1)
+    for level_id in level_ids[1:]:
+        value = raw_thresholds[level_id]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            _fail(source, f"el umbral de {level_id} debe ser un número.")
+        value = Fraction(str(value))
+        if not previous < value <= OPTIONS_PER_QUESTION:
+            _fail(source, f"los umbrales deben crecer entre 1 y {OPTIONS_PER_QUESTION} (revise {level_id}).")
+        thresholds.append((level_id, value))
+        previous = value
+
+    prior = _mapping(source, data.get("datos_previos"), "datos_previos")
+    capital = _mapping(source, prior.get("capital"), "datos_previos.capital")
+    horizon = _mapping(source, prior.get("horizonte"), "datos_previos.horizonte")
+    capital_options = tuple(
+        Choice(_identifier(source, item.get("id"), "una opción de capital"),
+               _text(source, item.get("texto"), "una opción de capital"))
+        for item in (_mapping(source, raw, "datos_previos.capital.opciones")
+                     for raw in _sequence(source, capital.get("opciones"), "datos_previos.capital.opciones"))
+    )
+    _unique(source, [choice.id for choice in capital_options], "las opciones de capital")
+    horizon_options = []
+    for raw in _sequence(source, horizon.get("opciones"), "datos_previos.horizonte.opciones"):
+        raw = _mapping(source, raw, "datos_previos.horizonte.opciones")
+        choice_id = _identifier(source, raw.get("id"), "una opción de horizonte")
+        if "nivel_maximo" not in raw:
+            _fail(source, f"la opción de horizonte «{choice_id}» necesita «nivel_maximo» (un nivel o null).")
+        cap = raw.get("nivel_maximo")
+        if cap is not None and cap not in level_ids:
+            _fail(source, f"nivel_maximo «{cap}» del horizonte «{choice_id}» no es un nivel.")
+        horizon_options.append(Choice(choice_id, _text(source, raw.get("texto"), f"el horizonte {choice_id}"), cap))
+    _unique(source, [choice.id for choice in horizon_options], "las opciones de horizonte")
+
+    blocks = []
+    for raw in _sequence(source, data.get("bloques"), "bloques"):
+        raw = _mapping(source, raw, "bloques")
+        block_id = _identifier(source, raw.get("id"), "un bloque")
+        if block_id in (PRIOR_STEP, VETO_FACTOR, HORIZON_FACTOR):
+            _fail(source, f"«{block_id}» es un nombre reservado; use otro id de bloque.")
+        affects = raw.get("afecta_perfil")
+        if not isinstance(affects, bool):
+            _fail(source, f"el bloque «{block_id}» necesita «afecta_perfil: true|false».")
+        questions = []
+        for raw_question in _sequence(source, raw.get("preguntas"), f"bloque {block_id}.preguntas"):
+            raw_question = _mapping(source, raw_question, f"bloque {block_id}.preguntas")
+            question_id = _identifier(source, raw_question.get("id"), f"una pregunta del bloque {block_id}")
+            options = _sequence(source, raw_question.get("opciones"), f"opciones de {question_id}")
+            if len(options) != OPTIONS_PER_QUESTION:
+                _fail(source, f"la pregunta «{question_id}» debe tener exactamente {OPTIONS_PER_QUESTION} opciones (valen 1 a 4).")
+            options = tuple(_text(source, option, f"una opción de {question_id}") for option in options)
+            _unique(source, list(options), f"las opciones de {question_id}")
+            correct = raw_question.get("correcta")
+            if correct is not None and (
+                isinstance(correct, bool) or not isinstance(correct, int) or not 1 <= correct <= OPTIONS_PER_QUESTION
+            ):
+                _fail(source, f"«correcta» de «{question_id}» debe ser un número de 1 a {OPTIONS_PER_QUESTION}.")
+            questions.append(Question(question_id, _text(source, raw_question.get("texto"), question_id), options, correct))
+        blocks.append(Block(block_id, _text(source, raw.get("titulo"), f"el bloque {block_id}"),
+                            str(raw.get("descripcion") or "").strip(), affects, tuple(questions)))
+    _unique(source, [block.id for block in blocks], "bloques")
+    question_ids = [question.id for block in blocks for question in block.questions]
+    _unique(source, question_ids, "las preguntas")
+    scored = [block.id for block in blocks if block.affects_profile]
+    if not scored:
+        _fail(source, "al menos un bloque debe tener «afecta_perfil: true».")
+    questions_by_id = {question.id: question for block in blocks for question in block.questions}
+    block_of = {question.id: block for block in blocks for question in block.questions}
+
+    def option_position(question_id, option_text, where) -> int:
+        if question_id not in questions_by_id:
+            _fail(source, f"{where}: la pregunta «{question_id}» no existe.")
+        options = questions_by_id[question_id].options
+        text = " ".join(str(option_text or "").split())
+        if text not in options:
+            _fail(source, f"{where}: «{option_text}» no es una opción de «{question_id}».")
+        return options.index(text) + 1
+
+    vetoes = []
+    for raw in data.get("vetos") or []:
+        raw = _mapping(source, raw, "vetos")
+        question_id = raw.get("pregunta")
+        position = option_position(question_id, raw.get("opcion"), "vetos")
+        if not block_of[question_id].affects_profile:
+            _fail(source, f"vetos: «{question_id}» está en un bloque que no afecta el perfil.")
+        vetoes.append(Veto(question_id, position, questions_by_id[question_id].options[position - 1],
+                           _text(source, raw.get("explicacion"), f"el veto de {question_id}")))
+
+    factors = _mapping(source, data.get("factor_limitante"), "factor_limitante")
+    tiebreak = tuple(_sequence(source, factors.get("desempate"), "factor_limitante.desempate"))
+    expected = {VETO_FACTOR, HORIZON_FACTOR, *scored}
+    if set(tiebreak) != expected or len(tiebreak) != len(expected):
+        _fail(source, "factor_limitante.desempate debe listar una vez cada uno de: "
+                      + ", ".join(sorted(expected)) + ".")
+    labels = _mapping(source, factors.get("etiquetas"), "factor_limitante.etiquetas")
+    explanations = _mapping(source, factors.get("explicaciones"), "factor_limitante.explicaciones")
+    factor_labels = {factor: _text(source, labels.get(factor), f"la etiqueta del factor {factor}") for factor in tiebreak}
+    templates = {}
+    sample = {"perfil": "x", "horizonte": "x"}
+    for block_id in scored:
+        sample[f"puntaje_{block_id}"] = sample[f"nivel_{block_id}"] = "x"
+    for factor in tiebreak:
+        if factor == VETO_FACTOR:
+            continue  # each veto carries its own explanation
+        template = _text(source, explanations.get(factor), f"la explicación del factor {factor}")
+        try:
+            template.format_map(sample)
+        except (KeyError, ValueError, IndexError) as error:
+            _fail(source, f"la explicación del factor {factor} usa un marcador inválido: {error}.")
+        templates[factor] = template
+
+    rule = _mapping(source, data.get("rol_sugerido"), "rol_sugerido")
+    experience = rule.get("experiencia")
+    min_experience = option_position(experience, rule.get("experiencia_minima"), "rol_sugerido.experiencia_minima")
+    control = rule.get("pregunta_control")
+    if control not in questions_by_id or questions_by_id[control].correct is None:
+        _fail(source, f"rol_sugerido.pregunta_control «{control}» debe ser una pregunta con «correcta».")
+    roles = (rule.get("si_cumple"), rule.get("si_no"))
+    for role in roles:
+        if role not in SUGGESTABLE_ROLES:
+            _fail(source, f"rol_sugerido: «{role}» no es un rol sugerible ({', '.join(SUGGESTABLE_ROLES)}).")
+
+    return Questionnaire(
+        version=version,
+        levels=tuple(levels),
+        thresholds=tuple(thresholds),
+        capital_text=_text(source, capital.get("texto"), "la pregunta de capital"),
+        capital_options=capital_options,
+        horizon_text=_text(source, horizon.get("texto"), "la pregunta de horizonte"),
+        horizon_options=tuple(horizon_options),
+        blocks=tuple(blocks),
+        vetoes=tuple(vetoes),
+        tiebreak=tiebreak,
+        factor_labels=factor_labels,
+        explanations=templates,
+        role_rule=RoleRule(experience, min_experience, control, roles[0], roles[1]),
+        source=source,
+    )
+
+
+def questionnaire_path(path: str | os.PathLike | None = None) -> Path:
+    return Path(path or os.environ.get(PATH_ENV_VAR) or DEFAULT_PATH)
+
+
+@lru_cache(maxsize=8)
+def _load_cached(path: str, _mtime_ns: int) -> Questionnaire:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+    except FileNotFoundError as error:
+        raise QuestionnaireError(f"No se encontró el cuestionario en {path}.") from error
+    except yaml.YAMLError as error:
+        raise QuestionnaireError(f"{path}: el YAML no es válido: {error}") from error
+    return parse_questionnaire(data, source=path)
+
+
+def load_questionnaire(path: str | os.PathLike | None = None) -> Questionnaire:
+    """Load (and cache until the file changes) the questionnaire at ``path``.
+
+    Defaults to ``ATLAS_QUESTIONNAIRE_PATH`` or ``config/cuestionario.yaml``.
+    """
+    resolved = questionnaire_path(path)
+    try:
+        mtime = resolved.stat().st_mtime_ns
+    except FileNotFoundError as error:
+        raise QuestionnaireError(f"No se encontró el cuestionario en {resolved}.") from error
+    return _load_cached(str(resolved), mtime)
