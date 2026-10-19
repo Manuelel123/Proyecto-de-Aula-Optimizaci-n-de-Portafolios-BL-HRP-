@@ -2171,3 +2171,15 @@ input.badge:disabled { background: var(--accent-subtle); color: var(--accent); }
   gap: var(--sp-3);
   margin-top: var(--sp-6);
 }
+
+/* Tracked portfolios: fixing form beside the target weights. */
+.fix-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .fix-layout { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+}
+.portfolio-disclaimer { margin-bottom: var(--sp-6); }

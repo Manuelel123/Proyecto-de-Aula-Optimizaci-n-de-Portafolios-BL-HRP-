@@ -105,13 +105,13 @@ class AuthFlowTests(AccountTestCase):
         self.assertEqual(self.insforge.users["ana@example.com"]["password"], "nueva123")
 
     def test_oauth_uses_pkce_and_exchanges_the_code(self):
-        response = self.client.get("/auth/oauth/google?next=/cuenta/portafolios")
+        response = self.client.get("/auth/oauth/google?next=/portafolios/")
         self.assertTrue(response.location.startswith("https://accounts.example/google"))
         _, provider, redirect_uri, challenge = self.insforge.calls[-1]
         self.assertEqual(provider, "google")
         self.assertTrue(redirect_uri.endswith("/auth/oauth/callback"))
         response = self.client.get("/auth/oauth/callback?insforge_code=abc")
-        self.assertEqual(urlsplit(response.location).path, "/cuenta/portafolios")
+        self.assertEqual(urlsplit(response.location).path, "/portafolios/")
         _, code, verifier = self.insforge.calls[-1]
         self.assertEqual(code, "abc")
         expected = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
@@ -127,7 +127,7 @@ class AuthFlowTests(AccountTestCase):
             state = session["auth"]
             state["access"] = make_jwt(lifetime=-10)
             session["auth"] = state
-        response = self.client.get("/cuenta/portafolios")
+        response = self.client.get("/portafolios/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(("refresh",), self.insforge.calls)
 
@@ -135,7 +135,7 @@ class AuthFlowTests(AccountTestCase):
         self.sign_in()
         with self.client.session_transaction() as session:
             session["auth"] = {"access": make_jwt(lifetime=-10), "refresh": "revoked", "user": {}}
-        response = self.client.get("/cuenta/portafolios")
+        response = self.client.get("/portafolios/")
         self.assertEqual(urlsplit(response.location).path, "/auth/ingresar")
         with self.client.session_transaction() as session:
             self.assertNotIn("auth", session)
@@ -154,84 +154,9 @@ class AuthFlowTests(AccountTestCase):
 
     def test_safe_next_blocks_external_redirects(self):
         with self.app.test_request_context():
-            self.assertEqual(safe_next("/cuenta/portafolios"), "/cuenta/portafolios")
+            self.assertEqual(safe_next("/portafolios/"), "/portafolios/")
             for target in ("https://evil.example", "//evil.example", "javascript:alert(1)"):
                 self.assertEqual(safe_next(target), "/")
-
-
-class SavedPortfolioTests(AccountTestCase):
-    def _hrp_result(self, download, **extra):
-        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
-        data = dict(
-            action="optimize", universe="Portafolio actual", benchmark="S&P 500 (SPY)",
-            start_date="2024-01-01", tickers=["AAPL", "MSFT"], custom_tickers="",
-        )
-        data.update(extra)
-        return self.post("/hrp", **data).data.decode()
-
-    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
-    def test_anonymous_result_invites_to_sign_in(self, download):
-        html = self._hrp_result(download, backtest="")
-        self.assertIn("Inicia sesión para guardar", html)
-        self.assertNotIn('name="snapshot"', html)
-
-    @patch("optimizacion_portafolios.web.hrp.services.download_prices")
-    def test_hrp_result_is_saved_listed_renamed_and_deleted(self, download):
-        self.sign_in()
-        html = self._hrp_result(download, backtest="")
-        snapshot = re.search(r'name="snapshot" value="([^"]+)"', html).group(1)
-        response = self.post("/cuenta/portafolios/guardar", snapshot=snapshot, name="Mi HRP")
-        portfolio_id = response.location.rsplit("/", 1)[-1]
-        saved = self.insforge.tables["saved_portfolios"][0]
-        self.assertEqual((saved["name"], saved["model"]), ("Mi HRP", "hrp"))
-        weights = self.insforge.tables["portfolio_weights"]
-        self.assertEqual({row["ticker"] for row in weights}, {"AAPL", "MSFT"})
-        self.assertAlmostEqual(sum(row["weight"] for row in weights), 1.0)
-
-        listing = self.client.get("/cuenta/portafolios").data.decode()
-        self.assertIn("Mi HRP", listing)
-        detail = self.client.get(f"/cuenta/portafolios/{portfolio_id}").data.decode()
-        self.assertIn("AAPL", detail)
-        self.post(f"/cuenta/portafolios/{portfolio_id}/renombrar", name="Renombrado")
-        self.assertEqual(self.insforge.tables["saved_portfolios"][0]["name"], "Renombrado")
-        self.post(f"/cuenta/portafolios/{portfolio_id}/eliminar")
-        self.assertEqual(self.insforge.tables["saved_portfolios"], [])
-        self.assertEqual(self.insforge.tables["portfolio_weights"], [])
-
-    def test_tampered_snapshot_is_rejected(self):
-        self.sign_in()
-        self.post("/cuenta/portafolios/guardar", snapshot="forged.token", name="X")
-        self.assertNotIn("saved_portfolios", self.insforge.tables)
-
-    @patch("optimizacion_portafolios.web.black_litterman.services.fetch_market_cap_usd")
-    @patch("optimizacion_portafolios.web.black_litterman.services.download_prices")
-    def test_black_litterman_result_can_be_saved(self, download, market_cap):
-        self.sign_in()
-        download.side_effect = lambda tickers, _start, _end: make_prices(tickers)
-        market_cap.side_effect = {"AAPL": 3e12, "MSFT": 3.5e12}.__getitem__
-        html = self.post(
-            "/black-litterman", action="optimize", universe="Activos principales",
-            benchmark="S&P 500 (SPY)", objective="Máximo ratio de Sharpe",
-            risk_free_rate="2.0", tickers=["AAPL", "MSFT"], custom_tickers="",
-            view_AAPL="8.0", view_MSFT="9.0",
-        ).data.decode()
-        snapshot = re.search(r'name="snapshot" value="([^"]+)"', html).group(1)
-        self.post("/cuenta/portafolios/guardar", snapshot=snapshot, name="")
-        saved = self.insforge.tables["saved_portfolios"][0]
-        self.assertEqual(saved["model"], "black_litterman")
-        self.assertTrue(saved["name"].startswith("Black-Litterman · 2 activos"))
-        self.assertAlmostEqual(saved["params"]["views"]["AAPL"], 0.08)
-
-    def test_other_users_portfolios_are_not_visible(self):
-        owner = self.insforge.add_user("otro@example.com", "x")
-        self.insforge.tables["saved_portfolios"] = [
-            {"id": "00000000-0000-4000-8000-000000000001", "user_id": owner["id"], "name": "Ajeno",
-             "model": "hrp", "created_at": "2026-10-14T12:00:00+00:00"}
-        ]
-        self.sign_in()
-        self.assertNotIn("Ajeno", self.client.get("/cuenta/portafolios").data.decode())
-        response = self.client.get("/cuenta/portafolios/00000000-0000-4000-8000-000000000001")
-        self.assertEqual(response.status_code, 404)
 
 
 class BacktestHistoryTests(AccountTestCase):

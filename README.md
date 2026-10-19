@@ -43,7 +43,6 @@ Las series de ambas fuentes se alinean por fecha (sin hora ni zona horaria). Los
 [InsForge](https://insforge.dev) aporta el login y una base de datos Postgres. Todo es opcional: sin configuración, la app funciona igual que antes, sin cuentas y sin caché persistente.
 
 - **Login:** registro con correo y contraseña verificado con un código de 6 dígitos, recuperación de contraseña con código y acceso con Google o GitHub (OAuth con PKCE). Rutas en `/auth/...`.
-- **Mis portafolios:** los resultados de HRP y Black-Litterman se pueden guardar desde la página del resultado (`/cuenta/portafolios`).
 - **Historial de backtests:** con la sesión iniciada, cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`).
 - **Caché de precios incremental:** los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando.
 
@@ -63,6 +62,8 @@ Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones s
   ```
 
   Tras cambiar `storage/models.py`, genera la revisión con `db migrate -m "..."` y el mismo `--directory`.
+- **Fijar un portafolio óptimo:** en los resultados de HRP y Black-Litterman, con la sesión iniciada, el botón «Establecer como portafolio óptimo» pide nombre, capital nocional (100 000 USD por defecto), benchmark y comisión (10 pb por defecto). Se guardan el modelo, todos sus parámetros (universo, fechas, límites de peso, views, objetivo, tasa libre de riesgo), los pesos objetivo, los últimos precios de cierre y las unidades (capital neto de comisión × peso / precio). La fecha de esos precios es el inicio del seguimiento.
+- **Valoración:** comprar y mantener en USD con las unidades vigentes. Los cierres son ajustados, así que los dividendos se reinvierten implícitamente; un activo que deja de cotizar conserva su último precio. Los precios en otra moneda se convierten con el tipo de cambio diario de Yahoo (`{CCY}USD=X`); los precios en peniques (`GBp`) se dividen entre 100.
 - **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
 
 ## Pruebas
@@ -116,7 +117,9 @@ src/optimizacion_portafolios/
     catalogs.py                 universos, benchmarks y periodos de volatilidad
     market_data.py              precios (Tiingo + respaldo Yahoo) y perfiles con caché
     tiingo_prices.py            cliente Tiingo y enrutamiento de tickers por fuente
+    fx.py                       moneda de cada ticker y conversión diaria a USD
   analytics/
+    tracking.py                 seguimiento de portafolios fijados (funciones puras)
     statistics.py               retornos, riesgo y retornos esperados
     volatility.py               volatilidad mensual e histórica por periodo
     performance.py              métricas e informe QuantStats

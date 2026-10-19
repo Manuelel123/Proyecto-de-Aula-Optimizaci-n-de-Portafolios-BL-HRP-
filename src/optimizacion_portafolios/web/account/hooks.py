@@ -1,10 +1,9 @@
-"""Glue between the model pages and the user's account (save, history)."""
+"""Glue between the HRP page and the user's backtest history (InsForge)."""
 
 import logging
 
 from optimizacion_portafolios.insforge import InsForgeError
 from optimizacion_portafolios.web.account import repository
-from optimizacion_portafolios.web.account.snapshots import default_name, sign
 from optimizacion_portafolios.web.auth.session import (
     access_token,
     current_user,
@@ -12,11 +11,6 @@ from optimizacion_portafolios.web.auth.session import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def save_form(snapshot: dict) -> dict:
-    """Template data of the "Guardar portafolio" control of a result page."""
-    return {"token": sign(snapshot), "default_name": default_name(snapshot)}
 
 
 def record_backtest(backtest: dict | None) -> None:

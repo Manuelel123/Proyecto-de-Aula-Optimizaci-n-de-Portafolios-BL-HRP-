@@ -1,4 +1,4 @@
-"""Saved portfolios and backtest history in InsForge, scoped to one user.
+"""HRP backtest history in InsForge, scoped to one user.
 
 Every call takes the signed-in user's access token, so the owner-only RLS
 policies of the tables decide which rows exist; ``user_id`` defaults to
@@ -14,10 +14,6 @@ from typing import Any
 
 from optimizacion_portafolios.insforge import InsForgeClient, InsForgeError, in_filter
 
-PORTFOLIO_COLUMNS = (
-    "id,name,model,benchmark,start_date,end_date,expected_return,volatility,"
-    "sharpe,sortino,max_drawdown,params,created_at"
-)
 RUN_COLUMNS = (
     "id,tickers,start_date,end_date,trading_days,lookback,drift_threshold,"
     "vol_window,vol_threshold,fees,slippage,init_cash,best_strategy,created_at"
@@ -38,97 +34,6 @@ def _number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
-
-
-# ---------------------------------------------------------------- Portfolios
-def save_portfolio(client: InsForgeClient, token: str, snapshot: dict, name: str) -> str:
-    """Store a portfolio snapshot and its weights; return the new id."""
-    metrics = snapshot.get("metrics") or {}
-    rows = client.insert(
-        "saved_portfolios",
-        [
-            {
-                "name": name,
-                "model": snapshot["model"],
-                "benchmark": snapshot.get("benchmark"),
-                "start_date": snapshot.get("start_date"),
-                "end_date": snapshot.get("end_date"),
-                "expected_return": _number(metrics.get("expected_return")),
-                "volatility": _number(metrics.get("volatility")),
-                "sharpe": _number(metrics.get("sharpe")),
-                "sortino": _number(metrics.get("sortino")),
-                "max_drawdown": _number(metrics.get("max_drawdown")),
-                "params": snapshot.get("params") or {},
-            }
-        ],
-        token=token,
-    )
-    portfolio_id = rows[0]["id"]
-    try:
-        client.insert(
-            "portfolio_weights",
-            [
-                {"portfolio_id": portfolio_id, "ticker": ticker, "weight": float(weight)}
-                for ticker, weight in snapshot["weights"].items()
-            ],
-            token=token,
-            returning=False,
-        )
-    except InsForgeError:
-        client.delete("saved_portfolios", {"id": f"eq.{portfolio_id}"}, token=token)
-        raise
-    return portfolio_id
-
-
-def _weights_by_portfolio(client: InsForgeClient, token: str, ids: list[str]) -> dict[str, list[dict]]:
-    if not ids:
-        return {}
-    rows = client.select(
-        "portfolio_weights",
-        {"portfolio_id": in_filter(ids), "select": "portfolio_id,ticker,weight", "order": "weight.desc"},
-        token=token,
-    )
-    grouped: dict[str, list[dict]] = {portfolio_id: [] for portfolio_id in ids}
-    for row in rows:
-        grouped.setdefault(row["portfolio_id"], []).append(row)
-    return grouped
-
-
-def list_portfolios(client: InsForgeClient, token: str) -> list[dict]:
-    portfolios = client.select(
-        "saved_portfolios",
-        {"select": PORTFOLIO_COLUMNS, "order": "created_at.desc"},
-        token=token,
-        limit=LIST_LIMIT,
-    )
-    weights = _weights_by_portfolio(client, token, [row["id"] for row in portfolios])
-    for portfolio in portfolios:
-        portfolio["weights"] = weights.get(portfolio["id"], [])
-    return portfolios
-
-
-def get_portfolio(client: InsForgeClient, token: str, portfolio_id: str) -> dict | None:
-    rows = client.select(
-        "saved_portfolios",
-        {"id": f"eq.{portfolio_id}", "select": PORTFOLIO_COLUMNS},
-        token=token,
-        limit=1,
-    )
-    if not rows:
-        return None
-    portfolio = rows[0]
-    portfolio["weights"] = _weights_by_portfolio(client, token, [portfolio_id]).get(portfolio_id, [])
-    return portfolio
-
-
-def rename_portfolio(client: InsForgeClient, token: str, portfolio_id: str, name: str) -> bool:
-    return bool(
-        client.update("saved_portfolios", {"id": f"eq.{portfolio_id}"}, {"name": name}, token=token)
-    )
-
-
-def delete_portfolio(client: InsForgeClient, token: str, portfolio_id: str) -> bool:
-    return bool(client.delete("saved_portfolios", {"id": f"eq.{portfolio_id}"}, token=token))
 
 
 # ----------------------------------------------------------------- Backtests

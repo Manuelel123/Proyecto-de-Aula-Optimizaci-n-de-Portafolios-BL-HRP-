@@ -797,6 +797,75 @@ def strategy_drawdown_chart(values: pd.DataFrame, reference: str | None = None) 
 # --------------------------------------------------------------------------- structure
 
 
+# --------------------------------------------------------------------------- tracking
+
+
+def tracking_value_chart(
+    values: pd.Series,
+    benchmark: pd.Series | None = None,
+    events: list[tuple] | None = None,
+    benchmark_name: str = "Benchmark",
+) -> Markup | None:
+    """Value of a tracked portfolio vs its benchmark (same initial value).
+
+    ``events``: ``(date, label)`` per portfolio change (rebalance, removal,
+    addition), drawn as dashed vertical guides.
+    """
+    values = _clean(values)
+    if values.empty:
+        return None
+    figure = _figure(hovermode="x unified", showlegend=True, margin={"t": 32})
+    figure.add_trace(_line(values.index, values.to_numpy(), "Portafolio", theme.PRIMARY, 2.2, "solid", ",.0f"))
+    benchmark = _clean(benchmark)
+    if not benchmark.empty:
+        figure.add_trace(
+            _line(benchmark.index, benchmark.to_numpy(), benchmark_name, theme.TEXT_3, 1.5, "dot", ",.0f")
+        )
+    shapes, annotations = [], []
+    for day, label in events or []:
+        shape, annotation = _vertical_marker(pd.Timestamp(day).strftime("%Y-%m-%d"), label)
+        shapes.append(shape)
+        annotations.append(annotation)
+    figure.update_layout(shapes=shapes, annotations=annotations)
+    _time_series_axes(figure, ",.0f")
+    figure.update_yaxes(zeroline=False, tickprefix="$")
+    return figure_payload(figure)
+
+
+def weights_vs_target_chart(current: pd.Series, target: dict[str, float]) -> Markup | None:
+    """Current weight per asset (bars) with its target weight (tick marker)."""
+    tickers = sorted(set(_clean(current).index.astype(str)) | set(target), key=lambda t: -target.get(t, 0.0))
+    if not tickers:
+        return None
+    current_values = _reindexed(current, tickers).fillna(0.0)
+    target_values = pd.Series(target, dtype=float).reindex(tickers).fillna(0.0)
+    figure = _figure(
+        height=_bar_height(len(tickers), 28),
+        hovermode="y unified",
+        barmode="overlay",
+        showlegend=True,
+        margin={"l": 64, "r": 16, "t": 36, "b": 36},
+    )
+    figure.add_trace(
+        _value_bar(
+            tickers,
+            current_values.to_numpy(),
+            name="Peso actual",
+            colors=[theme.NEGATIVE if value < 0 else theme.PRIMARY for value in current_values],
+            width=0.6,
+            hovertemplate="Peso actual: %{x:.2%}<extra></extra>",
+        )
+    )
+    figure.add_trace(_tick_marker(tickers, target_values.to_numpy(), "Peso objetivo"))
+    figure.update_xaxes(
+        tickformat=".0%",
+        range=_padded_range(list(current_values) + list(target_values) + [0.0]),
+        zeroline=True,
+    )
+    figure.update_yaxes(**_ticker_axis(autorange="reversed"))
+    return figure_payload(figure)
+
+
 def correlation_heatmap(matrix: pd.DataFrame, title: str = "Correlación") -> Markup | None:
     """Correlation matrix on the diverging scale (−1 blue · 0 gray · +1 red).
 

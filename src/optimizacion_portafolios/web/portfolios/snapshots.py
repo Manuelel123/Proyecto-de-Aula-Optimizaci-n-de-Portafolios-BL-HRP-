@@ -1,8 +1,9 @@
-"""Signed portfolio snapshots carried by the "Guardar portafolio" form.
+"""Signed result snapshots carried by "Establecer como portafolio óptimo".
 
-A result page embeds the snapshot (model, weights, metrics, parameters) as a
-signed token, so saving needs no recalculation and the server only stores what
-it computed itself. Tokens expire after a day.
+An HRP or Black-Litterman result page embeds its outcome (model, weights,
+metrics and every input parameter) as a signed token, so fixing the portfolio
+needs no recalculation and stores only what the server computed itself.
+Tokens expire after a day.
 """
 
 from __future__ import annotations
@@ -48,7 +49,8 @@ def unsign(token: str) -> dict | None:
         return None
     if not isinstance(snapshot, dict) or snapshot.get("model") not in MODEL_LABELS:
         return None
-    if not isinstance(snapshot.get("weights"), dict) or not snapshot["weights"]:
+    weights = snapshot.get("weights")
+    if not isinstance(weights, dict) or not weights:
         return None
     return snapshot
 
@@ -58,29 +60,33 @@ def default_name(snapshot: dict) -> str:
     return f"{MODEL_LABELS[snapshot['model']]} · {count} activos · {date.today().isoformat()}"
 
 
-def hrp_snapshot(result: dict) -> dict:
+def hrp_snapshot(result: dict, *, universe: str, start_date: str) -> dict:
     summary = result["summary"]
     return {
         "model": "hrp",
         "benchmark": result["benchmark"],
-        "start_date": result["start"],
-        "end_date": result["end"],
         "weights": summary["weights"],
         "metrics": summary["metrics"],
-        "params": {"bounds": summary["bounds"]},
+        "params": {
+            "universe": universe,
+            "tickers": list(result["selected_tickers"]),
+            "start_date": start_date,
+            "data_start": result["start"],
+            "data_end": result["end"],
+            "bounds": summary["bounds"],
+        },
     }
 
 
 def black_litterman_snapshot(
-    result: dict, objective: str, benchmark: str, risk_free_rate: float
+    result: dict, *, universe: str, objective: str, benchmark: str, risk_free_rate: float
 ) -> dict:
     rows = result["allocation_rows"]
     history = result.get("history") or {}
+    window = result["window"]
     return {
         "model": "black_litterman",
         "benchmark": benchmark,
-        "start_date": result["window"]["effective_start_iso"],
-        "end_date": result["window"]["effective_end_iso"],
         "weights": {row["ticker"]: row["weight"] for row in rows},
         "metrics": {
             "expected_return": result["expected_return"],
@@ -90,9 +96,14 @@ def black_litterman_snapshot(
             "max_drawdown": history.get("max_drawdown"),
         },
         "params": {
+            "universe": universe,
+            "tickers": [row["ticker"] for row in rows],
             "objective": objective,
             "risk_free_rate": risk_free_rate,
             "views": {row["ticker"]: row["view"] for row in rows},
             "market_weights": {row["ticker"]: row["market_weight"] for row in rows},
+            "window_years": window["years"],
+            "data_start": window["effective_start_iso"],
+            "data_end": window["effective_end_iso"],
         },
     }
