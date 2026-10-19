@@ -51,6 +51,20 @@ Configuración local: copia `.env.example` a `.env` y completa las variables. Lo
 
 El esquema está en `migrations/` y se aplica con `npx -y @insforge/cli db migrations up --all`. Las tablas de usuario tienen RLS (cada usuario solo ve sus filas) y las de precios solo son accesibles con la clave de administrador. La configuración de auth, incluidas las URLs de retorno de OAuth permitidas, está en `insforge.toml` (`npx -y @insforge/cli config apply`). Si sirves la app en otra URL, agrega su `/auth/oauth/callback` a `allowed_redirect_urls`.
 
+## Portafolios en seguimiento (base de datos local)
+
+Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones se guardan en una base SQL local con Flask-SQLAlchemy:
+
+- **Ubicación:** `DATABASE_URL` (por defecto `sqlite:///instance/atlas.db`; la carpeta `instance/` está fuera del control de versiones). `ATLAS_INSTANCE_PATH` cambia la carpeta `instance/`.
+- **Migraciones:** son revisiones de Flask-Migrate en `src/optimizacion_portafolios/storage/migrations`. La app aplica las pendientes al arrancar; se desactiva con `ATLAS_AUTO_MIGRATE=0`. Para hacerlo a mano:
+
+  ```powershell
+  uv run flask --app wsgi:app db upgrade --directory src/optimizacion_portafolios/storage/migrations
+  ```
+
+  Tras cambiar `storage/models.py`, genera la revisión con `db migrate -m "..."` y el mismo `--directory`.
+- **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
+
 ## Pruebas
 
 ```powershell
@@ -121,6 +135,12 @@ src/optimizacion_portafolios/
     monitoring/                 monitoreo y análisis fundamental
     hrp/                        optimización HRP
     black_litterman/            optimización Black-Litterman
+    auth/                       inicio de sesión con InsForge (Flask-Login, límite de intentos)
+    portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
+  storage/
+    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction)
+    repositories.py             lecturas y escrituras filtradas por usuario
+    migrations/                 revisiones de Flask-Migrate
 ```
 
 Cada módulo web (`main`, `monitoring`, `hrp`, `black_litterman`) sigue la misma forma:

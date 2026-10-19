@@ -36,7 +36,7 @@
       ("monitoring", "monitoring.monitoring", "Mercado"),
       ("hrp", "hrp.hrp", "HRP"),
       ("black_litterman", "black_litterman.black_litterman", "Black-Litterman"),
-    ] %}
+    ] + ([("portfolios", "portfolios.index", "Mis portafolios")] if current_user.is_authenticated else []) %}
     {% macro brand_mark() -%}
       <svg class="brand__mark" viewBox="0 0 28 28" aria-hidden="true" focusable="false">
         <rect class="brand__mark-bg" width="28" height="28" rx="8"/>
@@ -62,7 +62,7 @@
             <span><span class="visually-hidden">Fuentes de datos: </span>Tiingo · Yahoo</span>
           </span>
           {% if accounts_enabled %}
-            {% if current_user %}
+            {% if current_user.is_authenticated %}
               <details class="user-menu">
                 <summary aria-label="Menú de la cuenta de {{ current_user.name }}">
                   <span class="user-menu__avatar" aria-hidden="true">{{ (current_user.name or current_user.email)[:1]|upper }}</span>
@@ -70,7 +70,7 @@
                 </summary>
                 <div class="user-menu__panel">
                   <p class="user-menu__email">{{ current_user.email }}</p>
-                  <a href="{{ url_for('account.portfolios') }}"{% if request.endpoint and request.endpoint.startswith('account.portfolio') %} aria-current="page"{% endif %}>Mis portafolios</a>
+                  <a href="{{ url_for('portfolios.index') }}"{% if request.blueprint == 'portfolios' %} aria-current="page"{% endif %}>Mis portafolios</a>
                   <a href="{{ url_for('account.backtests') }}"{% if request.endpoint and request.endpoint.startswith('account.backtest') %} aria-current="page"{% endif %}>Historial de backtests</a>
                   <form method="post" action="{{ url_for('auth.logout') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -97,9 +97,8 @@
               {% endfor %}
               {% if accounts_enabled %}
                 <div class="mobile-menu__account">
-                  {% if current_user %}
+                  {% if current_user.is_authenticated %}
                     <p class="user-menu__email">{{ current_user.email }}</p>
-                    <a href="{{ url_for('account.portfolios') }}">Mis portafolios</a>
                     <a href="{{ url_for('account.backtests') }}">Historial de backtests</a>
                     <form method="post" action="{{ url_for('auth.logout') }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

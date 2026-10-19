@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 from optimizacion_portafolios.models.hrp_backtest import clear_backtest_cache
 from optimizacion_portafolios.web import create_app
 from optimizacion_portafolios.web.auth.session import safe_next
+from optimizacion_portafolios.web.auth.throttle import login_throttle
 from fake_insforge import FakeInsForge, make_jwt
 from support import WebTestCase, make_prices
 
@@ -18,6 +19,7 @@ _CSRF = re.compile(rb'name="csrf_token"\s+value="([^"]+)"')
 
 class AccountTestCase(unittest.TestCase):
     def setUp(self) -> None:
+        login_throttle.clear()
         self.insforge = FakeInsForge()
         self.app = create_app(
             {"TESTING": True, "SECRET_KEY": "test-secret", "INSFORGE_CLIENT": self.insforge}

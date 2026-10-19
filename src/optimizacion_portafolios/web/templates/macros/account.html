@@ -2,7 +2,7 @@
 
 {% macro save_portfolio_control(save) %}
   {% if accounts_enabled and save %}
-    {% if current_user %}
+    {% if current_user.is_authenticated %}
       <form method="post" action="{{ url_for('account.save_portfolio') }}" class="save-portfolio">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="snapshot" value="{{ save.token }}">
@@ -28,7 +28,7 @@
         {{ 'Backtest guardado en tu historial.' if bt.history.created else 'Este backtest ya estaba en tu historial.' }}
         <a href="{{ url_for('account.backtest_detail', run_id=bt.history.id) }}">Ver en el historial</a>
       </div>
-    {% elif not current_user %}
+    {% elif not current_user.is_authenticated %}
       <p class="help-text"><a href="{{ url_for('auth.login') }}">Inicia sesión</a> para guardar tus backtests en un historial.</p>
     {% endif %}
   {% endif %}

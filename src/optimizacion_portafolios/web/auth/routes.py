@@ -15,6 +15,7 @@ from flask import flash, redirect, render_template, request, session, url_for
 
 from optimizacion_portafolios.insforge import InsForgeError
 from optimizacion_portafolios.web.auth import bp
+from optimizacion_portafolios.web.auth.throttle import login_throttle
 from optimizacion_portafolios.web.auth.session import (
     access_token,
     current_user,
@@ -137,15 +138,27 @@ def login():
     config = _public_config()
     email = ""
     if request.method == "POST":
+        throttle_keys = ()
         try:
             email = _email_field()
             password = request.form.get("password", "")
             if not password:
                 raise ValueError("Escribe tu contraseña.")
-            return _finish_sign_in(insforge_client().sign_in(email, password), next_url)
+            throttle_keys = (f"email:{email}", f"ip:{request.remote_addr}")
+            wait = login_throttle.retry_after(*throttle_keys)
+            if wait:
+                raise ValueError(
+                    "Demasiados intentos fallidos. Vuelve a intentar en "
+                    f"{max(1, round(wait / 60))} min."
+                )
+            response = insforge_client().sign_in(email, password)
+            login_throttle.reset(f"email:{email}")
+            return _finish_sign_in(response, next_url)
         except ValueError as error:
             flash(str(error), "error")
         except InsForgeError as error:
+            if error.status == 401 and throttle_keys:
+                login_throttle.record_failure(*throttle_keys)
             # Valid credentials of an unverified account answer 403.
             if error.code == "EMAIL_NOT_VERIFIED" or error.status == 403:
                 flash("Tu correo aún no está verificado. Te enviamos un código.", "info")

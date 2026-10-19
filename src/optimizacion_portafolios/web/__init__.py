@@ -23,22 +23,34 @@ def create_app(test_config: dict | None = None) -> Flask:
         from dotenv import find_dotenv, load_dotenv
 
         load_dotenv(find_dotenv(usecwd=True))
-    app = Flask(__name__, instance_relative_config=True)
+    # instance/ (local database) sits next to .env in the working directory.
+    app = Flask(
+        __name__,
+        instance_relative_config=True,
+        instance_path=os.path.abspath(os.environ.get("ATLAS_INSTANCE_PATH") or "instance"),
+    )
+    secure_cookies = os.environ.get("FLASK_SESSION_COOKIE_SECURE", "").lower() in {"1", "true"}
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32),
         MAX_CONTENT_LENGTH=1 * 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=os.environ.get(
-            "FLASK_SESSION_COOKIE_SECURE", ""
-        ).lower()
-        in {"1", "true"},
+        SESSION_COOKIE_SECURE=secure_cookies,
+        REMEMBER_COOKIE_HTTPONLY=True,
+        REMEMBER_COOKIE_SAMESITE="Lax",
+        REMEMBER_COOKIE_SECURE=secure_cookies,
         PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+        SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL")
+        or "sqlite:///" + os.path.join(app.instance_path, "atlas.db"),
     )
+    if testing:
+        # Tests get a private in-memory database unless they pass their own.
+        app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite://"
     if test_config:
         app.config.update(test_config)
 
     _configure_insforge(app, testing)
+    _configure_storage(app, testing)
     _register_blueprints(app)
     _register_template_helpers(app)
     _register_csrf_protection(app)
@@ -58,6 +70,31 @@ def _warm_up_backtest_engine(app: Flask) -> None:
     from optimizacion_portafolios.models.hrp_backtest import warm_up_in_background
 
     warm_up_in_background()
+
+
+def _configure_storage(app: Flask, testing: bool) -> None:
+    """SQLite (or ``DATABASE_URL``) for tracked portfolios, plus Flask-Login.
+
+    Pending migrations are applied at start-up (disable with
+    ``ATLAS_AUTO_MIGRATE=0``); tests create the tables directly.
+    """
+    from optimizacion_portafolios.storage import MIGRATIONS_DIRECTORY, db, migrate
+    from optimizacion_portafolios.storage import models  # noqa: F401  (registers tables)
+    from optimizacion_portafolios.web.auth.session import login_manager
+
+    os.makedirs(app.instance_path, exist_ok=True)
+    db.init_app(app)
+    migrate.init_app(app, db, directory=MIGRATIONS_DIRECTORY, render_as_batch=True)
+    login_manager.init_app(app)
+    with app.app_context():
+        if testing:
+            db.create_all()
+        elif os.environ.get("ATLAS_AUTO_MIGRATE", "1") != "0" and os.path.isdir(
+            os.path.join(MIGRATIONS_DIRECTORY, "versions")
+        ):
+            from flask_migrate import upgrade
+
+            upgrade(directory=MIGRATIONS_DIRECTORY)
 
 
 def _configure_insforge(app: Flask, testing: bool) -> None:
@@ -90,14 +127,10 @@ def _configure_insforge(app: Flask, testing: bool) -> None:
 
 
 def _register_template_helpers(app: Flask) -> None:
-    from optimizacion_portafolios.web.auth.session import current_user
-
     @app.context_processor
-    def inject_user():
-        return {
-            "current_user": current_user(),
-            "accounts_enabled": "insforge" in app.extensions,
-        }
+    def inject_accounts():
+        # ``current_user`` comes from Flask-Login's own context processor.
+        return {"accounts_enabled": "insforge" in app.extensions}
 
     def _number(value):
         try:
@@ -132,6 +165,7 @@ def _register_template_helpers(app: Flask) -> None:
 def _register_blueprints(app: Flask) -> None:
     from optimizacion_portafolios.web.account import bp as account_bp
     from optimizacion_portafolios.web.auth import bp as auth_bp
+    from optimizacion_portafolios.web.portfolios import bp as portfolios_bp
     from optimizacion_portafolios.web.black_litterman import bp as black_litterman_bp
     from optimizacion_portafolios.web.history import bp as history_bp
     from optimizacion_portafolios.web.hrp import bp as hrp_bp
@@ -145,6 +179,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(history_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
+    app.register_blueprint(portfolios_bp)
 
 
 def _register_csrf_protection(app: Flask) -> None:

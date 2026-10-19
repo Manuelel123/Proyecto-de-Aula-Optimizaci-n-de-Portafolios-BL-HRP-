@@ -4,6 +4,10 @@ The session cookie is signed and httpOnly; it stores the InsForge access token,
 the refresh token (``client_type=server`` returns it in the response body) and
 a small user summary. Access tokens are refreshed shortly before they expire,
 and refresh tokens rotate on every refresh.
+
+Flask-Login manages the signed-in state on top of it: ``current_user`` (in
+views and templates) is an ``AccountUser`` built from that summary, whose id is
+the InsForge user id that owns the rows of the local database.
 """
 
 from __future__ import annotations
@@ -15,7 +19,9 @@ import time
 from functools import wraps
 from urllib.parse import urlsplit
 
+import flask_login
 from flask import current_app, flash, redirect, request, session, url_for
+from flask_login import LoginManager, UserMixin
 
 from optimizacion_portafolios.insforge import InsForgeClient, InsForgeError
 
@@ -23,6 +29,31 @@ logger = logging.getLogger(__name__)
 
 _SESSION_KEY = "auth"
 _REFRESH_MARGIN_SECONDS = 60
+
+login_manager = LoginManager()
+login_manager.login_view = "auth.login"
+login_manager.login_message = "Inicia sesión para continuar."
+login_manager.login_message_category = "info"
+login_manager.session_protection = "basic"
+
+
+class AccountUser(UserMixin):
+    """The signed-in InsForge account (``id`` is the InsForge user id)."""
+
+    def __init__(self, summary: dict):
+        self.id = summary["id"]
+        self.email = summary.get("email") or ""
+        self.name = summary.get("name") or self.email
+
+    def get_id(self) -> str:
+        return self.id
+
+
+@login_manager.user_loader
+def _load_user(user_id: str) -> AccountUser | None:
+    state = session.get(_SESSION_KEY) or {}
+    summary = state.get("user") or {}
+    return AccountUser(summary) if summary.get("id") == user_id else None
 
 
 def insforge_client() -> InsForgeClient | None:
@@ -58,16 +89,22 @@ def login_user(auth_response: dict) -> None:
         raise InsForgeError("El servidor de cuentas no devolvió una sesión.")
     previous_user = (session.get(_SESSION_KEY) or {}).get("user") or {}
     user = auth_response.get("user")
-    session[_SESSION_KEY] = {
-        "access": access,
-        "refresh": refresh,
-        "user": _user_summary(user) if user else previous_user,
-    }
+    summary = _user_summary(user) if user else previous_user
+    session[_SESSION_KEY] = {"access": access, "refresh": refresh, "user": summary}
     session.permanent = True
+    if summary.get("id"):
+        flask_login.login_user(AccountUser(summary))
 
 
 def logout_user() -> None:
     session.pop(_SESSION_KEY, None)
+    flask_login.logout_user()
+
+
+def current_user_id() -> str | None:
+    """InsForge id of the signed-in user (owner of local database rows)."""
+    user = flask_login.current_user
+    return user.get_id() if user.is_authenticated else None
 
 
 def current_user() -> dict | None:

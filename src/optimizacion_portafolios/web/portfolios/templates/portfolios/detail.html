@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, money %}
+{% block title %}{{ portfolio.name }}{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('portfolios.index') }}">Mis portafolios</a> · {{ portfolio.model }} · {{ portfolio.status_label }}</p>
+      <h1>{{ portfolio.name }}</h1>
+      <p class="lead">Seguimiento desde {{ portfolio.tracking_start }} · Benchmark {{ portfolio.benchmark }} · versión {{ portfolio.version.number }} ({{ portfolio.version.reason }}, {{ portfolio.version.effective_date }})</p>
+    </div>
+  </header>
+  {{ disclaimer() }}
+
+  <div class="kpi-grid">
+    <div class="metric-card"><span class="metric-card__label">Capital inicial</span><strong class="metric-card__value">{{ money(portfolio.initial_capital) }}</strong></div>
+    <div class="metric-card"><span class="metric-card__label">Valor al inicio de la versión</span><strong class="metric-card__value">{{ money(portfolio.version.value_after) }}</strong></div>
+    <div class="metric-card"><span class="metric-card__label">Activos</span><strong class="metric-card__value">{{ portfolio.asset_count }}</strong></div>
+    <div class="metric-card"><span class="metric-card__label">Comisión</span><strong class="metric-card__value">{{ '%g'|format(portfolio.commission_bps) }} pb</strong></div>
+  </div>
+
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Posiciones vigentes</h2><p class="card__subtitle">Pesos objetivo, unidades y precio de entrada de la versión {{ portfolio.version.number }}</p></div></header>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr><th scope="col">Activo</th><th scope="col" class="num">Peso objetivo</th><th scope="col" class="num">Unidades</th><th scope="col" class="num">Precio de entrada</th></tr></thead>
+        <tbody>
+          {% for holding in portfolio.holdings %}
+            <tr>
+              <th scope="row" class="mono">{{ holding.ticker }}</th>
+              <td class="num">{{ holding.target_weight|pct }}</td>
+              <td class="num">{{ '{:,.4f}'.format(holding.units) }}</td>
+              <td class="num">{{ money(holding.entry_price) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+{% endblock %}
