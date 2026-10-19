@@ -78,7 +78,7 @@ def fix_form(snapshot: dict) -> dict:
     }
 
 
-def _usd_prices(tickers: tuple[str, ...], start: date, end: date) -> pd.DataFrame:
+def usd_prices(tickers: tuple[str, ...], start: date, end: date) -> pd.DataFrame:
     raw = download_prices(tickers, start, end)
     available = [ticker for ticker in tickers if ticker in raw.columns and raw[ticker].notna().any()]
     return prices_in_usd(raw.loc[:, available], start, end) if available else pd.DataFrame()
@@ -105,7 +105,7 @@ def fix_portfolio(
     tickers = tuple(weights)
     start = today - timedelta(days=FIX_PRICE_LOOKBACK_DAYS)
     try:
-        prices = _usd_prices(tickers, start, today)
+        prices = usd_prices(tickers, start, today)
         benchmark_prices = download_prices((benchmark,), start, today)
     except DOWNLOAD_ERRORS as error:
         raise ValueError(f"No se pudieron descargar los precios de fijación: {error}") from error
@@ -223,8 +223,8 @@ def valuation(portfolio: Portfolio, today: date | None = None) -> dict:
     start = portfolio.tracking_start
     tickers = tuple(sorted({h.ticker for version in portfolio.versions for h in version.holdings}))
     try:
-        prices = _usd_prices(tickers, start, end)
-        benchmark = _usd_prices((portfolio.benchmark,), start, end)
+        prices = usd_prices(tickers, start, end)
+        benchmark = usd_prices((portfolio.benchmark,), start, end)
     except DOWNLOAD_ERRORS as error:
         raise ValueError(f"No se pudieron descargar los precios: {error}") from error
     holdings = business_days(holding_values(prices, segments(portfolio)))
@@ -474,3 +474,63 @@ def portfolio_detail(portfolio: Portfolio, today: date | None = None) -> dict:
             }
         )
     return view
+
+
+# ------------------------------------------------------------------ versions
+_METHOD_LABELS = {
+    "targets": "a los pesos objetivo",
+    "reoptimize": "re-optimizando",
+    "proportional": "redistribución proporcional",
+    "manual": "peso manual",
+}
+
+
+def _version_row(version) -> dict:
+    change = (version.params or {}).get("change") or {}
+    details = []
+    if change.get("method"):
+        details.append(_METHOD_LABELS.get(change["method"], change["method"]))
+    if change.get("removed"):
+        details.append("sin " + ", ".join(change["removed"]))
+    if change.get("added"):
+        details.append("con " + ", ".join(change["added"]))
+    return {
+        "number": version.number,
+        "effective_date": version.effective_date.isoformat(),
+        "reason": REASON_LABELS.get(version.reason, version.reason),
+        "details": " · ".join(details),
+        "note": version.note,
+        "value_before": version.value_before,
+        "value_after": version.value_after,
+        "cost": version.cost,
+        "turnover": version.turnover if version.number > 1 else None,
+        "assets": len(version.holdings),
+        "trades": len(version.transactions),
+    }
+
+
+def versions_view(portfolio: Portfolio) -> list[dict]:
+    return [_version_row(version) for version in reversed(portfolio.versions)]
+
+
+def compare_versions(portfolio: Portfolio, first: int, second: int) -> dict:
+    """Weights and units of two versions side by side."""
+    by_number = {version.number: version for version in portfolio.versions}
+    a, b = by_number[first], by_number[second]
+    tickers = sorted(set(a.target_weights) | set(b.target_weights), key=lambda t: -b.target_weights.get(t, a.target_weights.get(t, 0.0)))
+    return {
+        "a": _version_row(a),
+        "b": _version_row(b),
+        "rows": [
+            {
+                "ticker": ticker,
+                "weight_a": a.target_weights.get(ticker),
+                "weight_b": b.target_weights.get(ticker),
+                "change": b.target_weights.get(ticker, 0.0) - a.target_weights.get(ticker, 0.0),
+                "units_a": a.units.get(ticker),
+                "units_b": b.units.get(ticker),
+                "status": "nuevo" if ticker not in a.target_weights else "eliminado" if ticker not in b.target_weights else "",
+            }
+            for ticker in tickers
+        ],
+    }

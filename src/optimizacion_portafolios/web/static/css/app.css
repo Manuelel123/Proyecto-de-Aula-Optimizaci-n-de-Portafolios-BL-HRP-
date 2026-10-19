@@ -2232,3 +2232,15 @@ input.badge:disabled { background: var(--accent-subtle); color: var(--accent); }
 .alert-thresholds th[scope="row"] { font-weight: 500; }
 .alert-thresholds__help { display: block; font-weight: 400; }
 .alert-thresholds .input-affix { min-width: 110px; }
+
+/* Portfolio management: action cards, removal list and version details. */
+.manage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+}
+.check-list { display: grid; gap: var(--sp-2); margin: 0; padding: 0; border: 0; }
+.check-list legend { margin-bottom: var(--sp-2); }
+.versions__details { display: block; }
+.danger-zone .card__footer { justify-content: flex-start; }

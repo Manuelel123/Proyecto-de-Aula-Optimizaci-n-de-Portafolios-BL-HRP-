@@ -100,6 +100,7 @@ def black_litterman_snapshot(
             "tickers": [row["ticker"] for row in rows],
             "objective": objective,
             "risk_free_rate": risk_free_rate,
+            "market_benchmark": benchmark,
             "views": {row["ticker"]: row["view"] for row in rows},
             "market_weights": {row["ticker"]: row["market_weight"] for row in rows},
             "window_years": window["years"],

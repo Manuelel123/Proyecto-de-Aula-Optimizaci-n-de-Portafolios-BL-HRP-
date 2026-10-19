@@ -103,9 +103,11 @@ class CurrencyTests(unittest.TestCase):
 
 
 def _prices(tickers, start, end):
-    """Synthetic closes for any request, ending on ``end``."""
-    frame = make_prices(tuple(tickers), rows=300)
-    frame.index = pd.bdate_range(end=pd.Timestamp(end), periods=len(frame), name="Fecha")
+    """Synthetic closes ending on ``end``; each ticker has the same series in every request."""
+    index = pd.bdate_range(end=pd.Timestamp(end), periods=300, name="Fecha")
+    frame = pd.DataFrame(
+        {ticker: make_prices((ticker,), rows=300)[ticker].to_numpy() for ticker in tickers}, index=index
+    )
     return frame.loc[frame.index >= pd.Timestamp(start)]
 
 

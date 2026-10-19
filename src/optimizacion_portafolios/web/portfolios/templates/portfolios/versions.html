@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "portfolios/_macros.html" import disclaimer, money, portfolio_tabs %}
+{% block title %}Versiones · {{ portfolio.name }}{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('portfolios.index') }}">Mis portafolios</a> · {{ portfolio.name }}</p>
+      <h1>Historial de versiones</h1>
+      <p class="lead">Cada cambio queda registrado con su fecha, motivo, pesos, unidades y costo.</p>
+    </div>
+  </header>
+  {{ portfolio_tabs(portfolio.id, 'versions') }}
+  {{ disclaimer() }}
+
+  <article class="card account-section">
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Versión</th><th scope="col">Fecha</th><th scope="col">Motivo</th><th scope="col" class="num">Activos</th>
+            <th scope="col" class="num">Valor antes</th><th scope="col" class="num">Valor después</th><th scope="col" class="num">Costo</th><th scope="col" class="num">Turnover</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for version in versions %}
+            <tr>
+              <th scope="row">{{ version.number }}</th>
+              <td>{{ version.effective_date }}</td>
+              <td>{{ version.reason }}{% if version.details %}<span class="help-text versions__details">{{ version.details }}</span>{% endif %}{% if version.note %}<span class="help-text versions__details">«{{ version.note }}»</span>{% endif %}</td>
+              <td class="num">{{ version.assets }}</td>
+              <td class="num">{{ money(version.value_before) }}</td>
+              <td class="num">{{ money(version.value_after) }}</td>
+              <td class="num">{{ money(version.cost) }}</td>
+              <td class="num">{{ version.turnover|pct(1) if version.turnover is not none else '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  {% if versions|length > 1 %}
+    <form method="get" class="card account-section compare-form">
+      <div class="card__body form-row">
+        <div class="form-field">
+          <label for="a">Comparar la versión</label>
+          <select id="a" name="a">{% for version in versions %}<option value="{{ version.number }}"{% if version.number == selected[0] %} selected{% endif %}>{{ version.number }} · {{ version.effective_date }}</option>{% endfor %}</select>
+        </div>
+        <div class="form-field">
+          <label for="b">con la versión</label>
+          <select id="b" name="b">{% for version in versions %}<option value="{{ version.number }}"{% if version.number == selected[1] %} selected{% endif %}>{{ version.number }} · {{ version.effective_date }}</option>{% endfor %}</select>
+        </div>
+      </div>
+      <div class="card__footer"><button class="button button-secondary" type="submit">Comparar</button></div>
+    </form>
+  {% endif %}
+
+  {% if comparison %}
+    <article class="card account-section">
+      <header class="card__header"><div><h2 class="card__title">Versión {{ comparison.a.number }} frente a versión {{ comparison.b.number }}</h2><p class="card__subtitle">{{ comparison.a.effective_date }} → {{ comparison.b.effective_date }}</p></div></header>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th scope="col">Activo</th><th scope="col" class="num">Peso v{{ comparison.a.number }}</th><th scope="col" class="num">Peso v{{ comparison.b.number }}</th><th scope="col" class="num">Cambio</th><th scope="col" class="num">Unidades v{{ comparison.a.number }}</th><th scope="col" class="num">Unidades v{{ comparison.b.number }}</th></tr></thead>
+          <tbody>
+            {% for row in comparison.rows %}
+              <tr>
+                <th scope="row" class="mono">{{ row.ticker }}{% if row.status %} <span class="badge badge--neutral">{{ row.status }}</span>{% endif %}</th>
+                <td class="num">{{ row.weight_a|pct if row.weight_a is not none else '—' }}</td>
+                <td class="num">{{ row.weight_b|pct if row.weight_b is not none else '—' }}</td>
+                <td class="num">{{ '%+.2f'|format(row.change * 100) }} pp</td>
+                <td class="num">{{ '{:,.4f}'.format(row.units_a) if row.units_a is not none else '—' }}</td>
+                <td class="num">{{ '{:,.4f}'.format(row.units_b) if row.units_b is not none else '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  {% endif %}
+{% endblock %}

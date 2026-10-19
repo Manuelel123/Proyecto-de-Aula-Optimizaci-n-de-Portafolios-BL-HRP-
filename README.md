@@ -102,6 +102,16 @@ Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones s
   | Días hábiles sin precio nuevo de un activo (posible baja de cotización) | > 2 | > 5 |
 
   Las reglas se evalúan al abrir el panel y con `flask portfolios snapshot`. Cada evento guarda cuándo se disparó y cuándo se resolvió; un cambio de nivel cierra el evento anterior y abre uno nuevo. No se envían correos ni notificaciones.
+- **Gestión** (`/portafolios/<id>/gestionar`, lógica en `models/rebalancing.py`): cada cambio crea una versión nueva con motivo, fecha, pesos, unidades, operaciones y costo, sin reiniciar el seguimiento.
+  - **Rebalancear:** a los pesos objetivo vigentes o re-optimizando con el mismo modelo (HRP con la misma longitud de ventana; Black-Litterman con sus views, objetivo y tasa libre de riesgo) y datos hasta hoy.
+  - **Eliminar activos:** el peso liberado se reparte en proporción o re-optimizando con los activos restantes.
+  - **Agregar activos:** con peso manual (el resto se reduce en proporción) o re-optimizando con el nuevo universo (en Black-Litterman hay que indicar la view del activo nuevo). El ticker se valida descargando sus precios.
+  - **Vista previa:** antes de confirmar se muestran los pesos antes y después, las compras y ventas, el turnover (de una vía: la mitad de lo operado sobre el valor) y el costo (comisión del portafolio en pb sobre cada monto operado). La vista previa queda firmada; si el portafolio cambia antes de confirmar, se rechaza.
+  - Se respetan los límites de peso de HRP (`WeightBounds`) en todas las operaciones; si no existe una asignación que los cumpla, el cambio se rechaza con un mensaje.
+  - Las operaciones usan el último cierre disponible. Si el mercado está abierto, ese precio todavía puede moverse y la valoración del día se ajustará al cierre.
+  - El valor es continuo: el día del cambio, el portafolio vale lo que valía antes menos el costo.
+  - **Versiones:** historial en `/portafolios/<id>/versiones`, con comparación de dos versiones (`?a=1&b=3`).
+  - **Archivar:** el portafolio deja de monitorearse (sin snapshots ni alertas) y conserva todo su historial.
 - **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
 
 ## Pruebas
@@ -164,6 +174,7 @@ src/optimizacion_portafolios/
     performance.py              métricas e informe QuantStats
   models/
     hrp.py                      pesos HRP y contribuciones
+    rebalancing.py              cambios de portafolio: límites, operaciones, costo y turnover
     black_litterman.py          prior de equilibrio, views y optimización
     arima.py                    flujo Box-Jenkins (pendiente de integrar en la web)
   web/

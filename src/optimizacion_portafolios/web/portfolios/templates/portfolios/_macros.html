@@ -47,5 +47,7 @@
   <nav class="segmented portfolio-tabs" aria-label="Secciones del portafolio">
     <a href="{{ url_for('portfolios.detail', portfolio_id=portfolio_id) }}"{% if active == 'detail' %} aria-current="page"{% endif %}>Panel</a>
     <a href="{{ url_for('portfolios.alerts', portfolio_id=portfolio_id) }}"{% if active == 'alerts' %} aria-current="page"{% endif %}>Alertas</a>
+    <a href="{{ url_for('portfolios.manage', portfolio_id=portfolio_id) }}"{% if active == 'manage' %} aria-current="page"{% endif %}>Gestionar</a>
+    <a href="{{ url_for('portfolios.versions', portfolio_id=portfolio_id) }}"{% if active == 'versions' %} aria-current="page"{% endif %}>Versiones</a>
   </nav>
 {% endmacro %}
