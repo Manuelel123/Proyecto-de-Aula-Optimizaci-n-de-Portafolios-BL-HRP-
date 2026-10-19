@@ -7,7 +7,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 from optimizacion_portafolios.storage import repositories
 from optimizacion_portafolios.web.auth.session import current_user_id, login_required
 from optimizacion_portafolios.web.common.forms import normalize_ticker, parse_bounded_float
-from optimizacion_portafolios.web.portfolios import alerting, bp, management, services
+from optimizacion_portafolios.web.portfolios import alerting, bp, management, services, signals_view
 from optimizacion_portafolios.web.portfolios.snapshots import unsign
 
 _NAME_MAX = 120
@@ -257,3 +257,22 @@ def archive(portfolio_id: int):
         repositories.archive_portfolio(portfolio, datetime.now(timezone.utc))
         flash("Portafolio archivado: deja de monitorearse y conserva todo su historial.", "info")
     return redirect(url_for("portfolios.detail", portfolio_id=portfolio.id))
+
+
+@bp.get("/<int:portfolio_id>/senales")
+@login_required
+def signals(portfolio_id: int):
+    portfolio = owned_portfolio(portfolio_id)
+    values = signals_view.form_values()
+    result = None
+    try:
+        config = signals_view.config_from(values, portfolio.commission_bps)
+        result = signals_view.signals_view(portfolio, config)
+    except ValueError as error:
+        flash(str(error), "error")
+    return render_template(
+        "portfolios/signals.html",
+        portfolio=services.portfolio_header(portfolio),
+        values=values,
+        result=result,
+    )

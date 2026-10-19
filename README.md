@@ -112,6 +112,7 @@ Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones s
   - El valor es continuo: el día del cambio, el portafolio vale lo que valía antes menos el costo.
   - **Versiones:** historial en `/portafolios/<id>/versiones`, con comparación de dos versiones (`?a=1&b=3`).
   - **Archivar:** el portafolio deja de monitorearse (sin snapshots ni alertas) y conserva todo su historial.
+- **Señales** (`/portafolios/<id>/senales`, `models/signals.py`): reglas por activo simuladas con vectorbt (`from_signals` con `group_by` y `cash_sharing`) sobre los pesos vigentes desde la fecha de fijación, frente a comprar y mantener. Un activo está «dentro» mientras se cumplen las reglas activas: media rápida sobre la lenta (50/200 días), volatilidad de 21 días como máximo 2× su mediana y drawdown del activo menor al 20 %. Aparte, un stop-loss del 10 % (dinámico por defecto) cierra la posición. Cada entrada compra peso objetivo × capital, porque el simulador de señales de vectorbt no admite tamaños de porcentaje objetivo. Son sugerencias: nunca modifican el portafolio; para actuar hay que usar Gestionar, que pide confirmación. La primera simulación tarda más mientras numba compila.
 - **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
 
 ## Pruebas
@@ -175,6 +176,7 @@ src/optimizacion_portafolios/
   models/
     hrp.py                      pesos HRP y contribuciones
     rebalancing.py              cambios de portafolio: límites, operaciones, costo y turnover
+    signals.py                  señales de entrada y salida por activo (vectorbt)
     black_litterman.py          prior de equilibrio, views y optimización
     arima.py                    flujo Box-Jenkins (pendiente de integrar en la web)
   web/
