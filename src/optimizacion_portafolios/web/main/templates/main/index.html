@@ -1,119 +1,89 @@
 {% extends "base.html" %}
-{% block title %}Laboratorio de portafolios{% endblock %}
-
+{% from "macros/learning.html" import educational_notice %}
+{% block title %}Aprende a construir portafolios{% endblock %}
 
 {% block content %}
   {% set check_icon %}<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg>{% endset %}
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero__copy">
-      <p class="eyebrow">Laboratorio de portafolios cuantitativos</p>
-      <h1 id="hero-title" class="hero__title">Construye portafolios con <span class="text-accent">método</span>, no con intuición.</h1>
-      <p class="hero__lead">Explora el mercado, mide cómo se reparte el riesgo y calcula asignaciones con Hierarchical Risk Parity y Black-Litterman sobre datos históricos reales.</p>
+      <p class="eyebrow">Laboratorio educativo de portafolios</p>
+      <h1 id="hero-title" class="hero__title">Aprende a construir portafolios con <span class="text-accent">método</span>, no con intuición.</h1>
+      <p class="hero__lead">Atlas es una herramienta para aprender cómo se reparte el dinero entre varios activos y por qué. Está pensada para personas jóvenes que están empezando y quieren entender la diversificación, el riesgo y dos métodos usados por profesionales: Hierarchical Risk Parity y Black-Litterman.</p>
+      {{ educational_notice("Atlas usa datos históricos y modelos con supuestos: sirve para aprender, no para decidir en qué invertir.") }}
       <div class="hero__actions">
-        <a class="button button-primary" href="{{ url_for('monitoring.monitoring') }}">Explorar mercado <span class="arrow" aria-hidden="true">→</span></a>
-        <a class="button button-secondary" href="{{ url_for('hrp.hrp') }}">Optimizar con HRP</a>
+        <a class="button button-primary" href="{{ url_for('auth.register') }}">Crear cuenta gratis <span class="arrow" aria-hidden="true">→</span></a>
+        <a class="button button-secondary" href="{{ url_for('auth.login') }}">Ya tengo cuenta</a>
       </div>
       <ul class="hero__note">
-        <li>{{ check_icon }}Sin registro</li>
-        <li>{{ check_icon }}Informe QuantStats descargable</li>
-        <li>{{ check_icon }}Modo claro y oscuro</li>
+        <li>{{ check_icon }}Perfil de riesgo al empezar</li>
+        <li>{{ check_icon }}Explicaciones en lenguaje simple</li>
+        <li>{{ check_icon }}Glosario incluido</li>
       </ul>
     </div>
 
-    {# Illustrative product preview: example values, not a live result. #}
-    {% set preview = [("AAPL", 24.1), ("MSFT", 19.6), ("XLV", 17.3), ("GC=F", 15.8), ("BTC-USD", 12.7), ("XLE", 10.5)] %}
-    {% set scale = 8.2 %}
-    {% set bar_x = 64 %}
-    <figure class="preview-card" aria-label="Vista previa ilustrativa de un resultado HRP con seis activos">
-      <div class="preview-card__header">
-        <div>
-          <p class="preview-card__title">Distribución del portafolio</p>
-          <p class="preview-card__subtitle">HRP · 6 activos · Benchmark SPY</p>
-        </div>
-        <span class="badge badge--neutral">Ejemplo</span>
+    <div class="card auth-card landing-login" id="ingresar">
+      <div class="card__body">
+        <p class="eyebrow">Cuenta Atlas</p>
+        <h2 class="auth-card__title">Inicia sesión</h2>
+        <p class="auth-card__lead">Ingresa con tu correo y contraseña.</p>
+        <form method="post" action="{{ url_for('auth.login') }}" class="form-stack" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="form-field">
+            <label for="login-email">Correo electrónico</label>
+            <input id="login-email" name="email" type="email" autocomplete="email" required maxlength="254">
+          </div>
+          <div class="form-field">
+            <label for="login-password">Contraseña</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <button class="button button-primary button-block" type="submit">Iniciar sesión</button>
+        </form>
       </div>
-      <div class="preview-card__chart" aria-hidden="true">
-        <svg viewBox="0 0 320 186" focusable="false">
-          {% for ticker, weight in preview %}
-            {% set y = 6 + loop.index0 * 28 %}
-            <text class="preview-svg__label" x="0" y="{{ y + 13 }}">{{ ticker }}</text>
-            <rect class="preview-svg__track" x="{{ bar_x }}" y="{{ y }}" width="{{ '%.1f'|format(25 * scale) }}" height="18" rx="4"/>
-            <rect class="preview-svg__bar" x="{{ bar_x }}" y="{{ y }}" width="{{ '%.1f'|format(weight * scale) }}" height="18" rx="4"/>
-            <text class="preview-svg__value" x="{{ '%.1f'|format(bar_x + 25 * scale + 8) }}" y="{{ y + 13 }}">{{ '%.1f'|format(weight) }} %</text>
-          {% endfor %}
-          {% set ref_x = '%.1f'|format(bar_x + (100 / 6) * scale) %}
-          <line class="preview-svg__ref" x1="{{ ref_x }}" x2="{{ ref_x }}" y1="0" y2="172"/>
-          <text class="preview-svg__ref-label" x="{{ ref_x }}" y="184" text-anchor="middle">Peso equitativo 1/N</text>
-        </svg>
-      </div>
-      <div class="kpi-grid">
-        <div class="metric-card metric-card--compact">
-          <span class="metric-card__label">Volatilidad anual</span>
-          <span class="metric-card__value">14.2<span class="metric-card__unit">%</span></span>
-        </div>
-        <div class="metric-card metric-card--compact">
-          <span class="metric-card__label">Ratio de Sortino</span>
-          <span class="metric-card__value">1.38</span>
-        </div>
-      </div>
-    </figure>
+      <div class="card__footer auth-card__footer">¿No tienes cuenta? <a href="#registro">Crea una aquí abajo</a></div>
+    </div>
   </section>
 
-  <dl class="stats-strip" aria-label="Cobertura de la plataforma">
+  <dl class="stats-strip" aria-label="Qué incluye Atlas">
     {% for stat in stats %}
-      <div class="stats-strip__item">
-        <dt>{{ stat.label }}</dt>
-        <dd>{{ stat.value }}</dd>
-      </div>
+      <div class="stats-strip__item"><dt>{{ stat.label }}</dt><dd>{{ stat.value }}</dd></div>
     {% endfor %}
   </dl>
 
-  <section class="section" aria-labelledby="modules-title">
+  <section class="section" aria-labelledby="how-title">
     <div class="section__header">
-      <p class="eyebrow">Módulos</p>
-      <h2 id="modules-title">Del dato de mercado a la asignación final</h2>
-      <p>Tres herramientas conectadas que comparten catálogos, datos y criterios de riesgo.</p>
+      <p class="eyebrow">Cómo funciona</p>
+      <h2 id="how-title">Tres pasos para empezar</h2>
+      <p>Ninguna herramienta muestra resultados sin una cuenta y un perfil de riesgo.</p>
+    </div>
+    <ol class="landing-steps">
+      <li class="card landing-step"><div class="card__body"><span class="step__number">1</span><h3 class="card__title">Crea tu cuenta</h3><p class="help-text">Solo necesitas un correo y una contraseña.</p></div></li>
+      <li class="card landing-step"><div class="card__body"><span class="step__number">2</span><h3 class="card__title">Responde tu perfil de riesgo</h3><p class="help-text">Diez preguntas sobre tu tolerancia, tu capacidad de asumir pérdidas y tu horizonte.</p></div></li>
+      <li class="card landing-step"><div class="card__body"><span class="step__number">3</span><h3 class="card__title">Explora con guía</h3><p class="help-text">Elige un grupo de activos y mira cómo cada método reparte el dinero y por qué.</p></div></li>
+    </ol>
+  </section>
+
+  <section class="section" aria-labelledby="roles-title">
+    <div class="section__header">
+      <p class="eyebrow">Para quién</p>
+      <h2 id="roles-title">Tres formas de usar Atlas</h2>
+      <p>Empiezas como explorador; puedes elegir inversionista según tu perfil. El rol gestor lo asigna la administración.</p>
     </div>
     <div class="module-grid">
-      {% for module in modules %}
-        <a class="module-card" href="{{ url_for(module.endpoint) }}" data-module="{{ module.key }}">
-          <div class="module-card__head">
-            <span class="module-card__icon" aria-hidden="true">
-              {% if module.key == "market" %}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
-              {% elif module.key == "hrp" %}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-5h6v5M8 15v-4h9v9M14 20v-4h6v4"/><path d="M12.5 11V5"/></svg>
-              {% else %}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="12" r="3"/><path d="M8.5 7.8 15 11M8.5 16.2 15 13"/></svg>
-              {% endif %}
-            </span>
-            <span class="eyebrow">{{ module.eyebrow }}</span>
-          </div>
-          <div>
-            <h3 class="module-card__title">{{ module.title }}</h3>
-            <p class="module-card__description">{{ module.description }}</p>
-          </div>
-          <ul class="module-card__features">
-            {% for feature in module.features %}<li>{{ check_icon }}<span>{{ feature }}</span></li>{% endfor %}
-          </ul>
-          <span class="module-card__link">Abrir módulo <span class="arrow" aria-hidden="true">→</span></span>
-        </a>
+      {% for name, summary in roles %}
+        <article class="card role-card"><div class="card__body"><span class="badge badge--neutral">{{ name }}</span><p>{{ summary }}</p></div></article>
       {% endfor %}
     </div>
   </section>
 
   <section class="section" aria-labelledby="method-title">
     <div class="section__header">
-      <p class="eyebrow">Metodología</p>
+      <p class="eyebrow">Qué vas a aprender</p>
       <h2 id="method-title">Dos enfoques complementarios</h2>
-      <p>Uno no necesita pronosticar retornos; el otro hace explícitas tus expectativas y las combina con el mercado.</p>
+      <p>Uno no necesita pronosticar retornos; el otro parte de lo que el mercado ya refleja. Los diagramas son ilustrativos, no resultados.</p>
     </div>
     <div class="method-grid">
       <article class="method-card">
-        <div>
-          <p class="eyebrow">Riesgo jerárquico</p>
-          <h3 class="method-card__title">Hierarchical Risk Parity</h3>
-        </div>
+        <div><p class="eyebrow">Riesgo jerárquico</p><h3 class="method-card__title">Hierarchical Risk Parity</h3></div>
         <div class="method-card__diagram" aria-hidden="true">
           <svg viewBox="0 0 300 140" focusable="false">
             <path class="diagram__line" d="M30 110V80h40v30M50 80V50h70v60M85 50V22M215 22v28M190 50h50M190 50v60M240 50v30M225 80h30v30M225 80v30"/>
@@ -121,48 +91,61 @@
             {% for x, accent in [(30, false), (70, false), (120, false), (190, true), (225, true), (255, true)] %}
               <circle class="diagram__leaf{{ ' diagram__leaf--accent' if accent else '' }}" cx="{{ x }}" cy="110" r="4.5"/>
             {% endfor %}
-            {% for x, label in [(30, "XLK"), (70, "MSFT"), (120, "AAPL"), (190, "GC=F"), (225, "XLE"), (255, "BTC")] %}
-              <text class="diagram__text diagram__text--muted diagram__text--mono" x="{{ x }}" y="132" text-anchor="middle">{{ label }}</text>
-            {% endfor %}
           </svg>
         </div>
-        <p class="method-card__text">Agrupa los activos según la distancia derivada de su correlación y reparte el capital de arriba hacia abajo en el árbol, de modo que cada grupo aporte un riesgo comparable. Al no invertir la matriz de covarianza ni estimar retornos, produce asignaciones más estables.</p>
-        <ol class="method-card__steps">
-          <li>Distancia por correlación y agrupamiento jerárquico</li>
-          <li>Ordenamiento cuasi-diagonal de la matriz</li>
-          <li>Bisección recursiva por varianza inversa</li>
-        </ol>
+        <p class="method-card__text">Agrupa los activos que se mueven parecido y reparte el dinero de arriba hacia abajo, para que cada grupo aporte un riesgo comparable. No intenta adivinar qué subirá más.</p>
       </article>
-
       <article class="method-card">
-        <div>
-          <p class="eyebrow">Equilibrio + views</p>
-          <h3 class="method-card__title">Black-Litterman</h3>
-        </div>
+        <div><p class="eyebrow">Equilibrio + views</p><h3 class="method-card__title">Black-Litterman</h3></div>
         <div class="method-card__diagram" aria-hidden="true">
           <svg viewBox="0 0 300 140" focusable="false">
             <rect class="diagram__node" x="8" y="14" width="112" height="44" rx="8"/>
-            <text class="diagram__text" x="64" y="33" text-anchor="middle">Prior</text>
-            <text class="diagram__text diagram__text--muted" x="64" y="48" text-anchor="middle">equilibrio del mercado</text>
+            <text class="diagram__text" x="64" y="40" text-anchor="middle">Equilibrio</text>
             <rect class="diagram__node" x="8" y="82" width="112" height="44" rx="8"/>
-            <text class="diagram__text" x="64" y="101" text-anchor="middle">Views</text>
-            <text class="diagram__text diagram__text--muted" x="64" y="116" text-anchor="middle">tus expectativas</text>
+            <text class="diagram__text" x="64" y="108" text-anchor="middle">Views</text>
             <path class="diagram__line" d="M120 36h40q12 0 12 12v14M120 104h40q12 0 12-12V78"/>
             <path class="diagram__line diagram__line--accent" d="M172 70h26"/>
             <path class="diagram__arrowhead" d="m207 70-9-5v10z"/>
             <rect class="diagram__node diagram__node--accent" x="208" y="46" width="84" height="48" rx="8"/>
-            <text class="diagram__text diagram__text--accent" x="250" y="67" text-anchor="middle">Posterior</text>
-            <text class="diagram__text diagram__text--muted" x="250" y="82" text-anchor="middle">μ y Σ ajustados</text>
+            <text class="diagram__text diagram__text--accent" x="250" y="74" text-anchor="middle">Portafolio</text>
           </svg>
         </div>
-        <p class="method-card__text">Parte de los retornos implícitos en la capitalización del mercado y los ajusta con tus views, ponderadas por su confianza. El resultado es una estimación posterior coherente que evita las asignaciones extremas de la optimización media-varianza clásica.</p>
-        <ol class="method-card__steps">
-          <li>Retornos de equilibrio con aversión al riesgo δ</li>
-          <li>Views anuales con confianza por el método de Idzorek</li>
-          <li>Optimización sobre la distribución posterior</li>
-        </ol>
+        <p class="method-card__text">Parte del peso que el mercado le da a cada activo por su tamaño, lo combina con opiniones (views) y busca el mejor retorno esperado por unidad de riesgo.</p>
       </article>
     </div>
-    <p class="method-note">Referencias: López de Prado, M. (2016), <cite>Building Diversified Portfolios that Outperform Out of Sample</cite>; Black, F. y Litterman, R. (1992), <cite>Global Portfolio Optimization</cite>; Idzorek, T. (2005), <cite>A Step-by-Step Guide to the Black-Litterman Model</cite>. Implementación con skfolio y métricas con QuantStats.</p>
+  </section>
+
+  <section class="section" aria-labelledby="registro-title" id="registro">
+    <div class="section__header">
+      <p class="eyebrow">Empieza</p>
+      <h2 id="registro-title">Crea tu cuenta</h2>
+      <p>Tu correo es tu usuario. La contraseña se guarda cifrada y nunca en texto plano.</p>
+    </div>
+    <div class="card auth-card landing-register">
+      <div class="card__body">
+        <form method="post" action="{{ url_for('auth.register') }}" class="form-stack" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="form-field">
+            <label for="register-name">Nombre <span class="help-text">(opcional)</span></label>
+            <input id="register-name" name="name" type="text" autocomplete="name" maxlength="80">
+          </div>
+          <div class="form-field">
+            <label for="register-email">Correo electrónico</label>
+            <input id="register-email" name="email" type="email" autocomplete="email" required maxlength="254">
+          </div>
+          <div class="form-field">
+            <label for="register-password">Contraseña</label>
+            <input id="register-password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="register-password-help">
+            <p class="help-text" id="register-password-help">Debe tener {{ password_rules|join(' y ') }}.</p>
+          </div>
+          <div class="form-field">
+            <label for="register-password-confirm">Confirma la contraseña</label>
+            <input id="register-password-confirm" name="password_confirm" type="password" autocomplete="new-password" required>
+          </div>
+          <button class="button button-primary button-block" type="submit">Crear cuenta</button>
+        </form>
+      </div>
+    </div>
+    <p class="method-note">Referencias: López de Prado, M. (2016), <cite>Building Diversified Portfolios that Outperform Out of Sample</cite>; Black, F. y Litterman, R. (1992), <cite>Global Portfolio Optimization</cite>.</p>
   </section>
 {% endblock %}

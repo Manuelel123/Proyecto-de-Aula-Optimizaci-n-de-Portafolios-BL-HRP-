@@ -1,7 +1,7 @@
 [project]
 name = "optimizacion-portafolios"
 version = "0.1.0"
-description = "Portfolio monitoring and optimization using Flask"
+description = "Educational Flask app for young beginners to learn portfolio construction with HRP and Black-Litterman, with risk profiling and role-based guided tools (not financial advice)"
 readme = "README.md"
 authors = [
     { name = "Manuelel123", email = "bedoyayonatan164@gmail.com" }

@@ -6,11 +6,11 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>
     </span>
     <p class="error-page__code">{{ status }}</p>
-    <h1 id="error-title" class="error-page__title">{{ 'Página no encontrada' if status == 404 else 'No pudimos procesar la solicitud' }}</h1>
+    <h1 id="error-title" class="error-page__title">{{ 'Página no encontrada' if status == 404 else 'No tienes acceso a esta función' if status == 403 else 'No pudimos procesar la solicitud' }}</h1>
     <p class="error-page__text">{{ message }}</p>
     <div class="error-page__actions">
       <a class="button button-primary" href="{{ url_for('main.index') }}">Ir al inicio</a>
-      <a class="button button-secondary" href="{{ url_for('monitoring.monitoring') }}">Explorar mercado</a>
+      {% if current_user.is_authenticated %}<a class="button button-secondary" href="{{ url_for('main.glossary') }}">Ver el glosario</a>{% else %}<a class="button button-secondary" href="{{ url_for('auth.login') }}">Iniciar sesión</a>{% endif %}
     </div>
   </section>
 {% endblock %}

@@ -106,6 +106,9 @@ def _crashing_prices(tickers, start, end):
 
 
 class AlertPagesTests(AccountTestCase):
+    # Full access (fixing, alerts, management, signals, backtests): ana is a gestor.
+    gestor_emails = "ana@example.com"
+
     def _portfolio(self):
         user_id = self.user_id_of()
         portfolio = repositories.create_portfolio(

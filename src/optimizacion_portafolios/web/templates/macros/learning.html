@@ -1,0 +1,50 @@
+{# Educational pieces shared by every page with results. #}
+
+{# The mandatory notice: exact text, on every screen with results and on the portada. #}
+{% macro educational_notice(extra=None) %}
+  <div class="notice notice--warning educational-notice" role="note">
+    <p><strong>Información educativa. No es recomendación de inversión ni asesoría financiera.</strong>{% if extra %} {{ extra }}{% endif %}</p>
+  </div>
+{% endmacro %}
+
+{# Definition list of (term, definition) pairs. #}
+{% macro glossary_list(items) %}
+  <dl class="glossary">
+    {% for term, definition in items %}
+      <div class="glossary__item"><dt>{{ term }}</dt><dd>{{ definition }}</dd></div>
+    {% endfor %}
+  </dl>
+{% endmacro %}
+
+{# Collapsible glossary for result pages. #}
+{% macro glossary_section(items, open=False) %}
+  <details class="analysis-section" data-section="glossary" id="glosario"{{ ' open' if open else '' }}>
+    <summary><span class="analysis-section__title">Glosario</span><span class="analysis-section__meta">Las palabras clave de esta página, en lenguaje simple</span></summary>
+    <div class="analysis-section__body">
+      {{ glossary_list(items) }}
+      <p class="help-text"><a href="{{ url_for('main.glossary') }}">Ver el glosario completo</a></p>
+    </div>
+  </details>
+{% endmacro %}
+
+{# "Why does each asset get this weight?" card. explanation = {summary, rows: [{ticker, name?, weight_text, text}]} #}
+{% macro weight_explanation(explanation, title="¿Por qué cada activo recibe ese peso?") %}
+  <article class="card explanation-card" id="explicacion">
+    <header class="card__header"><div><h2 class="card__title">{{ title }}</h2><p class="card__subtitle">{{ explanation.summary }}</p></div></header>
+    <ol class="explanation-list">
+      {% for row in explanation.rows %}
+        <li class="explanation-list__item">
+          <div class="explanation-list__head"><span class="mono">{{ row.ticker }}</span>{% if row.name and row.name != '—' and row.name != row.ticker %}<span class="help-text">{{ row.name }}</span>{% endif %}<strong class="explanation-list__weight">{{ row.weight_text }}</strong></div>
+          <p>{{ row.text }}</p>
+        </li>
+      {% endfor %}
+    </ol>
+  </article>
+{% endmacro %}
+
+{# Read-only list of the fixed inputs of a guided page. items = [(label, value)] #}
+{% macro fixed_inputs(items) %}
+  <dl class="metric-list fixed-inputs">
+    {% for label, value in items %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+  </dl>
+{% endmacro %}

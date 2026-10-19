@@ -350,6 +350,35 @@ def _backtest_record(result: BacktestResult, best: str | None) -> dict:
     }
 
 
+def _asset_stats(weights: pd.Series, contributions: pd.DataFrame, correlation: pd.DataFrame) -> list[dict]:
+    """Per-asset inputs of the plain-language explanation (presentation only).
+
+    Weight, annualized volatility and risk share come from
+    ``calculate_hrp_contributions``; the average correlation is the mean of the
+    asset's off-diagonal entries in the correlation matrix HRP used.
+    """
+
+    def number(value):
+        return None if value is None or pd.isna(value) else float(value)
+
+    others = len(correlation) - 1
+    rows = []
+    for ticker, weight in weights.sort_values(ascending=False).items():
+        average = None
+        if others > 0 and ticker in correlation.index:
+            average = number((correlation.loc[ticker].sum() - correlation.loc[ticker, ticker]) / others)
+        rows.append(
+            {
+                "ticker": str(ticker),
+                "weight": float(weight),
+                "volatility": number(contributions.loc[ticker, "Volatilidad anualizada"]),
+                "risk_share": number(contributions.loc[ticker, "Contribución al riesgo"]),
+                "avg_correlation": average,
+            }
+        )
+    return rows
+
+
 def run_backtest_section(
     assets: list[str],
     start_date: date,
@@ -463,6 +492,7 @@ def run_hrp(
             run.raw_prices, chart_names, run.benchmark_prices
         ),
         "allocation_rows": _allocation_rows(weights, names, limits),
+        "asset_stats": _asset_stats(weights, contributions, run.ordered_correlation),
         "has_limits": has_limits,
         "tables": {
             "contributions": dataframe_html(

@@ -64,6 +64,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     _configure_storage(app, testing)
     _register_access_guard(app)
     _register_profile_requirement(app)
+    _register_role_permissions(app)
     _register_blueprints(app)
     _register_template_helpers(app)
     _register_csrf_protection(app)
@@ -158,6 +159,17 @@ def _register_profile_requirement(app: Flask) -> None:
     access.init_app(app)
 
 
+def _register_role_permissions(app: Flask) -> None:
+    """Pages and actions by role (``web.auth.permissions``).
+
+    Registers the ``require_role`` access check (after the profile check) and
+    the ``can`` / ``can_open`` / ``nav_items`` template helpers.
+    """
+    from optimizacion_portafolios.web.auth import permissions
+
+    permissions.init_app(app)
+
+
 def _register_template_helpers(app: Flask) -> None:
     @app.context_processor
     def inject_accounts():
@@ -206,6 +218,7 @@ def _register_blueprints(app: Flask) -> None:
     from optimizacion_portafolios.web.auth import bp as auth_bp
     from optimizacion_portafolios.web.portfolios import bp as portfolios_bp
     from optimizacion_portafolios.web.black_litterman import bp as black_litterman_bp
+    from optimizacion_portafolios.web.compare import bp as compare_bp
     from optimizacion_portafolios.web.history import bp as history_bp
     from optimizacion_portafolios.web.hrp import bp as hrp_bp
     from optimizacion_portafolios.web.main import bp as main_bp
@@ -216,6 +229,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(monitoring_bp)
     app.register_blueprint(hrp_bp)
     app.register_blueprint(black_litterman_bp)
+    app.register_blueprint(compare_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
@@ -245,6 +259,12 @@ def _register_error_handlers(app: Flask) -> None:
         return render_template(
             "error.html", status=400, message=error.description
         ), 400
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template(
+            "error.html", status=403, message=error.description
+        ), 403
 
     @app.errorhandler(404)
     def not_found(_error):

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "macros/guided.html" import universe_fields, guided_note with context %}
+{% from "macros/learning.html" import educational_notice, glossary_section, weight_explanation, fixed_inputs %}
+{% from "macros/charts.html" import plotly_chart %}
+{% from "macros/account.html" import fix_portfolio_control with context %}
+{% block title %}Black-Litterman{% endblock %}
+
+{% block content %}
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Vista guiada · Equilibrio + views</span>
+      <h1>Black-Litterman</h1>
+      <p class="lead">Parte de cómo el mercado reparte su dinero entre los activos (según su tamaño) y busca el portafolio con mejor retorno esperado por unidad de riesgo.</p>
+    </div>
+    <div class="page-header__actions">
+      {% if can_open('compare.compare') %}<a class="button button-secondary" href="{{ url_for('compare.compare') }}">Comparar con HRP</a>{% endif %}
+    </div>
+  </header>
+  {{ educational_notice() }}
+
+  <div class="analysis-layout">
+    <aside class="param-panel" aria-label="Opciones del portafolio Black-Litterman">
+      <form method="post" id="bl-form" class="form-stack" data-loading-title="Calculando Black-Litterman" data-loading-steps='{{ loading_steps|tojson }}' data-loading-hint="Puede tardar entre 10 y 30 segundos.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="param-panel__header"><h2 class="card__title">Arma tu portafolio</h2></div>
+        <div class="param-panel__body">
+          <fieldset class="step">
+            <legend><span class="step__number">1</span> Activos</legend>
+            {{ universe_fields(universes, universe_names, universe_name, universe_descriptions, universes_payload, available_tickers, selected_tickers, asset_labels) }}
+          </fieldset>
+          <fieldset class="step">
+            <legend><span class="step__number">2</span> Supuestos fijos</legend>
+            {{ fixed_inputs([
+              ("Periodo", "Últimos 2 años (desde " ~ start_date ~ ")"),
+              ("Mercado de referencia", benchmark_name),
+              ("Views", "Neutrales: iguales al retorno de equilibrio"),
+              ("Objetivo", objective_name),
+              ("Tasa libre de riesgo", "%g"|format(risk_free_pct) ~ " % anual"),
+            ]) }}
+            {{ guided_note() }}
+          </fieldset>
+        </div>
+        <div class="param-panel__footer">
+          <button class="button button-primary" type="submit" name="action" value="optimize">Calcular portafolio</button>
+        </div>
+      </form>
+    </aside>
+
+    <section class="results" data-loading-target aria-live="polite">
+      {% if result %}
+        <div class="result-context">
+          <p><strong>Resultado Black-Litterman</strong> · {{ result.window.effective_start }} — {{ result.window.effective_end }} · {{ result.n_assets }} activos · {{ universe_name }}</p>
+          <div class="result-context__actions">{% if can('fix_portfolio') %}{{ fix_portfolio_control(result.snapshot) }}{% endif %}</div>
+        </div>
+        {% if result.missing_prices %}<div class="notice notice--warning" role="status">No hay datos de: {{ result.missing_prices|join(', ') }}. Se calculó con los demás activos.</div>{% endif %}
+
+        <div class="kpi-grid">
+          <div class="metric-card"><span class="metric-card__label">Retorno esperado (modelo)</span><strong class="metric-card__value">{{ result.expected_return|pct(1) }}</strong><span class="metric-card__context">Anual, según el equilibrio</span></div>
+          <div class="metric-card"><span class="metric-card__label">Volatilidad esperada</span><strong class="metric-card__value">{{ result.volatility|pct(1) }}</strong><span class="metric-card__context">Anual</span></div>
+          <div class="metric-card"><span class="metric-card__label">Ratio de Sharpe esperado</span><strong class="metric-card__value">{{ result.sharpe|ratio }}</strong><span class="metric-card__context">Retorno extra por unidad de riesgo</span></div>
+          {% if result.history %}<div class="metric-card"><span class="metric-card__label">Caída máxima (histórica)</span><strong class="metric-card__value">{{ result.history.max_drawdown|pct(1) }}</strong><span class="metric-card__context">Con estos pesos en el periodo</span></div>{% endif %}
+        </div>
+
+        <article class="card allocation-card" id="allocation">
+          <header class="card__header"><div><h2 class="card__title">Distribución del portafolio</h2><p class="card__subtitle">Peso Black-Litterman frente al peso de mercado de cada activo</p></div></header>
+          <div class="card__body">
+            <div class="allocation-card__chart">{{ plotly_chart("allocation", result.charts.allocation, "Pesos Black-Litterman por activo", height=[28 * result.allocation_rows|length + 80, 240]|max) }}</div>
+            <div class="allocation-card__table data-table-wrap">
+              <table class="data-table" id="allocation-table">
+                <thead><tr><th scope="col">Ticker</th><th scope="col" class="num">Peso BL</th><th scope="col" class="num">Peso de mercado</th><th scope="col" class="num">Diferencia (pp)</th></tr></thead>
+                <tbody>{% for row in result.allocation_rows %}<tr><td>{{ row.ticker }}</td><td class="num">{{ row.weight_text }}</td><td class="num">{{ row.market_weight_text }}</td><td class="num">{{ row.tilt_text }}</td></tr>{% endfor %}</tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+
+        {{ weight_explanation(result.explanation) }}
+
+        <div class="analysis-toolbar"><h2 class="analysis-toolbar__title">Para profundizar</h2></div>
+        {% if result.history %}
+          <details class="analysis-section" data-section="history">
+            <summary><span class="analysis-section__title">Cómo le habría ido</span><span class="analysis-section__meta">Rendimiento acumulado y caídas frente al {{ benchmark_name }}</span></summary>
+            <div class="analysis-section__body">
+              <p class="help-text">Es el pasado: no garantiza resultados futuros.</p>
+              <div class="chart-grid">
+                {{ plotly_chart("cumulative", result.history.charts.cumulative, "Rendimiento acumulado") }}
+                {{ plotly_chart("drawdown", result.history.charts.drawdown, "Caídas desde el máximo (drawdown)") }}
+              </div>
+            </div>
+          </details>
+        {% endif %}
+        {{ glossary_section(glossary) }}
+      {% else %}
+        <div class="empty-state">
+          <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="12" r="3"/><path d="M8.5 7.8 15 11M8.5 16.2 15 13"/></svg></span>
+          <h2>Elige un grupo de activos</h2>
+          <p>Calcula el portafolio y verás cómo cambia el peso de cada activo frente al mercado y por qué.</p>
+          <ol class="empty-state__steps"><li>Elige activos</li><li>Calcula</li><li>Lee la explicación</li></ol>
+        </div>
+        {{ glossary_section(glossary) }}
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}
+
+{% block page_scripts %}
+  {% include "macros/chart_scripts.html" %}
+{% endblock %}

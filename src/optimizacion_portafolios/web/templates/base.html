@@ -31,12 +31,7 @@
     {% block head_extra %}{% endblock %}
   </head>
   <body>
-    {% set nav_items = [
-      ("main", "main.index", "Inicio"),
-      ("monitoring", "monitoring.monitoring", "Mercado"),
-      ("hrp", "hrp.hrp", "HRP"),
-      ("black_litterman", "black_litterman.black_litterman", "Black-Litterman"),
-    ] + ([("portfolios", "portfolios.index", "Mis portafolios")] if current_user.is_authenticated else []) %}
+    {# nav_items: only the pages the signed-in role may open (web.auth.permissions). #}
     {% macro brand_mark() -%}
       <svg class="brand__mark" viewBox="0 0 28 28" aria-hidden="true" focusable="false">
         <rect class="brand__mark-bg" width="28" height="28" rx="8"/>
@@ -70,9 +65,11 @@
                 </summary>
                 <div class="user-menu__panel">
                   <p class="user-menu__email">{{ current_user.email }}</p>
+                  <p class="user-menu__email">Rol: {{ user_role_label }}</p>
                   <a href="{{ url_for('profile.mine') }}"{% if request.blueprint == 'profile' %} aria-current="page"{% endif %}>Mi perfil</a>
                   <a href="{{ url_for('portfolios.index') }}"{% if request.blueprint == 'portfolios' %} aria-current="page"{% endif %}>Mis portafolios</a>
-                  <a href="{{ url_for('account.backtests') }}"{% if request.endpoint and request.endpoint.startswith('account.backtest') %} aria-current="page"{% endif %}>Historial de backtests</a>
+                  <a href="{{ url_for('main.glossary') }}"{% if request.endpoint == 'main.glossary' %} aria-current="page"{% endif %}>Glosario</a>
+                  {% if can('backtest_history') %}<a href="{{ url_for('account.backtests') }}"{% if request.endpoint and request.endpoint.startswith('account.backtest') %} aria-current="page"{% endif %}>Historial de backtests</a>{% endif %}
                   <form method="post" action="{{ url_for('auth.logout') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit">Cerrar sesión</button>
@@ -101,7 +98,8 @@
                   {% if current_user.is_authenticated %}
                     <p class="user-menu__email">{{ current_user.email }}</p>
                     <a href="{{ url_for('profile.mine') }}">Mi perfil</a>
-                    <a href="{{ url_for('account.backtests') }}">Historial de backtests</a>
+                    <a href="{{ url_for('main.glossary') }}">Glosario</a>
+                    {% if can('backtest_history') %}<a href="{{ url_for('account.backtests') }}">Historial de backtests</a>{% endif %}
                     <form method="post" action="{{ url_for('auth.logout') }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                       <button type="submit">Cerrar sesión</button>
@@ -160,7 +158,7 @@
             <span>Modelos: skfolio · QuantStats</span>
           </div>
         </div>
-        <p class="site-footer__disclaimer">Herramienta académica de análisis cuantitativo. Los resultados se basan en datos históricos y en los supuestos de cada modelo; no constituyen una recomendación de inversión.</p>
+        <p class="site-footer__disclaimer">Información educativa. No es recomendación de inversión ni asesoría financiera. Los resultados se basan en datos históricos y en los supuestos de cada modelo.</p>
       </div>
     </footer>
 

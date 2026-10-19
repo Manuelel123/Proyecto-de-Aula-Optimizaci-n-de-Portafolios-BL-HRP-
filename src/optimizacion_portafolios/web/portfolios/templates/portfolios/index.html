@@ -40,7 +40,11 @@
   {% else %}
     <div class="empty-state">
       <p class="empty-state__title">Aún no tienes portafolios en seguimiento</p>
+      {% if can('fix_portfolio') %}
       <p>Calcula un portafolio en <a href="{{ url_for('hrp.hrp') }}">HRP</a> o <a href="{{ url_for('black_litterman.black_litterman') }}">Black-Litterman</a> y usa «Establecer como portafolio óptimo» en el resultado.</p>
+      {% else %}
+      <p>Como explorador ves tus portafolios en solo lectura. Fijar un portafolio para seguirlo está disponible con el rol inversionista (puedes cambiarlo en <a href="{{ url_for('profile.mine') }}">Mi perfil</a>).</p>
+      {% endif %}
     </div>
   {% endif %}
 {% endblock %}

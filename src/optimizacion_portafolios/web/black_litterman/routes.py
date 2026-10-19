@@ -16,7 +16,9 @@ from optimizacion_portafolios.data.catalogs import (
     UNIVERSOS_BLACK_LITTERMAN,
 )
 from optimizacion_portafolios.web.portfolios.snapshots import black_litterman_snapshot, sign
+from optimizacion_portafolios.web.auth.permissions import can
 from optimizacion_portafolios.web.black_litterman import bp
+from optimizacion_portafolios.web.common import guided
 from optimizacion_portafolios.web.black_litterman.services import (
     CSV_FILENAME,
     CURRENT_PORTFOLIO,
@@ -61,8 +63,68 @@ def _valid_custom_tickers() -> tuple[list[str], list[str]]:
     return list(dict.fromkeys(valid)), invalid
 
 
+def yahoo_error(error: Exception) -> ValueError:
+    if isinstance(error, YFRateLimitError):
+        return ValueError(
+            "Yahoo Finance limitó temporalmente las consultas. "
+            "Espera unos minutos y vuelve a intentar."
+        )
+    return ValueError(f"No se pudieron descargar los datos: {error}")
+
+
+def _guided_black_litterman():
+    """Black-Litterman for explorador / inversionista: neutral views, fixed inputs."""
+    universes = guided.GUIDED_UNIVERSES
+    universe_name, available, selected = guided.guided_selection(universes)
+    labels = guided.asset_labels(universes[universe_name])
+    result = None
+    if request.method == "POST" and request.form.get("action") != "refresh":
+        try:
+            if len(selected) < 2:
+                raise ValueError("Deja al menos dos activos para calcular el portafolio.")
+            try:
+                result = guided.run_neutral_black_litterman(selected, {**_CATALOG_LABELS, **labels})
+            except (requests.RequestException, TimeoutError, YFException) as error:
+                logger.exception("Yahoo Finance request failed during guided Black-Litterman")
+                raise yahoo_error(error) from error
+            result["explanation"] = guided.black_litterman_explanation(result)
+            if can("fix_portfolio"):
+                result["snapshot"] = sign(
+                    black_litterman_snapshot(
+                        result,
+                        universe=universe_name,
+                        objective=guided.GUIDED_OBJECTIVE,
+                        benchmark=guided.GUIDED_BENCHMARK,
+                        risk_free_rate=guided.GUIDED_RISK_FREE_PCT / 100,
+                    )
+                )
+        except (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError) as error:
+            result = None
+            flash(str(error), "error")
+    return render_template(
+        "black_litterman/guided.html",
+        universes=universes,
+        universe_names=list(universes),
+        universe_name=universe_name,
+        universe_descriptions=guided.UNIVERSE_DESCRIPTIONS,
+        universes_payload=universes_payload(universes),
+        available_tickers=available,
+        selected_tickers=selected,
+        asset_labels=labels,
+        start_date=guided.guided_start().isoformat(),
+        benchmark_name=guided.GUIDED_BENCHMARK_NAME,
+        objective_name=guided.GUIDED_OBJECTIVE,
+        risk_free_pct=guided.GUIDED_RISK_FREE_PCT,
+        glossary=guided.glossary(guided.GUIDED_TERMS + ("Equilibrio de mercado", "View", "Capitalización bursátil")),
+        loading_steps=list(LOADING_STEPS),
+        result=result,
+    )
+
+
 @bp.route("/black-litterman", methods=["GET", "POST"])
 def black_litterman():
+    if not can("advanced_params"):
+        return _guided_black_litterman()
     today = date.today()
     # The model always uses a fixed two-year window; a submitted start_date is ignored.
     window_start = date_years_ago(today, WINDOW_YEARS)

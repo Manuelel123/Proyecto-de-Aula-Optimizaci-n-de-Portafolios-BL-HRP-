@@ -1,6 +1,9 @@
 # Atlas · Analítica de portafolios
 
-Aplicación web Flask para monitorear activos y analizar portafolios con Hierarchical Risk Parity (HRP) y Black-Litterman. Los precios históricos se descargan de Tiingo (con Yahoo Finance como respaldo) y los datos fundamentales, capitalizaciones y tipos de cambio se consultan en Yahoo Finance.
+Herramienta web **educativa** (Flask) para personas jóvenes e inexpertas que quieren aprender a construir portafolios: qué es diversificar, cómo se mide el riesgo y cómo reparten el dinero dos métodos profesionales, Hierarchical Risk Parity (HRP) y Black-Litterman. Cada usuario responde primero un perfil de riesgo y usa las herramientas según su rol (explorador, inversionista o gestor). Los precios históricos se descargan de Tiingo (con Yahoo Finance como respaldo) y los datos fundamentales, capitalizaciones y tipos de cambio se consultan en Yahoo Finance.
+
+> **Información educativa. No es recomendación de inversión ni asesoría financiera.**
+> Este aviso aparece en la portada y en todas las pantallas con resultados (HRP, Black-Litterman, comparación, Mercado, Mis portafolios, backtests y Mi perfil). Lo genera la macro `educational_notice()` de `web/templates/macros/learning.html`.
 
 ## Requisitos
 
@@ -10,15 +13,62 @@ Aplicación web Flask para monitorear activos y analizar portafolios con Hierarc
 ## Instalación y ejecución local
 
 ```powershell
-uv sync
-uv run flask --app wsgi:app run --debug
+uv sync                                    # crea .venv e instala las dependencias de uv.lock
+Copy-Item .env.example .env                # y completa FLASK_SECRET_KEY y GESTOR_EMAILS
+uv run flask --app wsgi:app run --debug    # servidor de desarrollo
 ```
 
-Abre `http://127.0.0.1:5000`. Para iniciar el servidor local sin el CLI de Flask:
+Abre `http://127.0.0.1:5000`. Al arrancar se aplican las migraciones pendientes de la base local (`instance/atlas.db`). Para iniciar el servidor local sin el CLI de Flask:
 
 ```powershell
 uv run optimizacion-portafolios
 ```
+
+Con Waitress (servidor WSGI de producción, también en Windows):
+
+```powershell
+uv run waitress-serve --host 127.0.0.1 --port 8000 wsgi:app
+```
+
+### Quién es gestor: `GESTOR_EMAILS`
+
+El rol `gestor` no se elige en la interfaz: lo reciben solo los correos listados en `GESTOR_EMAILS` (separados por coma; sin distinguir mayúsculas ni espacios), al registrarse o al iniciar sesión. Si un correo sale de la lista, en su siguiente ingreso vuelve a `explorador` y se le pide confirmar el rol.
+
+- En `.env` (recomendado; la app lo lee al arrancar y no pisa variables ya definidas):
+
+  ```dotenv
+  GESTOR_EMAILS=profesora@universidad.edu.co, admin@example.com
+  ```
+
+- Como variable de Windows para la terminal actual (PowerShell):
+
+  ```powershell
+  $env:GESTOR_EMAILS = "profesora@universidad.edu.co,admin@example.com"
+  uv run flask --app wsgi:app run
+  ```
+
+- De forma permanente para tu usuario de Windows (solo afecta a las terminales nuevas): `setx GESTOR_EMAILS "profesora@universidad.edu.co,admin@example.com"`, o en «Editar las variables de entorno de esta cuenta».
+
+Reinicia el servidor después de cambiarla.
+
+## Uso: flujo de pantallas y roles
+
+1. **Sin sesión** solo se ve la portada (`/`): qué es Atlas, para quién es, el aviso educativo y los formularios de inicio de sesión y registro. No muestra herramientas ni resultados (los diagramas de la portada están rotulados como ilustrativos).
+2. **Tras iniciar sesión**, si falta el perfil de riesgo la app lleva al cuestionario y luego a confirmar el rol (ver «Perfil de riesgo obligatorio» más abajo).
+3. **Pantalla principal** (`/` con sesión): saludo, perfil vigente (perfil final y factor limitante, con enlace a Mi perfil), rol y las herramientas disponibles para ese rol. La barra de navegación muestra solo lo que el rol permite.
+
+| | Explorador | Inversionista | Gestor |
+|---|---|---|---|
+| HRP y Black-Litterman | Vista guiada: solo elige un universo predefinido; explicación de cada peso y glosario | Vista guiada + excluir activos y peso máximo por activo (HRP) | Páginas completas: todos los parámetros, informe QuantStats, explorador de precios |
+| Comparar HRP vs Black-Litterman (`/comparar`) | — | Sí | Sí |
+| Mis portafolios | Solo lectura: panel, alertas y versiones | Fijar, editar alertas, gestionar (rebalancear, altas, bajas) y archivar | Todo, más señales |
+| Mercado (incluida Opciones), `/api/historial`, `/api/ohlc` | — | — | Sí |
+| Backtest de HRP e historial de backtests | — | — | Sí |
+| Glosario, Mi perfil | Sí | Sí | Sí |
+
+- **Valores fijos de la vista guiada** (`web/common/guided.py`): últimos 2 años de precios (la misma ventana de Black-Litterman, para que los dos métodos sean comparables), benchmark S&P 500 (SPY), HRP sin límites (0 %–100 %; el inversionista puede fijar el peso máximo), Black-Litterman con objetivo «Máximo ratio de Sharpe», tasa libre de riesgo 2 % y **views neutrales**: iguales al retorno de equilibrio de cada activo (una primera ejecución del modelo da el equilibrio, que no depende de las views, y la segunda lo usa como view). El modelo Black-Litterman no admite límites de peso, así que el peso máximo solo se aplica a HRP. Universos: «Acciones y Bitcoin», «Sectores de EE. UU.», «Criptomonedas», «Portafolio actual» y, solo en HRP, «Criptomonedas y commodities» (los futuros no tienen capitalización bursátil).
+- **Explicación de los pesos:** HRP, a partir de la volatilidad anual de cada activo, su correlación promedio con el resto (de la matriz que usó HRP) y su aporte al riesgo; Black-Litterman, a partir del peso de mercado (capitalización), el retorno de equilibrio y la diferencia entre el peso final y el de mercado.
+- **Permisos:** una sola tabla endpoint → roles en `web/auth/permissions.py` (`ENDPOINT_ROLES`, `METHOD_ROLES` para un método concreto, `FEATURE_ROLES` para controles dentro de una página). El access check `require_role` se registra después del de perfil; si el rol no alcanza, redirige a la pantalla principal con «Tu rol (…) no incluye esta función.» (403 JSON en `/api/*`). Un endpoint que no está en la tabla solo lo abre el gestor. Las páginas guiadas leen del formulario solo el universo (y, desde inversionista, los activos marcados y el peso máximo): cualquier otro campo enviado se ignora.
 
 ## Configuración de la fuente de precios
 
@@ -44,12 +94,12 @@ Las cuentas son **locales**: viven en la tabla `users` de la base SQLite (ver la
 
 - **Todo requiere sesión.** Sin iniciar sesión solo se ven la portada (`/`), `/auth/registro`, `/auth/ingresar` y los archivos estáticos. Las páginas redirigen al inicio de sesión (con `next`) y los endpoints JSON (`/api/...`) responden 401. La regla está en `web/auth/guard.py` (`PUBLIC_ENDPOINTS`, `register_access_check`).
 - **Registro e inicio de sesión:** contraseña de al menos 8 caracteres con letras y números. Tras 5 intentos fallidos en 15 minutos (por correo o por IP) el acceso se bloquea temporalmente. El mensaje de error no revela si el correo existe.
-- **Roles:** `explorador` (por defecto), `inversionista` y `gestor`. `gestor` no se puede elegir: lo reciben solo los correos de `GESTOR_EMAILS` (separados por coma), al registrarse o al iniciar sesión; si un correo sale de la lista, vuelve a `explorador`.
+- **Roles:** `explorador` (por defecto), `inversionista` y `gestor`. `gestor` no se puede elegir: lo reciben solo los correos de `GESTOR_EMAILS` (separados por coma), al registrarse o al iniciar sesión; si un correo sale de la lista, vuelve a `explorador`. Qué ve cada rol: «Uso: flujo de pantallas y roles».
 - **Perfil de riesgo obligatorio:** tras el primer inicio de sesión cada usuario responde una sola vez el cuestionario de `config/cuestionario.yaml` (capital disponible en COP, horizonte, 5 preguntas de tolerancia, 3 de capacidad y 2 de conocimiento). Sin perfil vigente ninguna herramienta abre: el access check `require_current_profile` (`web/profile/access.py`) redirige al cuestionario (los `/api/...` responden 403); solo quedan libres la portada, el propio perfilado, cerrar sesión y los estáticos. El progreso se guarda en cada paso (`perfil_borradores`) y se retoma en el siguiente ingreso. En los ingresos siguientes el perfil guardado se carga en `session["perfil"]` (y en la variable de plantilla `current_profile`) y la app va directo al inicio.
   - **Cálculo** (`src/optimizacion_portafolios/profiling/`, sin Flask): cada respuesta vale 1 a 4 según su orden; tolerancia y capacidad se promedian (menos de 2,0 adverso; de 2,0 a menos de 3,0 moderado; 3,0 o más arriesgado). El horizonte pone un tope (menos de 1 año: máximo adverso; 1 a 3 años: máximo moderado; más de 3: sin tope). Perfil final = el más bajo de los tres. Responder «Vendo todo» (pregunta 1) o «Menos de 1» mes de fondo de emergencia (pregunta 6) fuerza adverso. El **factor limitante** es el veto si lo hay; si no, el primero de `veto > horizonte > capacidad > tolerancia` cuyo nivel coincide con el final (el horizonte solo cuenta cuando impone tope). Las preguntas de conocimiento solo sugieren el rol: `inversionista` si la experiencia es «Fondos o acciones» o más y se acierta qué es diversificar; si no, `explorador`. Umbrales, vetos, topes, desempate, regla del rol y explicaciones están en el YAML (con `version`), que se valida al arrancar.
   - **Rol:** el usuario confirma (o cambia) el rol sugerido entre `explorador` e `inversionista`; hasta confirmarlo las herramientas lo llevan a esa pantalla. A un `gestor` no se le pide confirmar ni se le cambia el rol.
   - **Mi perfil** (`/perfil/`, en el menú de usuario): perfil final, factor limitante con su explicación, fecha e historial. Repetir el cuestionario agrega una fila nueva en `perfiles` y deja solo esa como vigente; las anteriores se conservan.
-- **Historial de backtests:** cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`), en la base local.
+- **Historial de backtests:** cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`, solo gestor), en la base local.
 - **Migrar portafolios de las antiguas cuentas de InsForge:** registra la cuenta local y ejecuta `flask --app wsgi:app users reassign-portfolios <id_insforge> <correo>`.
 
 Configuración local: copia `.env.example` a `.env` y completa las variables. Define `FLASK_SECRET_KEY` (si falta, la app avisa en el log y las sesiones se pierden al reiniciar).
@@ -135,7 +185,7 @@ Las pruebas no acceden a la red: las descargas de Tiingo y Yahoo Finance se simu
 
 ## Despliegue WSGI
 
-Waitress está incluido para ejecutar Flask en Windows y otros sistemas:
+Waitress está incluido para ejecutar Flask en Windows y otros sistemas (así escucha en todas las interfaces de red):
 
 ```powershell
 uv run waitress-serve --host 0.0.0.0 --port 8000 wsgi:app
@@ -197,11 +247,12 @@ src/optimizacion_portafolios/
       charts.py                 gráficos Matplotlib/QuantStats como imágenes PNG
       tables.py                 tablas HTML escapadas y formatos
       forms.py                  lectura y validación de formularios
-    main/                       panel de inicio
+    main/                       portada (sin sesión), pantalla principal por rol y glosario
+    compare/                    comparación HRP vs Black-Litterman (inversionista y gestor)
     monitoring/                 monitoreo y análisis fundamental
     hrp/                        optimización HRP
     black_litterman/            optimización Black-Litterman
-    auth/                       cuentas locales: registro, sesión (Flask-Login), roles, guardia global, límite de intentos
+    auth/                       cuentas locales: registro, sesión (Flask-Login), roles y permisos por rol, guardia global, límite de intentos
     profile/                    perfil de riesgo: cuestionario por pasos, resultado, confirmación de rol, Mi perfil
     account/                    historial de backtests HRP
     portfolios/                 Mis portafolios: seguimiento de portafolios óptimos

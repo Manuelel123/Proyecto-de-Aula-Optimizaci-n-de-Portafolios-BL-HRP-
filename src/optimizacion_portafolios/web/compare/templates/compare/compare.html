@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% from "macros/guided.html" import universe_fields, max_weight_field with context %}
+{% from "macros/learning.html" import educational_notice, glossary_section, fixed_inputs %}
+{% from "macros/account.html" import fix_portfolio_control with context %}
+{% block title %}Comparar HRP y Black-Litterman{% endblock %}
+
+{% macro weight_cell(value) -%}
+  {%- if value is none -%}<span class="help-text">—</span>{%- else -%}
+    <span class="compare-bar" aria-hidden="true"><span class="compare-bar__fill" style="width: {{ '%.1f'|format([value * 100, 100]|min) }}%"></span></span>{{ value|pct(1) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Comparación · Mismos activos, dos métodos</span>
+      <h1>Comparar HRP y Black-Litterman</h1>
+      <p class="lead">Calcula los dos portafolios con los mismos activos y el mismo periodo, y mira en qué se parecen y en qué se diferencian.</p>
+    </div>
+  </header>
+  {{ educational_notice() }}
+
+  <div class="analysis-layout">
+    <aside class="param-panel" aria-label="Opciones de la comparación">
+      <form method="post" id="compare-form" class="form-stack" data-loading-title="Comparando HRP y Black-Litterman" data-loading-steps='{{ ["Descargando precios", "Calculando HRP", "Equilibrio de mercado", "Calculando Black-Litterman", "Midiendo resultados"]|tojson }}' data-loading-hint="Puede tardar entre 15 y 40 segundos.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="param-panel__header"><h2 class="card__title">Elige los activos</h2></div>
+        <div class="param-panel__body">
+          <fieldset class="step">
+            <legend><span class="step__number">1</span> Activos</legend>
+            {{ universe_fields(universes, universe_names, universe_name, universe_descriptions, universes_payload, available_tickers, selected_tickers, asset_labels) }}
+          </fieldset>
+          <fieldset class="step">
+            <legend><span class="step__number">2</span> Límite de peso (HRP)</legend>
+            {{ max_weight_field(max_weight) }}
+            <p class="help-text">El límite se aplica a HRP. El modelo Black-Litterman de Atlas no admite límites de peso: solo cambia con los activos que elijas.</p>
+          </fieldset>
+          <fieldset class="step">
+            <legend><span class="step__number">3</span> Supuestos fijos</legend>
+            {{ fixed_inputs([
+              ("Periodo", "Últimos 2 años (desde " ~ start_date ~ ")"),
+              ("Referencia", benchmark_name),
+              ("Black-Litterman", "Views neutrales · " ~ objective_name),
+            ]) }}
+          </fieldset>
+        </div>
+        <div class="param-panel__footer">
+          <button class="button button-primary" type="submit" name="action" value="optimize">Comparar</button>
+        </div>
+      </form>
+    </aside>
+
+    <section class="results" data-loading-target aria-live="polite">
+      {% if comparison %}
+        {% set methods = comparison.methods %}
+        <div class="result-context">
+          <p><strong>Comparación</strong> · {{ comparison.start }} — {{ comparison.end }} · {{ comparison.rows|length }} activos · {{ universe_name }}</p>
+          <div class="result-context__actions">
+            {% for method in comparison.ok %}{% if methods[method].snapshot %}<span class="compare-fix"><span class="help-text">{{ comparison.labels[method] }}:</span> {{ fix_portfolio_control(methods[method].snapshot) }}</span>{% endif %}{% endfor %}
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          {% for method in comparison.ok %}
+            <div class="metric-card"><span class="metric-card__label">{{ comparison.labels[method] }} · mayor peso</span><strong class="metric-card__value">{{ methods[method].max_weight|pct(1) }}</strong><span class="metric-card__context">{{ methods[method].max_ticker }} · {{ methods[method].assets_with_weight }} activos con 1 % o más</span></div>
+          {% endfor %}
+        </div>
+
+        <article class="card" id="pesos">
+          <header class="card__header"><div><h2 class="card__title">Pesos lado a lado</h2><p class="card__subtitle">Diferencia = Black-Litterman − HRP, en puntos porcentuales</p></div></header>
+          <div class="data-table-wrap">
+            <table class="data-table compare-table" id="compare-table">
+              <thead><tr><th scope="col">Activo</th><th scope="col" class="num">HRP</th><th scope="col" class="num">Black-Litterman</th><th scope="col" class="num">Diferencia</th></tr></thead>
+              <tbody>
+                {% for row in comparison.rows %}
+                  <tr>
+                    <th scope="row"><span class="mono">{{ row.ticker }}</span>{% if row.name != row.ticker %} <span class="help-text">{{ row.name }}</span>{% endif %}</th>
+                    <td class="num">{{ weight_cell(row.hrp) }}</td>
+                    <td class="num">{{ weight_cell(row.black_litterman) }}</td>
+                    <td class="num">{% if row.difference is not none %}{{ '%+.1f'|format(row.difference * 100) }} pp{% else %}—{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card account-section" id="metricas">
+          <header class="card__header"><div><h2 class="card__title">Métricas clave</h2><p class="card__subtitle">Históricas, con los mismos precios diarios para los dos portafolios (QuantStats)</p></div></header>
+          <div class="data-table-wrap">
+            <table class="data-table" id="compare-metrics">
+              <thead><tr><th scope="col">Métrica</th><th scope="col" class="num">HRP</th><th scope="col" class="num">Black-Litterman</th></tr></thead>
+              <tbody>
+                {% for metric in comparison.metric_rows %}
+                  <tr>
+                    <th scope="row">{{ metric.label }}</th>
+                    {% for method in ["hrp", "black_litterman"] %}
+                      {% set value = metric["values"][method] %}
+                      <td class="num">{% if value is none %}N/D{% elif metric.key == 'sharpe' %}{{ value|ratio }}{% else %}{{ value|pct(1) }}{% endif %}</td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card explanation-card account-section">
+          <header class="card__header"><div><h2 class="card__title">¿Por qué son distintos?</h2></div></header>
+          <div class="card__body">
+            <ul class="explanation-points">
+              <li><strong>HRP</strong> mira solo el riesgo: agrupa los activos que se mueven parecido y reparte para que cada grupo aporte un riesgo comparable. No usa retornos esperados.</li>
+              <li><strong>Black-Litterman</strong> parte del tamaño de cada activo en el mercado (equilibrio) y busca el mejor retorno esperado por unidad de riesgo (máximo Sharpe). Por eso suele concentrarse más en pocos activos.</li>
+              <li>Las métricas son del pasado: sirven para entender cada método, no para predecir cuál rendirá mejor.</li>
+            </ul>
+          </div>
+        </article>
+        {{ glossary_section(glossary) }}
+      {% else %}
+        <div class="empty-state">
+          <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M14 20v-7M20 20V8"/></svg></span>
+          <h2>Compara los dos métodos</h2>
+          <p>Elige los activos y calcula: verás los pesos de HRP y de Black-Litterman uno al lado del otro.</p>
+          <ol class="empty-state__steps"><li>Elige activos</li><li>Compara</li><li>Entiende las diferencias</li></ol>
+        </div>
+        {{ glossary_section(glossary) }}
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

@@ -112,6 +112,9 @@ def _prices(tickers, start, end):
 
 
 class FixPortfolioFlowTests(AccountTestCase):
+    # Full access (fixing, alerts, management, signals, backtests): ana is a gestor.
+    gestor_emails = "ana@example.com"
+
     def _hrp_page(self):
         return self.post(
             "/hrp", action="optimize", universe="Portafolio actual", benchmark="S&P 500 (SPY)",

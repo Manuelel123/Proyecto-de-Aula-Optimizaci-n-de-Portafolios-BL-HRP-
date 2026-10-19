@@ -68,7 +68,7 @@
 
     {% if portfolio.alerts.rules %}
       <article class="card account-section">
-        <header class="card__header"><div><h2 class="card__title">Semáforo de reglas</h2><p class="card__subtitle">Valor actual de cada regla activa · <a href="{{ url_for('portfolios.alerts', portfolio_id=portfolio.id) }}">editar umbrales</a></p></div></header>
+        <header class="card__header"><div><h2 class="card__title">Semáforo de reglas</h2><p class="card__subtitle">Valor actual de cada regla activa · <a href="{{ url_for('portfolios.alerts', portfolio_id=portfolio.id) }}">{{ 'editar umbrales' if can('edit_alerts') else 'ver alertas' }}</a></p></div></header>
         <ul class="rule-lights">
           {% for rule in portfolio.alerts.rules %}
             <li>{{ traffic_light(rule.level, rule.level_label) }}<span>{{ rule.label }}</span><strong>{{ rule.value }}</strong></li>

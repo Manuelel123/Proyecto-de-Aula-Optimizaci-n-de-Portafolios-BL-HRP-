@@ -88,6 +88,9 @@ class PlanTests(unittest.TestCase):
 
 
 class ManagementFlowTests(AccountTestCase):
+    # Full access (fixing, alerts, management, signals, backtests): ana is a gestor.
+    gestor_emails = "ana@example.com"
+
     def _snapshot(self):
         html = self.post(
             "/hrp", action="optimize", universe="Portafolio actual", benchmark="S&P 500 (SPY)",

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/learning.html" import educational_notice %}
 {% from "macros/forms.html" import universe_select, asset_selector, custom_tickers_input, percent_input, help_tip, date_presets %}
 {% from "macros/charts.html" import plotly_chart, price_explorer %}
 {% from "macros/account.html" import fix_portfolio_control, backtest_history_notice with context %}
@@ -26,6 +27,7 @@
       <p class="lead">Distribuye el capital a partir de la estructura de correlación y riesgo de los activos.</p>
     </div>
   </header>
+  {{ educational_notice() }}
 
   <div class="analysis-layout">
     <aside class="param-panel" aria-label="Parámetros del portafolio HRP">

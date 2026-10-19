@@ -334,12 +334,15 @@ class GlobalGuardTests(AccountTestCase):
         self.assertEqual(calls, [])
         self.sign_in()
         self.assertEqual(self.client.get("/portafolios/").status_code, 403)
-        self.assertEqual(self.client.get("/cuenta/backtests").status_code, 200)
+        self.assertEqual(self.client.get("/glosario").status_code, 200)
         self.post("/auth/salir")  # exempt from the checks
-        self.assertEqual(calls, ["portfolios.index", "account.backtests"])
+        self.assertEqual(calls, ["portfolios.index", "main.glossary"])
 
 
 class BacktestHistoryTests(AccountTestCase):
+    # Backtests are gestor-only: ana and eva are gestores.
+    gestor_emails = "ana@example.com, eva@example.com"
+
     def _post_backtest(self):
         return self.post(
             "/hrp", action="optimize", universe="Portafolio actual", benchmark="S&P 500 (SPY)",

@@ -16,6 +16,8 @@ from optimizacion_portafolios.data.catalogs import (
     UNIVERSOS_HRP,
 )
 from optimizacion_portafolios.web.account.hooks import record_backtest
+from optimizacion_portafolios.web.auth.permissions import can
+from optimizacion_portafolios.web.common import guided
 from optimizacion_portafolios.web.portfolios.snapshots import hrp_snapshot, sign
 from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
@@ -154,8 +156,58 @@ def _backtest_config() -> BacktestConfig | None:
     )
 
 
+def _guided_hrp():
+    """HRP for explorador / inversionista: predefined universe, fixed inputs."""
+    universes = guided.GUIDED_HRP_UNIVERSES
+    universe_name, available, selected = guided.guided_selection(universes)
+    start_date = guided.guided_start()
+    max_weight = guided.GUIDED_MAX_WEIGHT_PCT
+    result = None
+    if request.method == "POST" and request.form.get("action") != "refresh":
+        try:
+            max_weight = guided.guided_max_weight()
+            if len(selected) < 2:
+                raise ValueError("Deja al menos dos activos para calcular HRP.")
+            bounds = WeightBounds(max_weight=max_weight / 100)
+            try:
+                result = run_hrp(selected, guided.GUIDED_BENCHMARK, start_date, bounds, _ASSET_LABELS)
+            except (requests.RequestException, TimeoutError, YFException) as error:
+                logger.exception("Yahoo Finance request failed during guided HRP optimization")
+                raise ValueError(f"No se pudieron descargar los datos: {error}") from error
+            names = {row["ticker"]: row["name"] for row in result["allocation_rows"]}
+            result["explanation"] = guided.hrp_explanation(result)
+            for row in result["explanation"]["rows"]:
+                row["name"] = names.get(row["ticker"])
+            if can("fix_portfolio"):
+                result["snapshot"] = sign(
+                    hrp_snapshot(result, universe=universe_name, start_date=start_date.isoformat())
+                )
+        except (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError) as error:
+            result = None
+            flash(str(error), "error")
+    labels = guided.asset_labels(universes[universe_name])
+    return render_template(
+        "hrp/guided.html",
+        universes=universes,
+        universe_names=list(universes),
+        universe_name=universe_name,
+        universe_descriptions=guided.UNIVERSE_DESCRIPTIONS,
+        universes_payload=universes_payload(universes),
+        available_tickers=available,
+        selected_tickers=selected,
+        asset_labels=labels,
+        max_weight=f"{max_weight:g}",
+        start_date=start_date.isoformat(),
+        benchmark_name=guided.GUIDED_BENCHMARK_NAME,
+        glossary=guided.glossary(guided.GUIDED_TERMS),
+        result=result,
+    )
+
+
 @bp.route("/hrp", methods=["GET", "POST"])
 def hrp():
+    if not can("advanced_params"):
+        return _guided_hrp()
     today = date.today()
     default_start = date_years_ago(today)
     universe_names = list(UNIVERSOS_HRP)

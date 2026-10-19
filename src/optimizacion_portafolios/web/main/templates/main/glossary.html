@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "macros/learning.html" import educational_notice, glossary_list %}
+{% block title %}Glosario{% endblock %}
+
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Aprende</p>
+      <h1>Glosario</h1>
+      <p class="lead">Las palabras que vas a encontrar en Atlas, explicadas en lenguaje simple.</p>
+    </div>
+  </header>
+  {{ educational_notice() }}
+  <article class="card account-section">
+    <div class="card__body">{{ glossary_list(items) }}</div>
+  </article>
+{% endblock %}

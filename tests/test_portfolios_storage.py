@@ -94,7 +94,7 @@ class PortfolioPagesTests(AccountTestCase):
         self.assertEqual(urlsplit(response.location).path, "/auth/ingresar")
 
     def test_signed_in_user_sees_nav_link_and_empty_state(self):
-        self.assertNotIn("Mis portafolios", self.client.get("/").data.decode())
+        self.assertNotIn('href="/portafolios/"', self.client.get("/").data.decode())
         self.sign_in()
         html = self.client.get("/portafolios/").data.decode()
         self.assertIn("Aún no tienes portafolios en seguimiento", html)

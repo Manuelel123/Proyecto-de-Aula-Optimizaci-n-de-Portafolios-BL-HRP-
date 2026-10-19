@@ -68,6 +68,9 @@ class SimulationTests(unittest.TestCase):
 
 
 class SignalsPageTests(AccountTestCase):
+    # Full access (fixing, alerts, management, signals, backtests): ana is a gestor.
+    gestor_emails = "ana@example.com"
+
     @patch("optimizacion_portafolios.web.portfolios.services.download_prices", side_effect=_prices)
     def test_page_simulates_without_changing_the_portfolio(self, _download):
         self.sign_in()
