@@ -13,6 +13,7 @@ from optimizacion_portafolios.analytics.performance import (
     calculate_quantstats_metrics,
     generate_tearsheet,
 )
+from optimizacion_portafolios.analytics.returns import prepare_prices, returns_matrix_series
 from optimizacion_portafolios.analytics.volatility import calculate_monthly_volatility
 from optimizacion_portafolios.data.catalogs import BENCHMARKS
 from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS, download_prices
@@ -106,8 +107,7 @@ def _optimize(
         raw_prices = history.loc[history.index >= pd.Timestamp(start_date)]
     else:
         raw_prices = download_prices(tuple(tickers), start_date, today)
-    raw_prices = raw_prices.dropna(axis="columns", how="all")
-    prices = raw_prices.ffill().dropna()
+    raw_prices, prices = prepare_prices(raw_prices)
     if prices.shape[1] < 2:
         raise ValueError(
             "Yahoo Finance devolvió datos para menos de dos activos seleccionados."
@@ -177,24 +177,24 @@ def asset_name(ticker: str, label: str | None) -> str:
     return name if name and name != ticker else "—"
 
 
-def _daily_returns(prices: pd.Series) -> pd.Series:
-    """Daily simple returns of one asset over its own quotes (no ffill)."""
-    return prices.dropna().pct_change(fill_method=None).dropna()
-
-
 def _returns_matrix(run: HrpRun, benchmark: str, chart_names: dict[str, str]):
     """Returns matrix: portfolio, benchmark (unless it is an asset), assets.
 
     Assets follow the allocation order (weight, descending) and use their own
     price history, so different start dates and crypto weekends are kept.
     """
-    series = {PORTFOLIO_SERIES: run.returns.dot(run.weights)}
+    assets = run.weights.sort_values(ascending=False).index
+    series = returns_matrix_series(
+        run.raw_prices,
+        assets,
+        portfolio=run.returns.dot(run.weights),
+        portfolio_key=PORTFOLIO_SERIES,
+        benchmark=benchmark,
+        benchmark_prices=run.benchmark_prices,
+    )
     names = {PORTFOLIO_SERIES: _PORTFOLIO_COLUMN, **chart_names}
     if benchmark not in run.weights.index:
-        series[benchmark] = _daily_returns(run.benchmark_prices)
         names[benchmark] = _BENCHMARK_LABELS.get(benchmark, benchmark)
-    for ticker in run.weights.sort_values(ascending=False).index:
-        series[ticker] = _daily_returns(run.raw_prices[ticker])
     return returns_matrix_chart(series, names)
 
 

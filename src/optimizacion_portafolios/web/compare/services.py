@@ -12,9 +12,9 @@ import logging
 from datetime import date
 
 import numpy as np
-import pandas as pd
 
 from optimizacion_portafolios.analytics.performance import calculate_quantstats_metrics
+from optimizacion_portafolios.analytics.returns import prepare_prices, weighted_portfolio_returns
 from optimizacion_portafolios.analytics.statistics import finite_or_none as _number
 from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS, download_prices
 from optimizacion_portafolios.web.common import guided
@@ -36,13 +36,11 @@ _FAILURES = (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError)
 
 def _historical_metrics(weights: dict[str, float], start: date) -> dict:
     tickers = tuple(weights)
-    prices = download_prices(tickers, start, date.today()).dropna(axis="columns", how="all")
-    prices = prices.ffill().dropna()
+    _, prices = prepare_prices(download_prices(tickers, start, date.today()))
     missing = [ticker for ticker in tickers if ticker not in prices.columns]
     if missing:
         raise ValueError("Sin precios para: " + ", ".join(missing))
-    returns = prices.pct_change(fill_method=None).dropna()
-    series = returns.loc[:, list(tickers)].dot(pd.Series(weights))
+    series = weighted_portfolio_returns(prices, weights)
     values = calculate_quantstats_metrics(series)["Valor"]
     return {key: _number(values.get(source)) for key, source, _label in METRICS}
 

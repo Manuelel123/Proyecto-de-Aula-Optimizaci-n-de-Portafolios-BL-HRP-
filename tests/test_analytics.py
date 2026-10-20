@@ -91,3 +91,38 @@ class VolatilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReturnsHelpersTests(unittest.TestCase):
+    """analytics.returns: shared price preparation and returns-matrix series."""
+
+    def setUp(self):
+        from optimizacion_portafolios.analytics import returns
+
+        self.returns = returns
+        index = pd.date_range("2024-01-05", periods=4, freq="D")  # Fri..Mon
+        self.raw = pd.DataFrame(
+            {"A": [10.0, None, None, 11.0], "BTC": [100.0, 101.0, 102.0, 103.0], "X": [None] * 4},
+            index=index,
+        )
+
+    def test_prepare_prices_drops_empty_columns_and_aligns(self):
+        raw, aligned = self.returns.prepare_prices(self.raw)
+        self.assertEqual(list(raw.columns), ["A", "BTC"])
+        self.assertEqual(aligned["A"].tolist(), [10.0, 10.0, 10.0, 11.0])
+
+    def test_returns_matrix_series_keeps_each_asset_calendar(self):
+        raw, _ = self.returns.prepare_prices(self.raw)
+        series = self.returns.returns_matrix_series(
+            raw, ["BTC", "A"], portfolio=pd.Series([0.01]), portfolio_key="P",
+            benchmark="SPY", benchmark_prices=pd.Series([1.0, 1.1]),
+        )
+        self.assertEqual(list(series), ["P", "SPY", "BTC", "A"])
+        self.assertEqual(len(series["A"]), 1)  # only its own two quotes
+        self.assertEqual(len(series["BTC"]), 3)
+        self.assertNotIn("A", self.returns.returns_matrix_series(raw, ["A"], benchmark="A", benchmark_prices=raw["A"]).keys() - {"A"})
+
+    def test_weighted_portfolio_returns(self):
+        prices = pd.DataFrame({"A": [1.0, 1.1], "B": [1.0, 0.9]})
+        result = self.returns.weighted_portfolio_returns(prices, {"A": 0.5, "B": 0.5})
+        self.assertAlmostEqual(result.iloc[0], 0.0)

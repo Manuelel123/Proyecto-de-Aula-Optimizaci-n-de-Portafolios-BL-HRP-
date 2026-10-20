@@ -13,6 +13,7 @@ from optimizacion_portafolios.analytics.statistics import (
     date_years_ago,
     finite_or_none as _number,
 )
+from optimizacion_portafolios.analytics.returns import prepare_prices, returns_matrix_series
 from optimizacion_portafolios.analytics.volatility import (
     calculate_historical_volatility,
     calculate_monthly_volatility,
@@ -183,13 +184,12 @@ def _returns_matrix(
     price history (no ffill across assets).
     """
     aligned = returns.dropna()
-    series = {}
-    if not aligned.empty:
-        series[PORTFOLIO_SERIES] = aligned.mean(axis="columns")
-    for ticker in returns.columns:
-        series[ticker] = (
-            raw_prices[ticker].dropna().pct_change(fill_method=None).dropna()
-        )
+    series = returns_matrix_series(
+        raw_prices,
+        returns.columns,
+        portfolio=aligned.mean(axis="columns") if not aligned.empty else None,
+        portfolio_key=PORTFOLIO_SERIES,
+    )
     return returns_matrix_chart(
         series, {**names, PORTFOLIO_SERIES: _EQUAL_WEIGHT_LABEL}
     )
@@ -217,8 +217,7 @@ def build_price_analysis(
     ``has_period_volatility``.
     """
     raw_prices = download_prices(tuple(tickers), start_date, date.today())
-    raw_prices = raw_prices.dropna(axis="columns", how="all")
-    prices = raw_prices.ffill().dropna()
+    raw_prices, prices = prepare_prices(raw_prices)
     if prices.empty or prices.shape[1] == 0:
         raise ValueError(
             "Yahoo Finance no devolvió precios para los activos y fechas seleccionados."
