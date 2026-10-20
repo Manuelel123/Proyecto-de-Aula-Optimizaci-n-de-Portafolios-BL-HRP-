@@ -8,6 +8,7 @@ from flask_login import current_user
 from sqlalchemy.exc import IntegrityError
 
 from optimizacion_portafolios.storage import db
+from optimizacion_portafolios.storage.models import DEFAULT_ROLE
 from optimizacion_portafolios.storage.users import (
     create_user,
     get_user_by_email,
@@ -21,7 +22,6 @@ from optimizacion_portafolios.web.auth.passwords import (
     password_rules,
     verify_password,
 )
-from optimizacion_portafolios.web.auth.roles import initial_role, sync_gestor_role
 from optimizacion_portafolios.web.auth.session import (
     after_login_response,
     login_user,
@@ -77,8 +77,6 @@ def login():
             login_throttle.reset(f"email:{email}")
             if needs_rehash(user.password_hash):
                 user.password_hash = hash_password(password)
-            if sync_gestor_role(user):
-                logger.info("Role of user %s set to %s by GESTOR_EMAILS", user.id, user.role)
             return _finish_sign_in(user, next_url)
         except ValueError as error:
             flash(str(error), "error")
@@ -101,8 +99,8 @@ def register():
             errors = password_errors(password, email)
             if errors:
                 raise ValueError(" ".join(errors))
-            # The role never comes from the form: only GESTOR_EMAILS grants gestor.
-            role, confirmed = initial_role(email)
+            # The role never comes from the form; gestor is granted only by CLI.
+            role, confirmed = DEFAULT_ROLE, False
             try:
                 user = create_user(
                     email,

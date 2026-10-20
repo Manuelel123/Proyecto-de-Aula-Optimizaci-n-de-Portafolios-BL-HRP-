@@ -14,7 +14,7 @@ Herramienta web **educativa** (Flask) para personas jóvenes e inexpertas que qu
 
 ```powershell
 uv sync                                    # crea .venv e instala las dependencias de uv.lock
-Copy-Item .env.example .env                # y completa FLASK_SECRET_KEY y GESTOR_EMAILS
+Copy-Item .env.example .env                # y completa FLASK_SECRET_KEY
 uv run flask --app wsgi:app run --debug    # servidor de desarrollo
 ```
 
@@ -30,26 +30,18 @@ Con Waitress (servidor WSGI de producción, también en Windows):
 uv run waitress-serve --host 127.0.0.1 --port 8000 wsgi:app
 ```
 
-### Quién es gestor: `GESTOR_EMAILS`
+### Quién es gestor
 
-El rol `gestor` no se elige en la interfaz: lo reciben solo los correos listados en `GESTOR_EMAILS` (separados por coma; sin distinguir mayúsculas ni espacios), al registrarse o al iniciar sesión. Si un correo sale de la lista, en su siguiente ingreso vuelve a `novato` y se le pide confirmar el rol.
+El rol `gestor` (acceso total, con la app tal como era antes de la capa educativa) no se puede obtener desde la web ni por configuración: se otorga solo desde la línea de comandos del servidor, a **una sola** cuenta ya registrada:
 
-- En `.env` (recomendado; la app lo lee al arrancar y no pisa variables ya definidas):
+```powershell
+uv run flask --app wsgi:app users make-gestor tu-correo@example.com            # otorga el rol
+uv run flask --app wsgi:app users make-gestor otro@example.com --replace       # lo pasa a otra cuenta
+uv run flask --app wsgi:app users revoke-gestor tu-correo@example.com          # lo quita (vuelve a novato)
+uv run flask --app wsgi:app users list-gestor                                  # muestra quién es gestor
+```
 
-  ```dotenv
-  GESTOR_EMAILS=profesora@universidad.edu.co, admin@example.com
-  ```
-
-- Como variable de Windows para la terminal actual (PowerShell):
-
-  ```powershell
-  $env:GESTOR_EMAILS = "profesora@universidad.edu.co,admin@example.com"
-  uv run flask --app wsgi:app run
-  ```
-
-- De forma permanente para tu usuario de Windows (solo afecta a las terminales nuevas): `setx GESTOR_EMAILS "profesora@universidad.edu.co,admin@example.com"`, o en «Editar las variables de entorno de esta cuenta».
-
-Reinicia el servidor después de cambiarla.
+El cambio aplica en la siguiente petición, sin reiniciar el servidor.
 
 ## Uso: flujo de pantallas y roles
 
@@ -94,7 +86,7 @@ Las cuentas son **locales**: viven en la tabla `users` de la base SQLite (ver la
 
 - **Todo requiere sesión.** Sin iniciar sesión solo se ven la portada (`/`), `/auth/registro`, `/auth/ingresar` y los archivos estáticos. Las páginas redirigen al inicio de sesión (con `next`) y los endpoints JSON (`/api/...`) responden 401. La regla está en `web/auth/guard.py` (`PUBLIC_ENDPOINTS`, `register_access_check`).
 - **Registro e inicio de sesión:** contraseña de al menos 8 caracteres con letras y números. Tras 5 intentos fallidos en 15 minutos (por correo o por IP) el acceso se bloquea temporalmente. El mensaje de error no revela si el correo existe.
-- **Roles:** `novato` (por defecto), `inversionista` y `gestor`. `gestor` no se puede elegir: lo reciben solo los correos de `GESTOR_EMAILS` (separados por coma), al registrarse o al iniciar sesión; si un correo sale de la lista, vuelve a `novato`. Qué ve cada rol: «Uso: flujo de pantallas y roles».
+- **Roles:** `novato` (por defecto), `inversionista` y `gestor`. `gestor` no se puede elegir: se otorga solo con `flask users make-gestor` (ver «Quién es gestor»). Qué ve cada rol: «Uso: flujo de pantallas y roles».
 - **Perfil de riesgo obligatorio:** tras el primer inicio de sesión cada usuario responde una sola vez el cuestionario de `config/cuestionario.yaml` (capital disponible en COP, horizonte, 5 preguntas de tolerancia, 3 de capacidad y 2 de conocimiento). Sin perfil vigente ninguna herramienta abre: el access check `require_current_profile` (`web/profile/access.py`) redirige al cuestionario (los `/api/...` responden 403); solo quedan libres la portada, el propio perfilado, cerrar sesión y los estáticos. El progreso se guarda en cada paso (`perfil_borradores`) y se retoma en el siguiente ingreso. En los ingresos siguientes el perfil guardado se carga en `session["perfil"]` (y en la variable de plantilla `current_profile`) y la app va directo al inicio.
   - **Cálculo** (`src/optimizacion_portafolios/profiling/`, sin Flask): cada respuesta vale 1 a 4 según su orden; tolerancia y capacidad se promedian (menos de 2,0 adverso; de 2,0 a menos de 3,0 moderado; 3,0 o más arriesgado). El horizonte pone un tope (menos de 1 año: máximo adverso; 1 a 3 años: máximo moderado; más de 3: sin tope). Perfil final = el más bajo de los tres. Responder «Vendo todo» (pregunta 1) o «Menos de 1» mes de fondo de emergencia (pregunta 6) fuerza adverso. El **factor limitante** es el veto si lo hay; si no, el primero de `veto > horizonte > capacidad > tolerancia` cuyo nivel coincide con el final (el horizonte solo cuenta cuando impone tope). Las preguntas de conocimiento solo sugieren el rol: `inversionista` si la experiencia es «Fondos o acciones» o más y se acierta qué es diversificar; si no, `novato`. Umbrales, vetos, topes, desempate, regla del rol y explicaciones están en el YAML (con `version`), que se valida al arrancar.
   - **Rol:** el usuario confirma (o cambia) el rol sugerido entre `novato` e `inversionista`; hasta confirmarlo las herramientas lo llevan a esa pantalla. A un `gestor` no se le pide confirmar ni se le cambia el rol.

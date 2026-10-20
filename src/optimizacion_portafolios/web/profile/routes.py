@@ -34,7 +34,7 @@ from optimizacion_portafolios.storage.profiles import (
     save_draft,
     save_profile,
 )
-from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE, SELECTABLE_ROLES, canonical_role, is_gestor_email
+from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE, SELECTABLE_ROLES, canonical_role
 from optimizacion_portafolios.web.profile import bp
 from optimizacion_portafolios.web.profile.access import get_questionnaire, refresh_profile_session
 
@@ -250,7 +250,7 @@ def _profile_view(questionnaire: Questionnaire, profile: Profile) -> dict:
 
 
 def _is_gestor() -> bool:
-    return current_user.role == GESTOR_ROLE or is_gestor_email(current_user.email)
+    return current_user.role == GESTOR_ROLE
 
 
 @bp.get("/resultado")

@@ -249,7 +249,6 @@ class RepeatQuestionnaireTests(ProfileTestCase):
 
 
 class RoleConfirmationTests(ProfileTestCase):
-    gestor_emails = "jefa@example.com"
 
     def test_nobody_can_choose_gestor(self):
         self.sign_in_new()
@@ -266,7 +265,7 @@ class RoleConfirmationTests(ProfileTestCase):
 
     def test_gestor_skips_the_questionnaire(self):
         """The gestor uses the original app: no questionnaire, no role step."""
-        response = self.sign_in_new("jefa@example.com")
+        response = self.sign_in_new("jefa@example.com", role="gestor", role_confirmed=True)
         self.assertNotEqual(path_of(response), QUESTIONNAIRE_PATH)
         self.assertEqual(self.user("jefa@example.com").role, "gestor")
         self.assertEqual(self.client.get("/hrp").status_code, 200)
@@ -276,7 +275,9 @@ class RoleConfirmationTests(ProfileTestCase):
         self.assertEqual(self.client.get("/hrp").status_code, 200)
 
     def test_former_gestor_must_confirm_a_role(self):
-        create_test_user(self.app, "ex@example.com", role="gestor", role_confirmed=True)  # profiled, not listed
+        create_test_user(self.app, "ex@example.com", role="gestor", role_confirmed=True)  # profiled
+        result = self.app.test_cli_runner().invoke(args=["users", "revoke-gestor", "ex@example.com"])
+        self.assertEqual(result.exit_code, 0, result.output)
         response = self.post("/auth/ingresar", email="ex@example.com", password=TEST_PASSWORD)
         self.assertEqual(path_of(response), "/perfil/resultado")
 

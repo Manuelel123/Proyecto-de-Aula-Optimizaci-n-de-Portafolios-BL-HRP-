@@ -1,52 +1,21 @@
 """Role helpers shared by the auth flow and the role-gated pages.
 
-``gestor`` is never chosen in a form: it comes only from ``GESTOR_EMAILS``
-(app config, read from the environment variable of the same name), a
-comma-separated list of emails compared case- and space-insensitively.
+``gestor`` is never chosen in a form nor derived from configuration: it is
+granted only from the server's command line (``flask users make-gestor``),
+to a single account with a verified email. The database is the source of
+truth for every role.
 """
 
 from __future__ import annotations
 
-import os
-from collections.abc import Iterable
+from sqlalchemy import select
 
-from flask import current_app, has_app_context
-
+from optimizacion_portafolios.storage import db
 from optimizacion_portafolios.storage.models import DEFAULT_ROLE, ROLES, User
-from optimizacion_portafolios.storage.users import normalize_email
 
 GESTOR_ROLE = "gestor"
 # Roles a user may pick (or be assigned) through the interface.
 SELECTABLE_ROLES = tuple(role for role in ROLES if role != GESTOR_ROLE)
-
-
-def parse_emails(raw: str | Iterable[str] | None) -> frozenset[str]:
-    """Normalized emails of a comma-separated string (or an iterable of them)."""
-    if raw is None:
-        return frozenset()
-    items = raw.split(",") if isinstance(raw, str) else raw
-    return frozenset(email for email in (normalize_email(item) for item in items) if email)
-
-
-def gestor_emails() -> frozenset[str]:
-    """Emails granted the ``gestor`` role (app config, else the environment)."""
-    if has_app_context():
-        raw = current_app.config.get("GESTOR_EMAILS")
-    else:
-        raw = os.environ.get("GESTOR_EMAILS")
-    return parse_emails(raw)
-
-
-def is_gestor_email(email: str | None) -> bool:
-    return normalize_email(email) in gestor_emails()
-
-
-def initial_role(email: str) -> tuple[str, bool]:
-    """``(role, role_confirmed)`` of a new account."""
-    if is_gestor_email(email):
-        return GESTOR_ROLE, True
-    return DEFAULT_ROLE, False
-
 
 # Earlier role names still present in historical rows (perfiles, decisions).
 LEGACY_ROLES = {"explorador": DEFAULT_ROLE}
@@ -57,19 +26,29 @@ def canonical_role(role: str | None) -> str | None:
     return LEGACY_ROLES.get(role, role) if role else role
 
 
-def sync_gestor_role(user: User) -> bool:
-    """Grant or revoke ``gestor`` according to ``GESTOR_EMAILS``.
+def current_gestors() -> list[User]:
+    return list(db.session.scalars(select(User).where(User.role == GESTOR_ROLE)))
 
-    A listed email becomes a confirmed ``gestor``; a ``gestor`` no longer
-    listed goes back to an unconfirmed ``novato`` (so the interface asks
-    them to confirm a role). Returns whether the user changed; the caller
-    commits.
+
+def grant_gestor(user: User, *, replace: bool = False) -> list[User]:
+    """Make ``user`` the gestor; returns the accounts that stopped being gestor.
+
+    There is a single gestor: another gestor blocks the grant unless
+    ``replace`` is set, in which case it goes back to an unconfirmed novato.
+    The caller commits.
     """
-    listed = is_gestor_email(user.email)
-    if listed and (user.role != GESTOR_ROLE or not user.role_confirmed):
-        user.role, user.role_confirmed = GESTOR_ROLE, True
-        return True
-    if not listed and user.role == GESTOR_ROLE:
-        user.role, user.role_confirmed = DEFAULT_ROLE, False
-        return True
-    return False
+    others = [other for other in current_gestors() if other.id != user.id]
+    if others and not replace:
+        raise ValueError(
+            "Ya hay una cuenta gestor (" + ", ".join(other.email for other in others) + "). "
+            "Usa --replace para reemplazarla."
+        )
+    for other in others:
+        other.role, other.role_confirmed = DEFAULT_ROLE, False
+    user.role, user.role_confirmed = GESTOR_ROLE, True
+    return others
+
+
+def revoke_gestor(user: User) -> None:
+    """``user`` goes back to an unconfirmed novato (asked to confirm a role)."""
+    user.role, user.role_confirmed = DEFAULT_ROLE, False

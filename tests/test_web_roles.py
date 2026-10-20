@@ -40,19 +40,13 @@ def priced(tickers, _start, _end):
 
 
 class RoleTestCase(unittest.TestCase):
-    """Client signed in with ``role`` (gestor via GESTOR_EMAILS, like the real app)."""
+    """Client signed in with ``role`` (stored in the database, like the real app)."""
 
     role = "novato"
 
     def setUp(self):
         email = f"{self.role}@example.com"
-        self.app = create_app(
-            {
-                "TESTING": True,
-                "SECRET_KEY": "test-secret",
-                "GESTOR_EMAILS": email if self.role == "gestor" else "",
-            }
-        )
+        self.app = create_app({"TESTING": True, "SECRET_KEY": "test-secret"})
         self.client = self.app.test_client()
         self.user_id = create_test_user(self.app, email, role=self.role, display_name=self.role.capitalize())
         login_session(self.client, self.user_id)

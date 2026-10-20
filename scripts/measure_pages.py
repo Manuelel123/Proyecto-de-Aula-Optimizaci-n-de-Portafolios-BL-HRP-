@@ -92,7 +92,6 @@ def build_app(instance: Path):
             "TESTING": True,  # no price store, tables created directly, no vectorbt warm-up thread
             "SECRET_KEY": "measurement-secret",
             "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(instance / "measure.db").replace("\\", "/"),
-            "GESTOR_EMAILS": USERS["gestor"],
         }
     )
     return app

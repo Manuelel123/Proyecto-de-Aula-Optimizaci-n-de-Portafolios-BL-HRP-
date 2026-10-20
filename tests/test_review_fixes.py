@@ -1,4 +1,4 @@
-"""Fixes from the final review: login CSRF, GESTOR_EMAILS sync, stale profile, notices."""
+"""Fixes from the final review: login CSRF, role changes, stale profile, notices."""
 
 import unittest
 
@@ -14,7 +14,7 @@ from support import TEST_PASSWORD, add_test_profile, create_test_user, csrf_from
 
 class ReviewFixTests(unittest.TestCase):
     def setUp(self):
-        self.app = create_app({"TESTING": True, "SECRET_KEY": "x", "GESTOR_EMAILS": "jefe@example.com"})
+        self.app = create_app({"TESTING": True, "SECRET_KEY": "x"})
         self.client = self.app.test_client()
 
     def test_sign_in_post_without_a_session_token_is_rejected(self):
@@ -29,11 +29,12 @@ class ReviewFixTests(unittest.TestCase):
         )
         self.assertEqual(ok.status_code, 302)
 
-    def test_removing_a_gestor_email_applies_on_the_next_request(self):
+    def test_revoking_the_gestor_applies_on_the_next_request(self):
         user_id = create_test_user(self.app, "jefe@example.com", role="gestor")
         login_session(self.client, user_id)
         self.assertEqual(self.client.get("/monitoring").status_code, 200)
-        self.app.config["GESTOR_EMAILS"] = ""
+        result = self.app.test_cli_runner().invoke(args=["users", "revoke-gestor", "jefe@example.com"])
+        self.assertEqual(result.exit_code, 0, result.output)
         self.client.get("/")
         with self.app.app_context():
             self.assertNotEqual(get_user(user_id).role, "gestor")

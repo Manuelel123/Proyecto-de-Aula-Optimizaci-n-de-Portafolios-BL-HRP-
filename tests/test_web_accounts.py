@@ -15,13 +15,7 @@ from optimizacion_portafolios.storage.users import get_user_by_email
 from optimizacion_portafolios.web import create_app
 from optimizacion_portafolios.web.auth import guard
 from optimizacion_portafolios.web.auth.passwords import password_errors
-from optimizacion_portafolios.web.auth.roles import (
-    gestor_emails,
-    initial_role,
-    is_gestor_email,
-    parse_emails,
-    sync_gestor_role,
-)
+from optimizacion_portafolios.web.auth.roles import current_gestors
 from optimizacion_portafolios.web.auth.session import safe_next
 from optimizacion_portafolios.web.auth.throttle import login_throttle
 from support import TEST_PASSWORD, create_test_user, csrf_from, make_prices
@@ -31,16 +25,15 @@ class AccountTestCase(unittest.TestCase):
     """Fresh app (in-memory SQLite) with an anonymous client and a CSRF token.
 
     ``sign_in`` creates the local account if needed and signs in through the
-    real form. Subclasses can list emails in ``gestor_emails``.
+    real form. Accounts listed in ``gestor_emails`` (comma-separated) are
+    created as gestor, as ``flask users make-gestor`` would leave them.
     """
 
     gestor_emails = ""
 
     def setUp(self) -> None:
         login_throttle.clear()
-        self.app = create_app(
-            {"TESTING": True, "SECRET_KEY": "test-secret", "GESTOR_EMAILS": self.gestor_emails}
-        )
+        self.app = create_app({"TESTING": True, "SECRET_KEY": "test-secret"})
         self.client = self.app.test_client()
         self.csrf_token = csrf_from(self.client.get("/auth/ingresar"))
 
@@ -49,6 +42,10 @@ class AccountTestCase(unittest.TestCase):
         return self.client.post(path, data=data)
 
     def create_user(self, email="ana@example.com", password=TEST_PASSWORD, **fields) -> str:
+        listed = {item.strip().lower() for item in self.gestor_emails.split(",") if item.strip()}
+        if email.strip().lower() in listed:
+            fields.setdefault("role", "gestor")
+            fields.setdefault("role_confirmed", True)
         return create_test_user(self.app, email, password, **fields)
 
     def user_id_of(self, email="ana@example.com") -> str:
@@ -226,45 +223,41 @@ class LoginTests(AccountTestCase):
 
 
 class GestorRoleTests(AccountTestCase):
-    gestor_emails = " Jefa@Example.com , otro@example.com,"
+    """gestor is granted only from the command line, to a single account."""
 
-    def test_helper_parses_the_list(self):
-        self.assertEqual(parse_emails(" A@x.com, ,b@Y.com "), frozenset({"a@x.com", "b@y.com"}))
-        with self.app.app_context():
-            self.assertEqual(gestor_emails(), frozenset({"jefa@example.com", "otro@example.com"}))
-            self.assertTrue(is_gestor_email(" JEFA@example.com"))
-            self.assertFalse(is_gestor_email("ana@example.com"))
-            self.assertEqual(initial_role("jefa@example.com"), ("gestor", True))
-            self.assertEqual(initial_role("ana@example.com"), ("novato", False))
-
-    def test_listed_email_registers_as_confirmed_gestor(self):
-        self.register(email="JEFA@example.com")
-        user = self.user("jefa@example.com")
-        self.assertEqual((user.role, user.role_confirmed), ("gestor", True))
+    def cli(self, *args):
+        return self.app.test_cli_runner().invoke(args=["users", *args])
 
     def test_gestor_cannot_be_chosen_in_the_form(self):
         self.register(email="ana@example.com", role="gestor", role_confirmed="1")
         user = self.user("ana@example.com")
         self.assertEqual((user.role, user.role_confirmed), ("novato", False))
 
-    def test_role_follows_the_list_on_sign_in(self):
-        self.create_user("otro@example.com")  # stored as novato, then listed
-        self.post("/auth/ingresar", email="otro@example.com", password=TEST_PASSWORD)
-        self.assertEqual(self.user("otro@example.com").role, "gestor")
-
-        self.create_user("ex@example.com", role="gestor", role_confirmed=True)  # no longer listed
-        self.refresh_csrf()
-        self.post("/auth/salir")
-        self.refresh_csrf()
-        self.post("/auth/ingresar", email="ex@example.com", password=TEST_PASSWORD)
-        user = self.user("ex@example.com")
-        self.assertEqual((user.role, user.role_confirmed), ("novato", False))
-
-    def test_sync_keeps_other_roles(self):
-        user = User(email="ana@example.com", password_hash="x", role="inversionista", role_confirmed=True)
+    def test_make_gestor_is_the_only_way_and_there_is_one(self):
+        self.create_user("jefa@example.com")
+        self.create_user("otro@example.com")
+        result = self.cli("make-gestor", "JEFA@example.com")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual((self.user("jefa@example.com").role, self.user("jefa@example.com").role_confirmed), ("gestor", True))
+        blocked = self.cli("make-gestor", "otro@example.com")
+        self.assertNotEqual(blocked.exit_code, 0)
+        self.assertIn("Ya hay una cuenta gestor", blocked.output)
+        replaced = self.cli("make-gestor", "otro@example.com", "--replace")
+        self.assertEqual(replaced.exit_code, 0, replaced.output)
+        self.assertEqual(self.user("jefa@example.com").role, "novato")
         with self.app.app_context():
-            self.assertFalse(sync_gestor_role(user))
-        self.assertEqual((user.role, user.role_confirmed), ("inversionista", True))
+            self.assertEqual([user.email for user in current_gestors()], ["otro@example.com"])
+        self.assertIn("otro@example.com", self.cli("list-gestor").output)
+
+    def test_revoke_and_unknown_accounts(self):
+        self.create_user("jefa@example.com", role="gestor", role_confirmed=True)
+        self.assertEqual(self.cli("revoke-gestor", "jefa@example.com").exit_code, 0)
+        self.assertEqual((self.user("jefa@example.com").role, self.user("jefa@example.com").role_confirmed), ("novato", False))
+        self.assertNotEqual(self.cli("make-gestor", "nadie@example.com").exit_code, 0)
+
+    def test_registration_never_creates_a_gestor(self):
+        self.register(email="jefa@example.com")
+        self.assertEqual(self.user("jefa@example.com").role, "novato")
 
 
 class GlobalGuardTests(AccountTestCase):

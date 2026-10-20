@@ -50,7 +50,6 @@ def create_app(test_config: dict | None = None) -> Flask:
         REMEMBER_COOKIE_SECURE=secure_cookies,
         PERMANENT_SESSION_LIFETIME=timedelta(days=30),
         # Comma-separated emails that get the "gestor" role (web.auth.roles).
-        GESTOR_EMAILS="" if testing else os.environ.get("GESTOR_EMAILS", ""),
         SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL")
         or "sqlite:///" + os.path.join(app.instance_path, "atlas.db"),
     )
