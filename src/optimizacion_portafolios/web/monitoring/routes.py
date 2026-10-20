@@ -4,9 +4,7 @@ import logging
 from datetime import date
 
 import numpy as np
-import requests
 from flask import flash, render_template, request
-from yfinance.exceptions import YFException, YFRateLimitError
 
 from optimizacion_portafolios.analytics.statistics import date_years_ago
 from optimizacion_portafolios.data.catalogs import (
@@ -20,6 +18,8 @@ from optimizacion_portafolios.web.common.forms import (
     selected_tickers,
     universes_payload,
 )
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS
+from optimizacion_portafolios.web.common.errors import download_error_message
 from optimizacion_portafolios.web.monitoring import bp
 from optimizacion_portafolios.web.monitoring.services import (
     build_fundamental_analysis,
@@ -32,15 +32,6 @@ _DEFAULT_PERIOD = "Mensual"
 _MONITORED_TICKERS = set().union(
     *(set(portfolio.values()) for portfolio in PORTAFOLIOS_MONITOREO.values())
 )
-
-
-def _yahoo_error_message(error: Exception, context: str) -> str:
-    if isinstance(error, YFRateLimitError):
-        return (
-            "Yahoo Finance limitó temporalmente las consultas. "
-            "Espera unos minutos y vuelve a intentar."
-        )
-    return f"{context}: {error}"
 
 
 def _tickers_for_view(view: str, portfolio_tickers: set[str]) -> list[str]:
@@ -100,10 +91,10 @@ def _run_fundamental(ticker: str) -> dict | None:
         raise ValueError("El activo no pertenece a los portafolios monitoreados.")
     try:
         fundamental = build_fundamental_analysis(ticker)
-    except (requests.RequestException, TimeoutError, YFException) as error:
+    except DOWNLOAD_ERRORS as error:
         logger.exception("Yahoo Finance fundamental lookup failed for %s", ticker)
         raise ValueError(
-            _yahoo_error_message(
+            download_error_message(
                 error, f"No se pudo consultar Yahoo Finance para {ticker}"
             )
         ) from error
@@ -117,10 +108,10 @@ def _run_price_analysis(view, portfolio_tickers, start_date, period) -> dict:
     tickers = _tickers_for_view(view, set(portfolio_tickers))
     try:
         result = build_price_analysis(view, tickers, start_date, period)
-    except (requests.RequestException, TimeoutError, YFException) as error:
+    except DOWNLOAD_ERRORS as error:
         logger.exception("Yahoo Finance request failed during asset monitoring")
         raise ValueError(
-            _yahoo_error_message(error, "No se pudieron descargar los precios")
+            download_error_message(error, "No se pudieron descargar los precios")
         ) from error
     if result["missing"]:
         flash(

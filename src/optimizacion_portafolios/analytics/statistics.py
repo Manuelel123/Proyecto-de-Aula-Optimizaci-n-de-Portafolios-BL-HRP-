@@ -1,12 +1,22 @@
 """Descriptive return and risk statistics for price series."""
 
 from datetime import date
+from math import isfinite
 
 import numpy as np
 import pandas as pd
 
-TRADING_DAYS = 252
+TRADING_DAYS = 252  # trading days per year, shared by every annualization
 EMA_SPAN = 500
+
+
+def finite_or_none(value) -> float | None:
+    """``float(value)``, or ``None`` for missing, non-numeric, NaN or infinite values."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if isfinite(number) else None
 
 
 def date_years_ago(value: date, years: int = 1) -> date:

@@ -8,7 +8,7 @@ from time import monotonic, sleep
 import pandas as pd
 import requests
 import yfinance as yf
-from yfinance.exceptions import YFRateLimitError
+from yfinance.exceptions import YFException, YFRateLimitError
 
 from optimizacion_portafolios.data import price_store
 from optimizacion_portafolios.data.cache import TtlCache, ttl_cache
@@ -24,6 +24,9 @@ from optimizacion_portafolios.data.tiingo_prices import (
 )
 
 logger = logging.getLogger(__name__)
+# Provider failures of a download (network, timeout, Yahoo errors); callers
+# turn them into a Spanish message instead of a 500.
+DOWNLOAD_ERRORS = (requests.RequestException, TimeoutError, YFException)
 _INFO_CACHE_TTL_SECONDS = 15 * 60
 _INFO_CACHE_MAX_SIZE = 512
 _PRICE_CACHE_TTL_SECONDS = 15 * 60

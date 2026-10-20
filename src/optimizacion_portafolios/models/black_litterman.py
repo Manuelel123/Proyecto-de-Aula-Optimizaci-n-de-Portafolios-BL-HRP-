@@ -36,7 +36,8 @@ from skfolio.optimization import MeanRisk, ObjectiveFunction
 from skfolio.portfolio import Portfolio
 from skfolio.prior import BasePrior, BlackLitterman, EmpiricalPrior, ReturnDistribution
 
-TRADING_DAYS = 252
+from optimizacion_portafolios.analytics.statistics import TRADING_DAYS
+
 TAU = 0.05
 CVAR_BETA = 0.95
 

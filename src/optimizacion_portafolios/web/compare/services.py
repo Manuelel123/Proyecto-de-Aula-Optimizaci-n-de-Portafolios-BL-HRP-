@@ -13,11 +13,10 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-import requests
-from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.performance import calculate_quantstats_metrics
-from optimizacion_portafolios.data.market_data import download_prices
+from optimizacion_portafolios.analytics.statistics import finite_or_none as _number
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS, download_prices
 from optimizacion_portafolios.web.common import guided
 from optimizacion_portafolios.web.hrp.services import WeightBounds, run_hrp
 
@@ -33,7 +32,6 @@ METRICS = (
 )
 _SIGNIFICANT = 0.01  # weights from 1 % count as "assets with weight"
 _FAILURES = (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError)
-_DOWNLOAD_FAILURES = (requests.RequestException, TimeoutError, YFException)
 
 
 def _historical_metrics(weights: dict[str, float], start: date) -> dict:
@@ -47,14 +45,6 @@ def _historical_metrics(weights: dict[str, float], start: date) -> dict:
     series = returns.loc[:, list(tickers)].dot(pd.Series(weights))
     values = calculate_quantstats_metrics(series)["Valor"]
     return {key: _number(values.get(source)) for key, source, _label in METRICS}
-
-
-def _number(value):
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if np.isfinite(number) else None
 
 
 def _run(method: str, tickers: list[str], max_weight: float, labels: dict[str, str]) -> dict:
@@ -84,7 +74,7 @@ def compare(tickers: list[str], max_weight_pct: float, labels: dict[str, str]) -
         try:
             run = _run(method, tickers, max_weight_pct / 100, labels)
             run["metrics"] = _historical_metrics(run["weights"], guided.guided_start())
-        except _DOWNLOAD_FAILURES as error:
+        except DOWNLOAD_ERRORS as error:
             logger.exception("Price download failed during the comparison (%s)", method)
             run = {"error": f"No se pudieron descargar los datos: {error}"}
         except _FAILURES as error:

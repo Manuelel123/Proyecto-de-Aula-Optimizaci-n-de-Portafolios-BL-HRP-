@@ -171,12 +171,6 @@ def _register_role_permissions(app: Flask) -> None:
 
 
 def _register_template_helpers(app: Flask) -> None:
-    @app.context_processor
-    def inject_accounts():
-        # ``current_user`` comes from Flask-Login's own context processor.
-        # Accounts are local, so they are always available.
-        return {"accounts_enabled": True}
-
     def _number(value):
         try:
             return float(value)

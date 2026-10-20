@@ -1,7 +1,7 @@
 {# Account controls for result pages. Import "with context" (they read current_user and csrf_token). #}
 
 {% macro fix_portfolio_control(snapshot_token) %}
-  {% if accounts_enabled and snapshot_token and can('fix_portfolio') %}
+  {% if snapshot_token and can('fix_portfolio') %}
     {% if current_user.is_authenticated %}
       <form method="post" action="{{ url_for('portfolios.fix') }}" class="save-portfolio">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -17,7 +17,6 @@
 {% endmacro %}
 
 {% macro backtest_history_notice(bt) %}
-  {% if accounts_enabled %}
     {% if bt.history and bt.history.error %}
       <div class="notice notice--warning" role="status">No se pudo guardar el backtest en tu historial: {{ bt.history.error }}</div>
     {% elif bt.history %}
@@ -28,5 +27,4 @@
     {% elif not current_user.is_authenticated %}
       <p class="help-text"><a href="{{ url_for('auth.login') }}">Inicia sesión</a> para guardar tus backtests en un historial.</p>
     {% endif %}
-  {% endif %}
 {% endmacro %}

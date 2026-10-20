@@ -6,8 +6,6 @@ import logging
 from datetime import date, timedelta
 
 import pandas as pd
-import requests
-from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.alerts import LEVEL_LABELS, overall_level
 from optimizacion_portafolios.analytics.tracking import (
@@ -23,7 +21,7 @@ from optimizacion_portafolios.analytics.tracking import (
 )
 from optimizacion_portafolios.data.catalogs import BENCHMARKS
 from optimizacion_portafolios.data.fx import prices_in_usd
-from optimizacion_portafolios.data.market_data import download_prices
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS, download_prices
 from optimizacion_portafolios.storage import repositories
 from optimizacion_portafolios.storage.models import Portfolio
 from optimizacion_portafolios.storage.repositories import HoldingData, TransactionData
@@ -44,7 +42,6 @@ DEFAULT_CAPITAL = 100_000.0
 DEFAULT_COMMISSION_BPS = 10.0
 # Calendar days searched backwards for the closing prices used to fix a portfolio.
 FIX_PRICE_LOOKBACK_DAYS = 14
-DOWNLOAD_ERRORS = (requests.RequestException, TimeoutError, YFException)
 STATUS_LABELS = {"active": "Activo", "archived": "Archivado"}
 REASON_LABELS = {
     "fix": "Fijado como óptimo",

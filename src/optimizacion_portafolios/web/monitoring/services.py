@@ -6,13 +6,12 @@ from math import isfinite
 
 import numpy as np
 import pandas as pd
-import requests
-from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.statistics import (
     calculate_expected_returns,
     calculate_statistics,
     date_years_ago,
+    finite_or_none as _number,
 )
 from optimizacion_portafolios.analytics.volatility import (
     calculate_historical_volatility,
@@ -20,6 +19,7 @@ from optimizacion_portafolios.analytics.volatility import (
 )
 from optimizacion_portafolios.data.catalogs import GRUPOS_ACTIVOS
 from optimizacion_portafolios.data.market_data import (
+    DOWNLOAD_ERRORS,
     download_prices,
     fetch_fundamental_information,
 )
@@ -72,14 +72,6 @@ def asset_names() -> dict[str, str]:
     return names
 
 
-def _number(value) -> float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if isfinite(number) else None
-
-
 def _format_fundamental_value(value, kind: str, currency: str) -> str:
     if value is None:
         return "N/D"
@@ -105,7 +97,7 @@ def _fundamental_prices(ticker: str, name: str):
     today = date.today()
     try:
         prices = download_prices((ticker,), date_years_ago(today), today)
-    except (requests.RequestException, TimeoutError, YFException, ValueError):
+    except (*DOWNLOAD_ERRORS, ValueError):
         logger.warning(
             "Could not download prices for %s fundamentals", ticker, exc_info=True
         )

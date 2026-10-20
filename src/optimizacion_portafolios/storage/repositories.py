@@ -168,10 +168,6 @@ def archive_portfolio(portfolio: Portfolio, when) -> None:
     db.session.commit()
 
 
-def snapshot_days(portfolio: Portfolio) -> set[date]:
-    return set(db.session.scalars(select(DailySnapshot.day).where(DailySnapshot.portfolio_id == portfolio.id)))
-
-
 def save_snapshots(portfolio: Portfolio, rows: list[dict], refresh_day: date | None = None) -> int:
     """Insert the snapshots of new days; only ``refresh_day`` may be overwritten.
 

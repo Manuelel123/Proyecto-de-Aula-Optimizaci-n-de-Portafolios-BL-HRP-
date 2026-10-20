@@ -5,11 +5,10 @@ from datetime import date
 from io import BytesIO
 
 import numpy as np
-import requests
 from flask import flash, render_template, request, send_file
-from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.statistics import date_years_ago
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS
 from optimizacion_portafolios.data.catalogs import (
     ACTIVOS_HRP,
     BENCHMARKS,
@@ -172,7 +171,7 @@ def _guided_hrp():
             bounds = WeightBounds(max_weight=max_weight / 100)
             try:
                 result = run_hrp(selected, guided.GUIDED_BENCHMARK, start_date, bounds, _ASSET_LABELS)
-            except (requests.RequestException, TimeoutError, YFException) as error:
+            except DOWNLOAD_ERRORS as error:
                 logger.exception("Yahoo Finance request failed during guided HRP optimization")
                 raise ValueError(f"No se pudieron descargar los datos: {error}") from error
             decision_log.record(
@@ -298,7 +297,7 @@ def hrp():
                             "backtest": backtest is not None,
                         },
                     )
-            except (requests.RequestException, TimeoutError, YFException) as error:
+            except DOWNLOAD_ERRORS as error:
                 logger.exception("Yahoo Finance request failed during HRP optimization")
                 raise ValueError(f"No se pudieron descargar los datos: {error}") from error
             if missing and download_requested:

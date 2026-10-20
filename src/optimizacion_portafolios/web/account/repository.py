@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
-from typing import Any
 
 from sqlalchemy import select
 
+from optimizacion_portafolios.analytics.statistics import finite_or_none as _number
 from optimizacion_portafolios.storage import db
 from optimizacion_portafolios.storage.models import BacktestResult, BacktestRun
 
@@ -25,17 +24,6 @@ _RESULT_FIELDS = (
     "strategy", "total_return", "cagr", "volatility", "sharpe", "sortino", "max_drawdown",
     "rebalances", "total_costs", "rebalance_dates",
 )
-
-
-def _number(value: Any) -> float | None:
-    """JSON-safe float (NaN and infinities become ``None``)."""
-    if value is None:
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if math.isfinite(number) else None
 
 
 def _row(model, fields) -> dict:

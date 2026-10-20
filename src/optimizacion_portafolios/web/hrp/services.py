@@ -7,9 +7,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 import pandas as pd
-import requests
 from skfolio.cluster import HierarchicalClustering
-from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.performance import (
     calculate_quantstats_metrics,
@@ -17,7 +15,7 @@ from optimizacion_portafolios.analytics.performance import (
 )
 from optimizacion_portafolios.analytics.volatility import calculate_monthly_volatility
 from optimizacion_portafolios.data.catalogs import BENCHMARKS
-from optimizacion_portafolios.data.market_data import download_prices
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS, download_prices
 from optimizacion_portafolios.models.hrp import (
     WeightBounds,
     calculate_hrp_contributions,
@@ -46,6 +44,7 @@ from optimizacion_portafolios.web.common.price_series import price_series_payloa
 from optimizacion_portafolios.web.common.tables import (
     dataframe_html,
     format_decimal,
+    format_money,
     format_percent,
     metrics_html,
 )
@@ -264,10 +263,6 @@ def _backtest_prices(
     return prices
 
 
-def _money(value) -> str:
-    return "N/D" if pd.isna(value) else f"${value:,.2f}"
-
-
 def _backtest_metrics_table(metrics: pd.DataFrame) -> str:
     formatters = {}
     for column in metrics.columns:
@@ -278,7 +273,7 @@ def _backtest_metrics_table(metrics: pd.DataFrame) -> str:
         elif column in _BACKTEST_COUNT_COLUMNS:
             formatters[column] = lambda value: f"{int(value):d}"
         elif column in _BACKTEST_MONEY_COLUMNS:
-            formatters[column] = _money
+            formatters[column] = format_money
         else:
             formatters[column] = format_decimal
     return dataframe_html(metrics, formatters)
@@ -336,7 +331,7 @@ def _metric(row: pd.Series, column: str):
 
 
 def _backtest_record(result: BacktestResult, best: str | None) -> dict:
-    """JSON-ready summary of a backtest for the user's history (InsForge)."""
+    """JSON-ready summary of a backtest for the user's history (``web.account``)."""
     config = result.config
     strategies = []
     for label, row in result.metrics.iterrows():
@@ -418,7 +413,7 @@ def run_backtest_section(
         result, from_cache = cached_backtest(
             prices, config, bounds.restricted_to(list(prices.columns)), start_date
         )
-    except (requests.RequestException, TimeoutError, YFException) as error:
+    except DOWNLOAD_ERRORS as error:
         logger.exception("Price download failed during the HRP backtest")
         return {"error": f"No se pudieron descargar los datos del backtest: {error}"}
     except ValueError as error:
@@ -449,7 +444,7 @@ def _backtest_history(
         history = download_prices(
             tuple(tickers), backtest_history_start(start_date, config), date.today()
         )
-    except (requests.RequestException, TimeoutError, YFException):
+    except DOWNLOAD_ERRORS:
         logger.warning("Backtest history download failed; downloading separately", exc_info=True)
         return None
     return None if history.empty else history

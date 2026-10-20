@@ -19,6 +19,7 @@ strategy and ``cash_sharing=True``).
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
@@ -30,6 +31,8 @@ import pandas as pd
 from optimizacion_portafolios.analytics.performance import calculate_strategy_metrics
 from optimizacion_portafolios.analytics.statistics import TRADING_DAYS
 from optimizacion_portafolios.models.hrp import WeightBounds, optimize_hrp
+
+logger = logging.getLogger(__name__)
 
 BUY_AND_HOLD = "buy_hold"
 CALENDAR_STRATEGIES = {
@@ -469,9 +472,7 @@ def warm_up_in_background() -> threading.Thread | None:
         try:
             warm_up()
         except Exception:  # pragma: no cover - warm-up is best effort
-            import logging
-
-            logging.getLogger(__name__).exception("vectorbt warm-up failed")
+            logger.exception("vectorbt warm-up failed")
 
     thread = threading.Thread(target=target, name="vectorbt-warmup", daemon=True)
     thread.start()

@@ -227,6 +227,10 @@ tests/
   test_hrp_model.py             modelo HRP
   test_black_litterman_model.py modelo Black-Litterman
   test_web.py                   rutas HTTP de punta a punta
+  golden_cases.py, test_golden.py, golden/values.json
+                                red de seguridad numérica: salidas fijadas de modelos, analytics y servicios
+scripts/
+  measure_pages.py              tiempos de carga de las páginas principales (frío/caliente, datos reales)
 src/optimizacion_portafolios/
   data/
     catalogs.py                 universos, benchmarks y periodos de volatilidad
@@ -250,9 +254,11 @@ src/optimizacion_portafolios/
     __init__.py                 create_app(), CSRF, manejo de errores, run()
     templates/  static/         plantilla base, error y CSS compartidos
     common/
-      charts.py                 gráficos Matplotlib/QuantStats como imágenes PNG
+      charts.py                 gráficos interactivos Plotly (JSON para el navegador)
       tables.py                 tablas HTML escapadas y formatos
       forms.py                  lectura y validación de formularios
+      errors.py                 mensajes de fallos de descarga (límite de Yahoo incluido)
+      signing.py                tokens firmados (itsdangerous) de resultados y cambios
     main/                       portada (sin sesión), pantalla principal por rol y glosario
     compare/                    comparación HRP vs Black-Litterman (inversionista y gestor)
     decisions/                  registro de decisiones: Mi historial y el enlace con las páginas de resultados

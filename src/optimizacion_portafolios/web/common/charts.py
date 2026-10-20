@@ -17,17 +17,18 @@ in which the tickers are received (never by rank).
 
 import html
 from collections.abc import Iterable
-from math import isfinite, sqrt
+from math import sqrt
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from markupsafe import Markup
 
+from optimizacion_portafolios.analytics.statistics import TRADING_DAYS
+from optimizacion_portafolios.analytics.statistics import finite_or_none as _finite_or_none
 from optimizacion_portafolios.web.common import chart_theme as theme
 
 ROLLING_SHARPE_PERIOD = 126
-TRADING_DAYS = 252
 MONTHS = ("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
 MONO_FONT = "JetBrains Mono, ui-monospace, monospace"
 DATE_HOVER = "%d %b %Y"
@@ -73,14 +74,6 @@ def _percent(value: float, decimals: int = 2) -> str:
 
 def _date(value) -> str:
     return pd.Timestamp(value).strftime("%d/%m/%Y")
-
-
-def _finite_or_none(value) -> float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if isfinite(number) else None
 
 
 def _none_list(values: Iterable) -> list:

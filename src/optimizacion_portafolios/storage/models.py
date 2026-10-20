@@ -29,7 +29,6 @@ ROLES = ("explorador", "inversionista", "gestor")
 DEFAULT_ROLE = "explorador"
 DEFAULT_PLAN = "piloto"
 MODELS = ("hrp", "black_litterman")
-STATUSES = ("active", "archived")
 VERSION_REASONS = ("fix", "rebalance", "reoptimize", "remove", "add")
 
 

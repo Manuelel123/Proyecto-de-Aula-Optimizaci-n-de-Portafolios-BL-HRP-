@@ -18,6 +18,10 @@ def format_decimal(value) -> str:
     return "N/D" if pd.isna(value) else f"{value:,.2f}"
 
 
+def format_money(value) -> str:
+    return "N/D" if pd.isna(value) else f"${value:,.2f}"
+
+
 def dataframe_html(
     frame: pd.DataFrame,
     formatters: dict | None = None,

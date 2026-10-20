@@ -107,7 +107,8 @@ def display_date(value) -> str:
     return value.strftime("%d/%m/%Y")
 
 
-def _market_caps_usd(tickers) -> dict[str, float]:
+def market_caps_usd(tickers) -> dict[str, float]:
+    """Market cap in USD per ticker; ``ValueError`` naming every ticker without one."""
     capitalizations = {}
     missing = []
     for ticker in tickers:
@@ -280,7 +281,7 @@ def run_black_litterman(
         raise ValueError(f"No se encontraron precios para el benchmark {benchmark}.")
     market_prices = benchmark_prices[benchmark]
 
-    capitalizations = _market_caps_usd(prices.columns)
+    capitalizations = market_caps_usd(prices.columns)
     active_views = {ticker: views[ticker] for ticker in prices.columns}
     confidences = {ticker: VIEW_CONFIDENCE for ticker in prices.columns}
     model = optimize_black_litterman(

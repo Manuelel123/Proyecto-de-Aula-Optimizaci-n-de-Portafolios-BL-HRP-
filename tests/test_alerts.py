@@ -12,7 +12,7 @@ from optimizacion_portafolios.analytics.tracking import stale_days
 from optimizacion_portafolios.storage import repositories
 from optimizacion_portafolios.storage.repositories import HoldingData
 from optimizacion_portafolios.web import create_app
-from optimizacion_portafolios.web.portfolios import alerting, services
+from optimizacion_portafolios.web.portfolios import alerting
 from test_tracking import _prices
 from test_web_accounts import AccountTestCase
 

@@ -5,9 +5,7 @@ from datetime import date
 from io import BytesIO
 
 import numpy as np
-import requests
 from flask import flash, render_template, request, send_file
-from yfinance.exceptions import YFException, YFRateLimitError
 
 from optimizacion_portafolios.analytics.statistics import date_years_ago
 from optimizacion_portafolios.data.catalogs import (
@@ -15,6 +13,8 @@ from optimizacion_portafolios.data.catalogs import (
     BENCHMARKS,
     UNIVERSOS_BLACK_LITTERMAN,
 )
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS
+from optimizacion_portafolios.web.common.errors import download_error_message
 from optimizacion_portafolios.web.portfolios.snapshots import black_litterman_snapshot, sign
 from optimizacion_portafolios.web.auth.permissions import can
 from optimizacion_portafolios.web.black_litterman import bp
@@ -65,12 +65,7 @@ def _valid_custom_tickers() -> tuple[list[str], list[str]]:
 
 
 def yahoo_error(error: Exception) -> ValueError:
-    if isinstance(error, YFRateLimitError):
-        return ValueError(
-            "Yahoo Finance limitó temporalmente las consultas. "
-            "Espera unos minutos y vuelve a intentar."
-        )
-    return ValueError(f"No se pudieron descargar los datos: {error}")
+    return ValueError(download_error_message(error))
 
 
 def _guided_black_litterman():
@@ -85,7 +80,7 @@ def _guided_black_litterman():
                 raise ValueError("Deja al menos dos activos para calcular el portafolio.")
             try:
                 result = guided.run_neutral_black_litterman(selected, {**_CATALOG_LABELS, **labels})
-            except (requests.RequestException, TimeoutError, YFException) as error:
+            except DOWNLOAD_ERRORS as error:
                 logger.exception("Yahoo Finance request failed during guided Black-Litterman")
                 raise yahoo_error(error) from error
             result["explanation"] = guided.black_litterman_explanation(result)
@@ -244,18 +239,11 @@ def black_litterman():
                     request.form.get("action") == "download_report",
                     benchmark_label=benchmark_name,
                 )
-            except (requests.RequestException, TimeoutError, YFException) as error:
+            except DOWNLOAD_ERRORS as error:
                 logger.exception(
                     "Yahoo Finance request failed during Black-Litterman optimization"
                 )
-                if isinstance(error, YFRateLimitError):
-                    message = (
-                        "Yahoo Finance limitó temporalmente las consultas. "
-                        "Espera unos minutos y vuelve a intentar."
-                    )
-                else:
-                    message = f"No se pudieron descargar los datos: {error}"
-                raise ValueError(message) from error
+                raise yahoo_error(error) from error
             if result.get("report"):
                 return send_file(
                     BytesIO(result["report"]),
