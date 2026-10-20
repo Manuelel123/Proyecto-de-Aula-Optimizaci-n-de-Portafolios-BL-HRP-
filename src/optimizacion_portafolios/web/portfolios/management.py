@@ -70,16 +70,22 @@ def _bounded(weights: pd.Series, bounds: WeightBounds | None) -> pd.Series:
     return apply_bounds(weights, bounds)
 
 
-def closing_prices(tickers: tuple[str, ...], today: date) -> tuple[date, dict[str, float]]:
-    """Latest business-day closes in USD of ``tickers`` (raises ``ValueError``)."""
+def _recent_usd_prices(tickers: tuple[str, ...], today: date, required) -> pd.DataFrame:
+    """Recent USD closes of ``tickers``; ``ValueError`` if one of ``required`` has none."""
     start = today - timedelta(days=FIX_PRICE_LOOKBACK_DAYS)
     try:
         prices = usd_prices(tickers, start, today)
     except DOWNLOAD_ERRORS as error:
         raise ValueError(f"No se pudieron descargar los precios: {error}") from error
-    missing = [ticker for ticker in tickers if ticker not in prices.columns]
+    missing = [ticker for ticker in required if ticker not in prices.columns]
     if missing:
         raise ValueError("No hay precios recientes para: " + ", ".join(missing))
+    return prices
+
+
+def closing_prices(tickers: tuple[str, ...], today: date) -> tuple[date, dict[str, float]]:
+    """Latest business-day closes in USD of ``tickers`` (raises ``ValueError``)."""
+    prices = _recent_usd_prices(tickers, today, tickers)
     price_day, closes = last_prices(business_days(prices.sort_index().ffill()))
     return price_day.date(), closes
 
@@ -192,7 +198,10 @@ def build_change(portfolio: Portfolio, action: str, method: str, *, removed=(), 
         new = [t for t in added if t not in current]
         if not new:
             raise ValueError("Escribe al menos un activo nuevo que no esté en el portafolio.")
-        closing_prices(tuple(new), today)  # validates the tickers before anything else
+        # Validate the new tickers before anything else. The download covers
+        # every ticker the new version will hold, so the closing prices below
+        # come from the cache instead of a second download.
+        _recent_usd_prices(tuple(sorted(set(version.units) | set(current) | set(new))), today, new)
         tickers = list(current) + new
         target = (
             reoptimized_weights(portfolio, tickers, today, {t: views[t] for t in new if t in views})

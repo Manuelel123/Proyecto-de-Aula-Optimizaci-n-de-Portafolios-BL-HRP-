@@ -77,6 +77,8 @@ class CurrencyTests(unittest.TestCase):
     def setUp(self):
         fx.ticker_currency.cache_clear()
         self.addCleanup(fx.ticker_currency.cache_clear)
+        fx.usd_rate.cache_clear()
+        self.addCleanup(fx.usd_rate.cache_clear)
 
     def test_tiingo_and_crypto_tickers_are_usd_without_lookups(self):
         with patch.object(fx, "fetch_fundamental_information") as info:

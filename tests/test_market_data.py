@@ -13,7 +13,7 @@ from tiingo import TiingoClient
 from tiingo.restclient import RestClientError
 from yfinance.exceptions import YFRateLimitError
 
-from optimizacion_portafolios.data import tiingo_prices
+from optimizacion_portafolios.data import market_data, tiingo_prices
 from optimizacion_portafolios.data.market_data import (
     _cached_ticker_info,
     clear_price_cache,
@@ -155,15 +155,46 @@ class MarketDataTests(unittest.TestCase):
         self.assertEqual(download.call_count, 2)
 
     @_without_tiingo_key()
+    @patch("optimizacion_portafolios.data.market_data.monotonic")
     @patch(_YF_DOWNLOAD)
-    def test_download_prices_does_not_cache_empty_results(self, download):
+    def test_download_prices_caches_empty_results_briefly(self, download, clock):
         download.return_value = pd.DataFrame()
         start, end = date(2025, 1, 1), date(2025, 1, 2)
 
+        clock.return_value = 100.0
         self.assertTrue(download_prices(("AAPL",), start, end).empty)
+        clock.return_value = 100.0 + 59
         self.assertTrue(download_prices(("AAPL",), start, end).empty)
+        self.assertEqual(download.call_count, 1)
 
+        clock.return_value = 100.0 + 60
+        self.assertTrue(download_prices(("AAPL",), start, end).empty)
         self.assertEqual(download.call_count, 2)
+
+    @_without_tiingo_key()
+    @patch("optimizacion_portafolios.data.market_data.monotonic")
+    @patch(_YF_DOWNLOAD)
+    def test_download_prices_cache_ttl_counts_from_the_download(self, download, clock):
+        """Per-entry TTL: a download made late in a 15-minute bucket is not dropped at its end."""
+        index = pd.bdate_range("2025-01-01", periods=2)
+        download.return_value = _yahoo_close(index, {"AAPL": [1.0, 2.0]})
+        start, end = date(2025, 1, 1), date(2025, 1, 2)
+
+        clock.return_value = 15 * 60 - 1.0
+        download_prices(("AAPL",), start, end)
+        clock.return_value = 15 * 60 + 60.0
+        download_prices(("AAPL",), start, end)
+        self.assertEqual(download.call_count, 1)
+
+    @patch("optimizacion_portafolios.data.market_data.yf.Ticker")
+    def test_exchange_rate_is_cached(self, ticker):
+        ticker.return_value.history.return_value = pd.DataFrame({"Close": [0.25, 0.26]})
+        market_data._latest_exchange_rate.cache_clear()
+        self.addCleanup(market_data._latest_exchange_rate.cache_clear)
+
+        self.assertAlmostEqual(market_data._exchange_rate_to_usd("brl"), 0.26)
+        self.assertAlmostEqual(market_data._exchange_rate_to_usd("BRL"), 0.26)
+        self.assertEqual(ticker.return_value.history.call_count, 1)
 
     def test_price_source_routes_unsupported_tickers_to_yahoo(self):
         expected = {

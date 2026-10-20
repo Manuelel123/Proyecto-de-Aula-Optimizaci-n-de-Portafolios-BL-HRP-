@@ -93,10 +93,20 @@ class HrpRun:
 
 
 def _optimize(
-    tickers: list[str], benchmark: str, start_date: date, bounds: WeightBounds
+    tickers: list[str],
+    benchmark: str,
+    start_date: date,
+    bounds: WeightBounds,
+    history: pd.DataFrame | None = None,
 ) -> HrpRun:
+    """``history`` (prices of ``tickers`` from an earlier date) avoids a download."""
     today = date.today()
-    raw_prices = download_prices(tuple(tickers), start_date, today)
+    if history is not None:
+        # Same rows and values as a download from ``start_date``: each column is
+        # the provider's own series, so a later start only trims the window.
+        raw_prices = history.loc[history.index >= pd.Timestamp(start_date)]
+    else:
+        raw_prices = download_prices(tuple(tickers), start_date, today)
     raw_prices = raw_prices.dropna(axis="columns", how="all")
     prices = raw_prices.ffill().dropna()
     if prices.shape[1] < 2:
@@ -220,15 +230,30 @@ def _allocation_rows(
     return rows
 
 
-def _backtest_prices(
-    assets: list[str], start_date: date, config: BacktestConfig
-) -> pd.DataFrame:
-    """Aligned prices from ``lookback`` trading days before ``start_date``."""
-    history_start = start_date - timedelta(
+def backtest_history_start(start_date: date, config: BacktestConfig) -> date:
+    """First day downloaded so ``lookback`` trading days precede ``start_date``."""
+    return start_date - timedelta(
         days=int(config.lookback * _CALENDAR_DAYS_PER_TRADING_DAY)
         + _HISTORY_MARGIN_DAYS
     )
-    raw = download_prices(tuple(assets), history_start, date.today())
+
+
+def _backtest_prices(
+    assets: list[str],
+    start_date: date,
+    config: BacktestConfig,
+    history: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Aligned prices from ``lookback`` trading days before ``start_date``.
+
+    ``history`` is an already downloaded frame of exactly ``assets`` from
+    ``backtest_history_start`` (reused instead of downloading it again).
+    """
+    if history is None:
+        history = download_prices(
+            tuple(assets), backtest_history_start(start_date, config), date.today()
+        )
+    raw = history
     available = [asset for asset in assets if asset in raw.columns]
     prices = raw.loc[:, available].dropna(axis="columns", how="all").ffill().dropna()
     missing = [asset for asset in assets if asset not in prices.columns]
@@ -384,11 +409,12 @@ def run_backtest_section(
     start_date: date,
     bounds: WeightBounds,
     config: BacktestConfig,
+    history: pd.DataFrame | None = None,
 ) -> dict:
     """Backtest view model, or ``{"error": message}`` without failing the page."""
     started = time.perf_counter()
     try:
-        prices = _backtest_prices(assets, start_date, config)
+        prices = _backtest_prices(assets, start_date, config, history)
         result, from_cache = cached_backtest(
             prices, config, bounds.restricted_to(list(prices.columns)), start_date
         )
@@ -409,6 +435,24 @@ def _bounds_record(bounds: WeightBounds) -> dict:
         "asset_min_weights": dict(sorted(bounds.asset_min_weights.items())),
         "asset_max_weights": dict(sorted(bounds.asset_max_weights.items())),
     }
+
+
+def _backtest_history(
+    tickers: list[str], start_date: date, config: BacktestConfig
+) -> pd.DataFrame | None:
+    """One download of the assets covering both the optimization and the backtest.
+
+    ``None`` (each part downloads on its own, as without a backtest) when the
+    download fails or is empty, so a backtest problem never hides the result.
+    """
+    try:
+        history = download_prices(
+            tuple(tickers), backtest_history_start(start_date, config), date.today()
+        )
+    except (requests.RequestException, TimeoutError, YFException):
+        logger.warning("Backtest history download failed; downloading separately", exc_info=True)
+        return None
+    return None if history.empty else history
 
 
 def run_hrp(
@@ -434,7 +478,8 @@ def run_hrp(
     """
     bounds = bounds or WeightBounds()
     labels = labels or {}
-    run = _optimize(tickers, benchmark, start_date, bounds)
+    history = _backtest_history(tickers, start_date, backtest) if backtest is not None else None
+    run = _optimize(tickers, benchmark, start_date, bounds, history)
     returns, weights = run.returns, run.weights
     assets = list(returns.columns)
     names = {ticker: asset_name(ticker, labels.get(ticker)) for ticker in assets}
@@ -541,7 +586,15 @@ def run_hrp(
             },
         },
         "backtest": (
-            run_backtest_section(assets, start_date, bounds, backtest)
+            run_backtest_section(
+                assets,
+                start_date,
+                bounds,
+                backtest,
+                # The optimization dropped no ticker: the frame is exactly the
+                # backtest's download (same tickers, same start).
+                history if history is not None and tuple(assets) == tuple(tickers) else None,
+            )
             if backtest is not None
             else None
         ),

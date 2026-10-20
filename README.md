@@ -105,6 +105,10 @@ Las cuentas son **locales**: viven en la tabla `users` de la base SQLite (ver la
 
 Configuración local: copia `.env.example` a `.env` y completa las variables. Define `FLASK_SECRET_KEY` (si falta, la app avisa en el log y las sesiones se pierden al reiniciar).
 
+### Caché en memoria (equivalente a `st.cache_data`)
+
+Cada proceso guarda en memoria (`data/cache.py`) lo que ya descargó, con un tiempo de vida por entrada contado desde la descarga: precios y OHLCV por `(tickers, inicio, fin)` 15 minutos (64 entradas), perfiles de Yahoo 15 minutos, tipos de cambio (`fx.usd_rate` y el de las capitalizaciones) 15 minutos y la moneda de cada ticker 12 horas. Los resultados vacíos (ticker sin datos o fallo pasajero del proveedor) se guardan solo 60 segundos, y los errores nunca se guardan. Cada llamada devuelve una copia independiente. En HRP con backtest, los activos se descargan una sola vez desde el inicio de la ventana de estimación y la optimización reutiliza ese tramo; al agregar activos a un portafolio, la validación descarga ya todos los activos de la nueva versión.
+
 ### Caché de precios (InsForge, opcional)
 
 [InsForge](https://insforge.dev) ya no gestiona cuentas: solo aporta, si se configuran `INSFORGE_URL` e `INSFORGE_API_KEY`, una caché persistente de precios en Postgres. Los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor y nunca debe subirse al repositorio. El esquema de esas tablas está en `migrations/` (`npx -y @insforge/cli db migrations up --all`).
@@ -227,6 +231,7 @@ src/optimizacion_portafolios/
   data/
     catalogs.py                 universos, benchmarks y periodos de volatilidad
     market_data.py              precios (Tiingo + respaldo Yahoo) y perfiles con caché
+    cache.py                    cachés en memoria con tiempo de vida por entrada
     tiingo_prices.py            cliente Tiingo y enrutamiento de tickers por fuente
     fx.py                       moneda de cada ticker y conversión diaria a USD
   analytics/

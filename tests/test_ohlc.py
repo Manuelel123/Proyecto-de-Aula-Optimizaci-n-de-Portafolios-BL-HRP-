@@ -94,9 +94,14 @@ class DownloadOhlcvTests(unittest.TestCase):
         download.assert_called_once()
 
     @_without_tiingo_key()
+    @patch("optimizacion_portafolios.data.market_data.monotonic")
     @patch(_YF_DOWNLOAD, return_value=pd.DataFrame())
-    def test_empty_download_is_not_cached(self, download) -> None:
+    def test_empty_download_is_cached_only_briefly(self, download, clock) -> None:
+        clock.return_value = 500.0
         self.assertTrue(download_ohlcv("ZZZ", date(2025, 1, 1), date(2025, 1, 2)).empty)
+        self.assertTrue(download_ohlcv("ZZZ", date(2025, 1, 1), date(2025, 1, 2)).empty)
+        self.assertEqual(download.call_count, 1)
+        clock.return_value = 500.0 + 60
         self.assertTrue(download_ohlcv("ZZZ", date(2025, 1, 1), date(2025, 1, 2)).empty)
         self.assertEqual(download.call_count, 2)
 

@@ -56,6 +56,12 @@ def clear_caches() -> None:
     from optimizacion_portafolios.data import fx, market_data
     from optimizacion_portafolios.models import hrp_backtest
 
+    try:
+        from optimizacion_portafolios.data.cache import clear_all
+    except ImportError:  # before data/cache.py existed
+        clear_all = None
+    if clear_all:
+        clear_all()
     market_data.clear_price_cache()
     for name in ("clear_info_cache", "clear_fx_cache"):
         function = getattr(market_data, name, None)
