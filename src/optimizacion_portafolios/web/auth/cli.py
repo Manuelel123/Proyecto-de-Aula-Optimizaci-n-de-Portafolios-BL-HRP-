@@ -81,3 +81,36 @@ def list_gestor():
     """Muestra qué cuenta tiene el rol gestor."""
     gestors = current_gestors()
     click.echo(", ".join(user.email for user in gestors) if gestors else "No hay cuenta gestor.")
+
+
+def _insforge_client():
+    from optimizacion_portafolios.insforge import InsForgeClient, InsForgeSettings
+
+    settings = InsForgeSettings.from_env()
+    if settings is None:
+        raise click.ClickException("Faltan INSFORGE_URL e INSFORGE_API_KEY en .env.")
+    return InsForgeClient(settings)
+
+
+@bp.cli.command("import-insforge-backtests")
+@click.option("--fallback", "fallback_email", help="Cuenta local que recibe los backtests cuyo dueño no tiene cuenta.")
+@click.option("--dry-run", is_flag=True, help="Muestra qué se copiaría sin guardar nada.")
+def import_insforge_backtests(fallback_email: str | None, dry_run: bool):
+    """Trae el historial de backtests guardado en InsForge a las cuentas locales.
+
+    Cada backtest va a la cuenta local con el mismo correo que su dueño en
+    InsForge; los que esa cuenta ya tiene (mismos parámetros) se omiten.
+    """
+    from optimizacion_portafolios.insforge import InsForgeError
+    from optimizacion_portafolios.storage.insforge_import import import_backtests
+
+    try:
+        report = import_backtests(_insforge_client(), fallback_email=fallback_email, dry_run=dry_run)
+    except (InsForgeError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    prefix = "[simulación] " if dry_run else ""
+    for email, count in report.imported.items():
+        click.echo(f"{prefix}{email}: {count} backtests copiados")
+    click.echo(f"{prefix}{report.results} resultados por estrategia; {report.duplicates} ya existían.")
+    for owner, count in report.unmatched.items():
+        click.echo(f"{owner}: {count} backtests omitidos (no tiene cuenta local; usa --fallback o regístrala).")
