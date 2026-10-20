@@ -1,0 +1,1967 @@
+{
+ "backtest": {
+  "end": "2024-12-31",
+  "metrics": {
+   "Anual": {
+    "CAGR": 0.03610923159383961,
+    "Comisiones": 12.75712797338738,
+    "Costo de slippage": 6.376068769992713,
+    "Costos / capital inicial": 0.0019133196743380094,
+    "Costos totales": 19.133196743380093,
+    "Máxima caída": -0.11268640877122416,
+    "Ratio de Sharpe": 0.31464535129542404,
+    "Ratio de Sortino": 0.4527257189364826,
+    "Rebalanceos": 1.0,
+    "Retorno total": 0.07336596268015239,
+    "Volatilidad anualizada": 0.14404583150664238,
+    "Órdenes": 8.0
+   },
+   "Buy & hold": {
+    "CAGR": 0.0561482590298652,
+    "Comisiones": 9.990009990009135,
+    "Costo de slippage": 4.992508740634062,
+    "Costos / capital inicial": 0.0014982518730643195,
+    "Costos totales": 14.982518730643196,
+    "Máxima caída": -0.11499074186893554,
+    "Ratio de Sharpe": 0.42712771743753203,
+    "Ratio de Sortino": 0.625062668577982,
+    "Rebalanceos": 0.0,
+    "Retorno total": 0.11519892509549834,
+    "Volatilidad anualizada": 0.15222865920433226,
+    "Órdenes": 4.0
+   },
+   "Desviación ±5 pp": {
+    "CAGR": 0.05779797045286905,
+    "Comisiones": 18.850032416415214,
+    "Costo de slippage": 9.422523276346032,
+    "Costos / capital inicial": 0.0028272555692761244,
+    "Costos totales": 28.272555692761244,
+    "Máxima caída": -0.11226934510736086,
+    "Ratio de Sharpe": 0.4558866979430534,
+    "Ratio de Sortino": 0.661147175844651,
+    "Rebalanceos": 5.0,
+    "Retorno total": 0.11867837349760468,
+    "Volatilidad anualizada": 0.14295262703836178,
+    "Órdenes": 24.0
+   },
+   "Mensual": {
+    "CAGR": 0.03958366835474392,
+    "Comisiones": 27.867110332906517,
+    "Costo de slippage": 13.931065615996536,
+    "Costos / capital inicial": 0.004179817594890305,
+    "Costos totales": 41.79817594890305,
+    "Máxima caída": -0.11263938395739925,
+    "Ratio de Sharpe": 0.3393343949530113,
+    "Ratio de Sortino": 0.4904428135289726,
+    "Rebalanceos": 23.0,
+    "Retorno total": 0.08056191974353744,
+    "Volatilidad anualizada": 0.14239321471564573,
+    "Órdenes": 96.0
+   },
+   "Semestral": {
+    "CAGR": 0.05381249172807734,
+    "Comisiones": 16.495149398960823,
+    "Costo de slippage": 8.245080884537444,
+    "Costos / capital inicial": 0.0024740230283498265,
+    "Costos totales": 24.740230283498267,
+    "Máxima caída": -0.11226934510736086,
+    "Ratio de Sharpe": 0.43094694848115933,
+    "Ratio de Sortino": 0.6250889312517085,
+    "Rebalanceos": 3.0,
+    "Retorno total": 0.11028174857290751,
+    "Volatilidad anualizada": 0.1426748114802747,
+    "Órdenes": 16.0
+   },
+   "Trimestral": {
+    "CAGR": 0.04822058125811357,
+    "Comisiones": 18.26208817824017,
+    "Costo de slippage": 9.128550936779398,
+    "Costos / capital inicial": 0.0027390639115019567,
+    "Costos totales": 27.390639115019567,
+    "Máxima caída": -0.11226918599085123,
+    "Ratio de Sharpe": 0.39589127039705985,
+    "Ratio de Sortino": 0.573166432029522,
+    "Rebalanceos": 7.0,
+    "Retorno total": 0.0985539009490386,
+    "Volatilidad anualizada": 0.14213999367181154,
+    "Órdenes": 32.0
+   },
+   "Volatilidad (régimen)": {
+    "CAGR": 0.033502851550765156,
+    "Comisiones": 19.92249525600324,
+    "Costo de slippage": 9.958755098313611,
+    "Costos / capital inicial": 0.0029881250354316853,
+    "Costos totales": 29.881250354316855,
+    "Máxima caída": -0.11950804621196442,
+    "Ratio de Sharpe": 0.29989249436625814,
+    "Ratio de Sortino": 0.4330538709911805,
+    "Rebalanceos": 13.0,
+    "Retorno total": 0.0679835997576963,
+    "Volatilidad anualizada": 0.14208910648225878,
+    "Órdenes": 56.0
+   }
+  },
+  "rebalances": {
+   "Anual": [
+    "2024-01-01"
+   ],
+   "Buy & hold": [],
+   "Desviación ±5 pp": [
+    "2023-06-15",
+    "2023-08-09",
+    "2023-10-26",
+    "2024-03-27",
+    "2024-09-24"
+   ],
+   "Mensual": [
+    "2023-02-01",
+    "2023-03-01",
+    "2023-04-03",
+    "2023-05-01",
+    "2023-06-01",
+    "2023-07-03",
+    "2023-08-01",
+    "2023-09-01",
+    "2023-10-02",
+    "2023-11-01",
+    "2023-12-01",
+    "2024-01-01",
+    "2024-02-01",
+    "2024-03-01",
+    "2024-04-01",
+    "2024-05-01",
+    "2024-06-03",
+    "2024-07-01",
+    "2024-08-01",
+    "2024-09-02",
+    "2024-10-01",
+    "2024-11-01",
+    "2024-12-02"
+   ],
+   "Semestral": [
+    "2023-07-03",
+    "2024-01-01",
+    "2024-07-01"
+   ],
+   "Trimestral": [
+    "2023-04-03",
+    "2023-07-03",
+    "2023-10-02",
+    "2024-01-01",
+    "2024-04-01",
+    "2024-07-01",
+    "2024-10-01"
+   ],
+   "Volatilidad (régimen)": [
+    "2023-02-16",
+    "2023-03-15",
+    "2023-04-13",
+    "2023-04-21",
+    "2023-05-23",
+    "2023-07-25",
+    "2023-09-01",
+    "2023-09-25",
+    "2023-10-30",
+    "2024-01-16",
+    "2024-06-21",
+    "2024-10-31",
+    "2024-12-12"
+   ]
+  },
+  "start": "2023-01-02",
+  "values": {
+   "Anual": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 10733.659626801524,
+    "max": 11090.06767753055,
+    "min": 9418.646211063342,
+    "n": 522,
+    "nan": 0,
+    "sum": 5307901.831685064,
+    "sumsq": 54040315433.94263
+   },
+   "Buy & hold": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 11151.989250954983,
+    "max": 12013.576826615616,
+    "min": 9418.646211063342,
+    "n": 522,
+    "nan": 0,
+    "sum": 5457771.000223892,
+    "sumsq": 57261589603.792114
+   },
+   "Desviación ±5 pp": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 11186.783734976047,
+    "max": 11361.877414259998,
+    "min": 9418.646211063342,
+    "n": 522,
+    "nan": 0,
+    "sum": 5377744.0931234965,
+    "sumsq": 55490196666.222046
+   },
+   "Mensual": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 10805.619197435375,
+    "max": 10985.330368530811,
+    "min": 9398.14838040918,
+    "n": 522,
+    "nan": 0,
+    "sum": 5301505.119313082,
+    "sumsq": 53901726372.70384
+   },
+   "Semestral": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 11102.817485729076,
+    "max": 11262.263736616866,
+    "min": 9418.646211063342,
+    "n": 522,
+    "nan": 0,
+    "sum": 5361504.518466689,
+    "sumsq": 55152872788.695755
+   },
+   "Trimestral": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 10985.539009490385,
+    "max": 11170.823316753611,
+    "min": 9418.647899257956,
+    "n": 522,
+    "nan": 0,
+    "sum": 5321765.180345049,
+    "sumsq": 54330946294.3943
+   },
+   "Volatilidad (régimen)": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 10679.835997576964,
+    "max": 10865.663302816067,
+    "min": 9427.092123582095,
+    "n": 522,
+    "nan": 0,
+    "sum": 5272178.895543288,
+    "sumsq": 53307616528.34652
+   }
+  }
+ },
+ "black_litterman_model": {
+  "max_sharpe": {
+   "expected_return": 0.08605526124180599,
+   "market_weights": {
+    "AAA": 0.04938271604938271,
+    "BBB": 0.49382716049382713,
+    "CCC": 0.024691358024691357,
+    "DDD": 0.43209876543209874
+   },
+   "posterior": {
+    "AAA": 0.07751494538429433,
+    "BBB": 0.1196642685466683,
+    "CCC": 0.048576553034953285,
+    "DDD": 0.1003695050705761
+   },
+   "posterior_covariance": {
+    "AAA": {
+     "AAA": 0.11091463022777143,
+     "BBB": -0.0023983020268434816,
+     "CCC": 0.0013227955967865977,
+     "DDD": 0.006870759149680932
+    },
+    "BBB": {
+     "AAA": -0.002398302026843481,
+     "BBB": 0.13733130769558513,
+     "CCC": 0.0003195561294038174,
+     "DDD": 0.005341214710043594
+    },
+    "CCC": {
+     "AAA": 0.0013227955967865977,
+     "BBB": 0.0003195561294038174,
+     "CCC": 0.038875428611237384,
+     "DDD": -0.001206393231965928
+    },
+    "DDD": {
+     "AAA": 0.006870759149680932,
+     "BBB": 0.005341214710043594,
+     "CCC": -0.001206393231965928,
+     "DDD": 0.13923031846715642
+    }
+   },
+   "prior": {
+    "AAA": 0.029835400890196446,
+    "BBB": 0.1143558606222168,
+    "CCC": 0.020890763912928594,
+    "DDD": 0.10505088942774331
+   },
+   "risk_aversion": 1.350914252368973,
+   "sharpe": 0.4035510638654728,
+   "sortino": 0.5697797024139455,
+   "volatility": 0.16368501326470564,
+   "weights": {
+    "AAA": 0.199679608433094,
+    "BBB": 0.28874121215436455,
+    "CCC": 0.2958288163123613,
+    "DDD": 0.21575036310018006
+   }
+  },
+  "max_utility_unconstrained": {
+   "expected_return": 0.09806404025287287,
+   "market_weights": {
+    "AAA": 0.04938271604938271,
+    "BBB": 0.49382716049382713,
+    "CCC": 0.024691358024691357,
+    "DDD": 0.43209876543209874
+   },
+   "posterior": {
+    "AAA": 0.07751494538429433,
+    "BBB": 0.1196642685466683,
+    "CCC": 0.048576553034953285,
+    "DDD": 0.1003695050705761
+   },
+   "posterior_covariance": {
+    "AAA": {
+     "AAA": 0.11091463022777143,
+     "BBB": -0.0023983020268434816,
+     "CCC": 0.0013227955967865977,
+     "DDD": 0.006870759149680932
+    },
+    "BBB": {
+     "AAA": -0.002398302026843481,
+     "BBB": 0.13733130769558513,
+     "CCC": 0.0003195561294038174,
+     "DDD": 0.005341214710043594
+    },
+    "CCC": {
+     "AAA": 0.0013227955967865977,
+     "BBB": 0.0003195561294038174,
+     "CCC": 0.038875428611237384,
+     "DDD": -0.001206393231965928
+    },
+    "DDD": {
+     "AAA": 0.006870759149680932,
+     "BBB": 0.005341214710043594,
+     "CCC": -0.001206393231965928,
+     "DDD": 0.13923031846715642
+    }
+   },
+   "prior": {
+    "AAA": 0.029835400890196446,
+    "BBB": 0.1143558606222168,
+    "CCC": 0.020890763912928594,
+    "DDD": 0.10505088942774331
+   },
+   "risk_aversion": 1.350914252368973,
+   "sharpe": 0.3876568014569276,
+   "sortino": 0.5427531093941119,
+   "volatility": 0.20137410193626262,
+   "weights": {
+    "AAA": 0.2188092668625274,
+    "BBB": 0.4044911362383376,
+    "CCC": 0.09864732496155959,
+    "DDD": 0.27805227193757537
+   }
+  },
+  "min_variance": {
+   "expected_return": 0.07150144767623526,
+   "market_weights": {
+    "AAA": 0.04938271604938271,
+    "BBB": 0.49382716049382713,
+    "CCC": 0.024691358024691357,
+    "DDD": 0.43209876543209874
+   },
+   "posterior": {
+    "AAA": 0.07751494538429433,
+    "BBB": 0.1196642685466683,
+    "CCC": 0.048576553034953285,
+    "DDD": 0.1003695050705761
+   },
+   "posterior_covariance": {
+    "AAA": {
+     "AAA": 0.11091463022777143,
+     "BBB": -0.0023983020268434816,
+     "CCC": 0.0013227955967865977,
+     "DDD": 0.006870759149680932
+    },
+    "BBB": {
+     "AAA": -0.002398302026843481,
+     "BBB": 0.13733130769558513,
+     "CCC": 0.0003195561294038174,
+     "DDD": 0.005341214710043594
+    },
+    "CCC": {
+     "AAA": 0.0013227955967865977,
+     "BBB": 0.0003195561294038174,
+     "CCC": 0.038875428611237384,
+     "DDD": -0.001206393231965928
+    },
+    "DDD": {
+     "AAA": 0.006870759149680932,
+     "BBB": 0.005341214710043594,
+     "CCC": -0.001206393231965928,
+     "DDD": 0.13923031846715642
+    }
+   },
+   "prior": {
+    "AAA": 0.029835400890196446,
+    "BBB": 0.1143558606222168,
+    "CCC": 0.020890763912928594,
+    "DDD": 0.10505088942774331
+   },
+   "risk_aversion": 1.350914252368973,
+   "sharpe": 0.3562811553061035,
+   "sortino": 0.5201608516868301,
+   "volatility": 0.14455282551216364,
+   "weights": {
+    "AAA": 0.17639527849623673,
+    "BBB": 0.14847806979866243,
+    "CCC": 0.5348501895136106,
+    "DDD": 0.14027646219149018
+   }
+  }
+ },
+ "black_litterman_page": {
+  "allocation_csv": "8c4821f33a2213162f0fe8a1133c66906dd7626c369b0ac462b341c4654c80d5",
+  "allocation_rows": [
+   {
+    "market_weight": 0.024691358024691357,
+    "market_weight_text": "2.47%",
+    "name": "CCC",
+    "posterior": 0.048576553034953285,
+    "posterior_text": "4.86%",
+    "ticker": "CCC",
+    "tilt": 0.27113745828766994,
+    "tilt_text": "+27.11",
+    "view": 0.05,
+    "view_text": "5.00%",
+    "weight": 0.2958288163123613,
+    "weight_text": "29.58%"
+   },
+   {
+    "market_weight": 0.49382716049382713,
+    "market_weight_text": "49.38%",
+    "name": "BBB",
+    "posterior": 0.1196642685466683,
+    "posterior_text": "11.97%",
+    "ticker": "BBB",
+    "tilt": -0.2050859483394626,
+    "tilt_text": "-20.51",
+    "view": 0.12,
+    "view_text": "12.00%",
+    "weight": 0.28874121215436455,
+    "weight_text": "28.87%"
+   },
+   {
+    "market_weight": 0.43209876543209874,
+    "market_weight_text": "43.21%",
+    "name": "DDD",
+    "posterior": 0.1003695050705761,
+    "posterior_text": "10.04%",
+    "ticker": "DDD",
+    "tilt": -0.21634840233191868,
+    "tilt_text": "-21.63",
+    "view": 0.1,
+    "view_text": "10.00%",
+    "weight": 0.21575036310018006,
+    "weight_text": "21.58%"
+   },
+   {
+    "market_weight": 0.04938271604938271,
+    "market_weight_text": "4.94%",
+    "name": "Alpha (AAA)",
+    "posterior": 0.07751494538429433,
+    "posterior_text": "7.75%",
+    "ticker": "AAA",
+    "tilt": 0.1502968923837113,
+    "tilt_text": "+15.03",
+    "view": 0.08,
+    "view_text": "8.00%",
+    "weight": 0.199679608433094,
+    "weight_text": "19.97%"
+   }
+  ],
+  "assumption_rows": [
+   {
+    "confidence_text": "95%",
+    "market_cap_text": "4,000,000,000",
+    "market_weight_text": "4.94%",
+    "name": "Alpha (AAA)",
+    "ticker": "AAA"
+   },
+   {
+    "confidence_text": "95%",
+    "market_cap_text": "40,000,000,000",
+    "market_weight_text": "49.38%",
+    "name": "BBB",
+    "ticker": "BBB"
+   },
+   {
+    "confidence_text": "95%",
+    "market_cap_text": "2,000,000,000",
+    "market_weight_text": "2.47%",
+    "name": "CCC",
+    "ticker": "CCC"
+   },
+   {
+    "confidence_text": "95%",
+    "market_cap_text": "35,000,000,000",
+    "market_weight_text": "43.21%",
+    "name": "DDD",
+    "ticker": "DDD"
+   }
+  ],
+  "covariance_table": "89925bada9f152e843c58bd87fe8ae3369c814d84f6b0f85cbee6c28a661cbaf",
+  "expected_return": 0.08605526124180599,
+  "has_negative_weights": false,
+  "history": {
+   "max_drawdown": -0.13924505620102456,
+   "metrics": "aed90dbe6ed78df740d1452da222c7fb887c152f658c210cbbae3dd1c4a2604e",
+   "observations": 521
+  },
+  "included_tickers": [
+   "AAA",
+   "BBB",
+   "CCC",
+   "DDD"
+  ],
+  "market_weights_sum": 1.0,
+  "missing_prices": [],
+  "n_assets": 4,
+  "prices_payload": "26c950e9698875bb3feabceaa4636d05b4ba9c58be9d2a624b3992a36cb7b065",
+  "prior_returns": {
+   "AAA": 2.98,
+   "BBB": 11.44,
+   "CCC": 2.09,
+   "DDD": 10.51
+  },
+  "prior_rows": [
+   {
+    "confidence_text": "95%",
+    "name": "Alpha (AAA)",
+    "posterior_text": "7.75%",
+    "prior_text": "2.98%",
+    "shift": 0.04767954449409789,
+    "shift_text": "+4.77",
+    "ticker": "AAA",
+    "view_text": "8.00%"
+   },
+   {
+    "confidence_text": "95%",
+    "name": "BBB",
+    "posterior_text": "11.97%",
+    "prior_text": "11.44%",
+    "shift": 0.0053084079244515026,
+    "shift_text": "+0.53",
+    "ticker": "BBB",
+    "view_text": "12.00%"
+   },
+   {
+    "confidence_text": "95%",
+    "name": "CCC",
+    "posterior_text": "4.86%",
+    "prior_text": "2.09%",
+    "shift": 0.02768578912202469,
+    "shift_text": "+2.77",
+    "ticker": "CCC",
+    "view_text": "5.00%"
+   },
+   {
+    "confidence_text": "95%",
+    "name": "DDD",
+    "posterior_text": "10.04%",
+    "prior_text": "10.51%",
+    "shift": -0.004681384357167209,
+    "shift_text": "-0.47",
+    "ticker": "DDD",
+    "view_text": "10.00%"
+   }
+  ],
+  "returns_matrix": {
+   "names": {
+    "AAA": "Alpha (AAA)",
+    "BBB": "BBB",
+    "CCC": "CCC",
+    "DDD": "DDD",
+    "SPY": "S&P 500",
+    "__portfolio__": "Portafolio Black-Litterman"
+   },
+   "series": {
+    "AAA": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": -0.0024861971336226363,
+     "max": 0.08243293517947481,
+     "min": -0.06327682231900134,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.7122049968361771,
+     "sumsq": 0.23027406123497252
+    },
+    "BBB": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": 0.04709005295040436,
+     "max": 0.07608567026871649,
+     "min": -0.06258015028656472,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.23479991680259082,
+     "sumsq": 0.28730836519706443
+    },
+    "CCC": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": -0.014506492603546528,
+     "max": 0.035847832993600726,
+     "min": -0.029860816916929545,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.026716130289612394,
+     "sumsq": 0.07140066217720889
+    },
+    "DDD": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": 0.01355741221478568,
+     "max": 0.0735699233212368,
+     "min": -0.07482068646527085,
+     "n": 521,
+     "nan": 0,
+     "sum": -0.3707873203683455,
+     "sumsq": 0.2916289383065529
+    },
+    "SPY": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": -0.015925497629975194,
+     "max": 0.05684286528398075,
+     "min": -0.062074452421751025,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.3190634645540278,
+     "sumsq": 0.20537586350833387
+    },
+    "__portfolio__": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": 0.01173397417147135,
+     "max": 0.03245416480216103,
+     "min": -0.02639408912251064,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.13791512968127434,
+     "sumsq": 0.05521478885023125
+    }
+   }
+  },
+  "risk_aversion": 1.350914252368973,
+  "sharpe": 0.4035510638654728,
+  "sortino": 0.5697797024139455,
+  "tau": 0.05,
+  "volatility": 0.16368501326470564,
+  "weights_sum": 0.9999999999999999,
+  "window": {
+   "effective_end": "31/12/2024",
+   "effective_end_iso": "2024-12-31",
+   "effective_start": "02/01/2023",
+   "effective_start_iso": "2023-01-02",
+   "observations": 521,
+   "start": "02/01/2023",
+   "years": 2
+  }
+ },
+ "compare_metrics": {
+  "cagr": 0.16540523721216904,
+  "max_drawdown": -0.17941210373537475,
+  "sharpe": 0.9579516146035942,
+  "volatility": 0.17595337717589568
+ },
+ "hrp_model": {
+  "bounded_weights": {
+   "AAA": 0.17636888219805627,
+   "BBB": 0.336204272882986,
+   "CCC": 0.35000000000000003,
+   "DDD": 0.1374268449189577
+  },
+  "contributions": {
+   "Contribución al riesgo": {
+    "AAA": 0.1748633093756433,
+    "BBB": 0.14546754776434997,
+    "CCC": 0.537603031614949,
+    "DDD": 0.14206611124505766
+   },
+   "Contribución anualizada": {
+    "AAA": 0.06303291468547507,
+    "BBB": 0.009516590178044142,
+    "CCC": 0.08548419555217744,
+    "DDD": 0.003274582744762618
+   },
+   "Participación del retorno": {
+    "AAA": 0.3907605576756025,
+    "BBB": 0.05899628953695849,
+    "CCC": 0.5299430003054658,
+    "DDD": 0.020300152481973106
+   },
+   "Peso HRP": {
+    "AAA": 0.17636888219805627,
+    "BBB": 0.14457901432799847,
+    "CCC": 0.5416252585549876,
+    "DDD": 0.1374268449189577
+   },
+   "Retorno anualizado": {
+    "AAA": 0.357392494072119,
+    "BBB": 0.06582276288351493,
+    "CCC": 0.15782904176264304,
+    "DDD": 0.023827824517791144
+   },
+   "Volatilidad anualizada": {
+    "AAA": 0.3306068247725885,
+    "BBB": 0.3708522662196742,
+    "CCC": 0.19160379751592482,
+    "DDD": 0.3745303425245354
+   }
+  },
+  "ordered_correlation": {
+   "AAA": {
+    "AAA": 1.0,
+    "BBB": -0.02310615712856777,
+    "CCC": 0.019413237473957137,
+    "DDD": 0.04129748662224631
+   },
+   "BBB": {
+    "AAA": -0.02310615712856777,
+    "BBB": 1.0,
+    "CCC": 0.011288176521664816,
+    "DDD": 0.0375739995356475
+   },
+   "CCC": {
+    "AAA": 0.019413237473957137,
+    "BBB": 0.011288176521664816,
+    "CCC": 1.0,
+    "DDD": 0.004272589848767107
+   },
+   "DDD": {
+    "AAA": 0.04129748662224631,
+    "BBB": 0.0375739995356475,
+    "CCC": 0.004272589848767107,
+    "DDD": 1.0
+   }
+  },
+  "sortino": 1.684909795013016,
+  "weights": {
+   "AAA": 0.17636888219805627,
+   "BBB": 0.14457901432799847,
+   "CCC": 0.5416252585549876,
+   "DDD": 0.1374268449189577
+  }
+ },
+ "hrp_page": {
+  "allocation_rows": [
+   {
+    "at_limit": true,
+    "limit_text": "0.00% – 40.00%",
+    "name": "—",
+    "ticker": "CCC",
+    "weight": 0.4,
+    "weight_text": "40.00%"
+   },
+   {
+    "at_limit": false,
+    "limit_text": "0.00% – 40.00%",
+    "name": "—",
+    "ticker": "BTC-USD",
+    "weight": 0.21241097555907118,
+    "weight_text": "21.24%"
+   },
+   {
+    "at_limit": false,
+    "limit_text": "0.00% – 40.00%",
+    "name": "Alpha",
+    "ticker": "AAA",
+    "weight": 0.14721080830930444,
+    "weight_text": "14.72%"
+   },
+   {
+    "at_limit": false,
+    "limit_text": "0.00% – 40.00%",
+    "name": "—",
+    "ticker": "BBB",
+    "weight": 0.12441485609886203,
+    "weight_text": "12.44%"
+   },
+   {
+    "at_limit": false,
+    "limit_text": "0.00% – 40.00%",
+    "name": "—",
+    "ticker": "DDD",
+    "weight": 0.11596336003276231,
+    "weight_text": "11.60%"
+   }
+  ],
+  "asset_stats": [
+   {
+    "avg_correlation": 0.008423023729867862,
+    "risk_share": 0.30394037721017897,
+    "ticker": "CCC",
+    "volatility": 0.15721092492945143,
+    "weight": 0.4
+   },
+   {
+    "avg_correlation": -0.013800453543846736,
+    "risk_share": 0.3484696424221673,
+    "ticker": "BTC-USD",
+    "volatility": 0.3255014053593582,
+    "weight": 0.21241097555907118
+   },
+   {
+    "avg_correlation": 0.023920587417031403,
+    "risk_share": 0.14406230214152263,
+    "ticker": "AAA",
+    "volatility": 0.2819031734205989,
+    "weight": 0.14721080830930444
+   },
+   {
+    "avg_correlation": -0.0034890676313084623,
+    "risk_share": 0.10930130629043398,
+    "ticker": "BBB",
+    "volatility": 0.3153200240739839,
+    "weight": 0.12441485609886203
+   },
+   {
+    "avg_correlation": 0.001009067900285432,
+    "risk_share": 0.09422637193569712,
+    "ticker": "DDD",
+    "volatility": 0.3176211531929475,
+    "weight": 0.11596336003276231
+   }
+  ],
+  "backtest": {
+   "days": 730,
+   "end": "2024-12-31",
+   "metrics_table": "831aae739d7de04c11c452e0d157ecc8159b23eb50652d01833e9a9d721e9a2e",
+   "record": {
+    "best_strategy": "Volatilidad (régimen)",
+    "bounds": {
+     "asset_max_weights": {},
+     "asset_min_weights": {},
+     "max_weight": 0.4,
+     "min_weight": 0.0
+    },
+    "config": {
+     "drift_threshold": 0.05,
+     "fees": 0.001,
+     "init_cash": 10000.0,
+     "lookback": 126,
+     "slippage": 0.0005,
+     "vol_threshold": null,
+     "vol_window": 21
+    },
+    "end_date": "2024-12-31",
+    "start_date": "2023-01-02",
+    "strategies": [
+     {
+      "cagr": 0.06415776967220399,
+      "max_drawdown": -0.11262477544360605,
+      "rebalance_dates": [],
+      "rebalances": 0,
+      "sharpe": 0.420570873203929,
+      "sortino": 0.6123448919340188,
+      "strategy": "Buy & hold",
+      "total_costs": 14.982518730643541,
+      "total_return": 0.1321426016272047,
+      "volatility": 0.12047284601291683
+     },
+     {
+      "cagr": 0.10725798075956017,
+      "max_drawdown": -0.08599346303807986,
+      "rebalance_dates": [
+       "2023-02-01",
+       "2023-03-01",
+       "2023-04-01",
+       "2023-05-01",
+       "2023-06-01",
+       "2023-07-01",
+       "2023-08-01",
+       "2023-09-01",
+       "2023-10-01",
+       "2023-11-01",
+       "2023-12-01",
+       "2024-01-01",
+       "2024-02-01",
+       "2024-03-01",
+       "2024-04-01",
+       "2024-05-01",
+       "2024-06-01",
+       "2024-07-01",
+       "2024-08-01",
+       "2024-09-01",
+       "2024-10-01",
+       "2024-11-01",
+       "2024-12-01"
+      ],
+      "rebalances": 23,
+      "sharpe": 0.6669673148486112,
+      "sortino": 0.9835038486886624,
+      "strategy": "Mensual",
+      "total_costs": 81.66612742316059,
+      "total_return": 0.22550734482285417,
+      "volatility": 0.11630773441962618
+     },
+     {
+      "cagr": 0.07228474196218371,
+      "max_drawdown": -0.11272124327600686,
+      "rebalance_dates": [
+       "2023-04-01",
+       "2023-07-01",
+       "2023-10-01",
+       "2024-01-01",
+       "2024-04-01",
+       "2024-07-01",
+       "2024-10-01"
+      ],
+      "rebalances": 7,
+      "sharpe": 0.475225579749666,
+      "sortino": 0.6881753645112958,
+      "strategy": "Trimestral",
+      "total_costs": 33.83800385917188,
+      "total_return": 0.14946506248451774,
+      "volatility": 0.11674048985753252
+     },
+     {
+      "cagr": 0.06332710210018733,
+      "max_drawdown": -0.11262477544360605,
+      "rebalance_dates": [
+       "2023-07-01",
+       "2024-01-01",
+       "2024-07-01"
+      ],
+      "rebalances": 3,
+      "sharpe": 0.4287770007343263,
+      "sortino": 0.6261697665528534,
+      "strategy": "Semestral",
+      "total_costs": 23.35330871775936,
+      "total_return": 0.13037944524412515,
+      "volatility": 0.1155613368082189
+     },
+     {
+      "cagr": 0.07583211099364529,
+      "max_drawdown": -0.11262477544360605,
+      "rebalance_dates": [
+       "2024-01-01"
+      ],
+      "rebalances": 1,
+      "sharpe": 0.49116336733159194,
+      "sortino": 0.7208824586634778,
+      "strategy": "Anual",
+      "total_costs": 19.369526264575363,
+      "total_return": 0.1570673476337432,
+      "volatility": 0.11784895521717986
+     },
+     {
+      "cagr": 0.09534308908401323,
+      "max_drawdown": -0.11262477544360605,
+      "rebalance_dates": [
+       "2023-08-11",
+       "2023-10-26",
+       "2024-03-29",
+       "2024-07-11",
+       "2024-08-29"
+      ],
+      "rebalances": 5,
+      "sharpe": 0.5993451734112052,
+      "sortino": 0.8808699916967566,
+      "strategy": "Desviación ±5 pp",
+      "total_costs": 29.8978642110405,
+      "total_return": 0.19932785700958333,
+      "volatility": 0.11713366486376287
+     },
+     {
+      "cagr": 0.11322769679125466,
+      "max_drawdown": -0.1034739151185341,
+      "rebalance_dates": [
+       "2023-02-08",
+       "2023-03-18",
+       "2023-05-15",
+       "2023-08-03",
+       "2023-08-28",
+       "2023-09-06",
+       "2023-09-08",
+       "2023-09-23",
+       "2023-11-22",
+       "2023-12-01",
+       "2024-01-04",
+       "2024-01-23",
+       "2024-04-16",
+       "2024-10-25",
+       "2024-12-11"
+      ],
+      "rebalances": 15,
+      "sharpe": 0.687924271125233,
+      "sortino": 1.024187291052948,
+      "strategy": "Volatilidad (régimen)",
+      "total_costs": 71.14863440940124,
+      "total_return": 0.2387301145166434,
+      "volatility": 0.11853459179767456
+     }
+    ],
+    "tickers": [
+     "AAA",
+     "BBB",
+     "CCC",
+     "DDD",
+     "BTC-USD"
+    ],
+    "trading_days": 730
+   },
+   "start": "2023-01-02"
+  },
+  "prices_payload": "ccf91e8f1e7b3d22363da74f294ea590eaf9d8cca9f60547a301986c7b576922",
+  "returns_matrix": {
+   "names": {
+    "AAA": "Alpha (AAA)",
+    "BBB": "BBB",
+    "BTC-USD": "BTC-USD",
+    "CCC": "CCC",
+    "DDD": "DDD",
+    "SPY": "S&P 500 (SPY)",
+    "__portfolio__": "Portafolio HRP"
+   },
+   "series": {
+    "AAA": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": -0.0024861971336226363,
+     "max": 0.08243293517947481,
+     "min": -0.06327682231900134,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.7122049968361771,
+     "sumsq": 0.23027406123497252
+    },
+    "BBB": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": 0.04709005295040436,
+     "max": 0.07608567026871649,
+     "min": -0.06258015028656472,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.23479991680259082,
+     "sumsq": 0.28730836519706443
+    },
+    "BTC-USD": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": -0.0010359261334677017,
+     "max": 0.07177076870139731,
+     "min": -0.0532142731831825,
+     "n": 729,
+     "nan": 0,
+     "sum": 0.48217220191119836,
+     "sumsq": 0.30640005938623804
+    },
+    "CCC": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": -0.014506492603546528,
+     "max": 0.035847832993600726,
+     "min": -0.029860816916929545,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.026716130289612394,
+     "sumsq": 0.07140066217720889
+    },
+    "DDD": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": 0.01355741221478568,
+     "max": 0.0735699233212368,
+     "min": -0.07482068646527085,
+     "n": 521,
+     "nan": 0,
+     "sum": -0.3707873203683455,
+     "sumsq": 0.2916289383065529
+    },
+    "SPY": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": -0.015925497629975194,
+     "max": 0.05684286528398075,
+     "min": -0.062074452421751025,
+     "n": 521,
+     "nan": 0,
+     "sum": 0.3190634645540278,
+     "sumsq": 0.20537586350833387
+    },
+    "__portfolio__": {
+     "first": "2023-01-03",
+     "last": "2024-12-31",
+     "last_value": 0.0010422310235956257,
+     "max": 0.029697020997035598,
+     "min": -0.02287611070114039,
+     "n": 729,
+     "nan": 0,
+     "sum": 0.20416424751100884,
+     "sumsq": 0.03892676186208783
+    }
+   }
+  },
+  "scalars": {
+   "common_observations": 521,
+   "end": "2024-12-31",
+   "equal_weight": 0.2,
+   "has_rolling_sharpe": true,
+   "max_assigned_weight": 0.4,
+   "max_weight_ticker": "CCC",
+   "min_assigned_weight": 0.11596336003276231,
+   "min_weight_ticker": "DDD",
+   "missing": [],
+   "observations": 729,
+   "selected_tickers": [
+    "AAA",
+    "BBB",
+    "CCC",
+    "DDD",
+    "BTC-USD"
+   ],
+   "sortino_ratio": 0.9014112579018627,
+   "start": "2023-01-02",
+   "top_risk_share": 0.3484696424221673,
+   "top_risk_ticker": "BTC-USD",
+   "weight_sum": 1.0
+  },
+  "summary": {
+   "bounds": {
+    "asset_max_weights": {},
+    "asset_min_weights": {},
+    "max_weight": 0.4,
+    "min_weight": 0.0
+   },
+   "metrics": {
+    "expected_return": 0.06845165362355154,
+    "max_drawdown": -0.10541273578795696,
+    "sharpe": 0.5721598771210913,
+    "sortino": 0.8472028323187984,
+    "volatility": 0.13059969615391906
+   },
+   "weights": {
+    "AAA": 0.14721080830930444,
+    "BBB": 0.12441485609886203,
+    "BTC-USD": 0.21241097555907118,
+    "CCC": 0.4,
+    "DDD": 0.11596336003276231
+   }
+  },
+  "tables": {
+   "contributions": "86c74a7980687a4c905d383446d4c07dc9dfa55cb08ee9c04f3150feb5c91749",
+   "correlation": "613301284b9044b1d2896107f95a2314a438da4a7c87a2a97d0badf77cee7cc0",
+   "metrics": "6b1b7cfb7a707b0e66ed38a62cfea555afd1b959aefa5143bb8274e916771309"
+  }
+ },
+ "monitoring_page": {
+  "options": {
+   "prices_payload": "949b24bdbad52f8c736a203675f2a516de9b1b294cb68086696ad2304033b5b7",
+   "returns_matrix": {},
+   "scalars": {
+    "end": "2024-12-31",
+    "has_period_volatility": true,
+    "missing": [],
+    "observations": 730,
+    "start": "2023-01-02",
+    "tickers": [
+     "AAA",
+     "BBB",
+     "CCC",
+     "DDD",
+     "BTC-USD"
+    ]
+   },
+   "tables": {
+    "expected": "d7767eac8b5ecf846cf7008ac318b7437a657e7977f152961a4eec334af627e4",
+    "prices": "b5196d55a3dfd8509c594d62f0367eca65dd571b05b928700b861d1a7cda556f",
+    "returns": "ad8080935398957122280f255cd4ed6410645754bf24b33e2a70630da3763710",
+    "statistics": "8a11e88438e6ffa0f484757944755a41fff9e883c4375e919745710bdfb27939",
+    "volatility": "17b80a5f618a91dfe4f37be718c17647fc55051d0c94ffe9313b299cab15a181"
+   }
+  },
+  "portfolio": {
+   "prices_payload": "949b24bdbad52f8c736a203675f2a516de9b1b294cb68086696ad2304033b5b7",
+   "returns_matrix": {
+    "names": {
+     "AAPL": "Apple (AAPL)",
+     "AESI": "AESI",
+     "AM": "AM",
+     "AMD": "Advanced Micro Devices (AMD)",
+     "APA": "APA Corporation (APA)",
+     "AR": "AR",
+     "AROC": "AROC",
+     "ATEN": "A10 Networks (ATEN)",
+     "BAC": "Bank of America (BAC)",
+     "BKV": "BKV",
+     "BNB-USD": "BNB (BNB-USD)",
+     "BOGOTA.CL": "BOGOTA",
+     "BTC-USD": "Bitcoin (BTC-USD)",
+     "BTU": "BTU",
+     "CELSIA.CL": "CELSIA",
+     "CEMARGOS.CL": "CEMARGOS",
+     "CIBEST.CL": "CIBEST",
+     "CL=F": "Petróleo WTI (CL=F)",
+     "CNX": "CNX",
+     "COIN": "Coinbase Global (COIN)",
+     "CORFICOLOCF.CL": "CORFICOLOCF",
+     "CRDO": "Credo Technology (CRDO)",
+     "CRGY": "CRGY",
+     "CRK": "CRK",
+     "CTS": "CTS Corporation (CTS)",
+     "CVX": "Chevron (CVX)",
+     "DVN": "DVN",
+     "ECOPETROL.CL": "ECOPETROL",
+     "EGY": "EGY",
+     "ELV": "Elevance Health (ELV)",
+     "EQT": "EQT",
+     "ETH-USD": "Ethereum (ETH-USD)",
+     "EXITO.CL": "EXITO",
+     "FRD": "Friedman Industries (FRD)",
+     "FTV": "Fortive (FTV)",
+     "GC=F": "Oro (GC=F)",
+     "GILD": "Gilead Sciences (GILD)",
+     "GLD": "SPDR Gold Shares (GLD)",
+     "GOOGL": "Alphabet (GOOGL)",
+     "GRUBOLIVAR.CL": "GRUBOLIVAR",
+     "GRUPOARGOS.CL": "GRUPOARGOS",
+     "GRUPOSURA.CL": "GRUPOSURA",
+     "HAI": "HAI",
+     "HG=F": "Cobre (HG=F)",
+     "HIMS": "Hims & Hers Health (HIMS)",
+     "HIMX": "Himax Technologies (HIMX)",
+     "HOOD": "Robinhood Markets (HOOD)",
+     "HP": "HP",
+     "ISA.CL": "ISA",
+     "JKS": "JinkoSolar (JKS)",
+     "JNJ": "Johnson & Johnson (JNJ)",
+     "KN": "Knowles (KN)",
+     "LBRT": "LBRT",
+     "LLY": "Eli Lilly (LLY)",
+     "MGY": "MGY",
+     "MINEROS.CL": "Mineros (MINEROS)",
+     "MSFT": "Microsoft (MSFT)",
+     "MUR": "MUR",
+     "NE": "NE",
+     "NEE": "NextEra Energy (NEE)",
+     "NESR": "NESR",
+     "NEXT": "NEXT",
+     "NG=F": "Gas natural (NG=F)",
+     "NOG": "NOG",
+     "NOV": "NOV",
+     "NVRI": "Enviri (NVRI)",
+     "OLED": "Universal Display (OLED)",
+     "OPTX": "Syntec Optics (OPTX)",
+     "OXY": "Occidental Petroleum (OXY)",
+     "PAA": "PAA",
+     "PEI.CL": "PEI",
+     "PFAVAL.CL": "PFAVAL",
+     "PFCIBEST.CL": "PFCIBEST",
+     "PFCORFICOL.CL": "PFCORFICOL",
+     "PFDAVVIGR.CL": "PFDAVVIGR",
+     "PFGRUPOARG.CL": "PFGRUPOARG",
+     "PFGRUPSURA.CL": "PFGRUPSURA",
+     "PR": "PR",
+     "PROMIGAS.CL": "PROMIGAS",
+     "PTEN": "PTEN",
+     "PUMP": "PUMP",
+     "RES": "RES",
+     "RRC": "RRC",
+     "SI=F": "Plata (SI=F)",
+     "SM": "SM",
+     "SXI": "Standex International (SXI)",
+     "SYNA": "Synaptics (SYNA)",
+     "TALO": "TALO",
+     "TERPEL.CL": "TERPEL",
+     "TSLA": "Tesla (TSLA)",
+     "TTI": "TTI",
+     "UEC": "UEC",
+     "UROY": "Uranium Royalty (UROY)",
+     "UUUU": "UUUU",
+     "V": "Visa (V)",
+     "VG": "VG",
+     "VNOM": "VNOM",
+     "WKC": "WKC",
+     "WOLF": "Wolfspeed (WOLF)",
+     "WTTR": "WTTR",
+     "XLE": "Sector energía (XLE)",
+     "XLF": "Sector financiero (XLF)",
+     "XLI": "Sector industrial (XLI)",
+     "XLK": "Sector tecnología (XLK)",
+     "XLU": "Sector servicios públicos (XLU)",
+     "XLV": "Sector salud (XLV)",
+     "XOM": "Exxon Mobil (XOM)",
+     "XRP-USD": "XRP (XRP-USD)",
+     "__portfolio__": "Portafolio equiponderado"
+    },
+    "series": {
+     "AAA": {
+      "first": "2023-01-03",
+      "last": "2024-12-31",
+      "last_value": -0.0024861971336226363,
+      "max": 0.08243293517947481,
+      "min": -0.06327682231900134,
+      "n": 521,
+      "nan": 0,
+      "sum": 0.7122049968361771,
+      "sumsq": 0.23027406123497252
+     },
+     "BBB": {
+      "first": "2023-01-03",
+      "last": "2024-12-31",
+      "last_value": 0.04709005295040436,
+      "max": 0.07608567026871649,
+      "min": -0.06258015028656472,
+      "n": 521,
+      "nan": 0,
+      "sum": 0.23479991680259082,
+      "sumsq": 0.28730836519706443
+     },
+     "BTC-USD": {
+      "first": "2023-01-03",
+      "last": "2024-12-31",
+      "last_value": -0.0010359261334677017,
+      "max": 0.07177076870139731,
+      "min": -0.0532142731831825,
+      "n": 729,
+      "nan": 0,
+      "sum": 0.48217220191119836,
+      "sumsq": 0.30640005938623804
+     },
+     "CCC": {
+      "first": "2023-01-03",
+      "last": "2024-12-31",
+      "last_value": -0.014506492603546528,
+      "max": 0.035847832993600726,
+      "min": -0.029860816916929545,
+      "n": 521,
+      "nan": 0,
+      "sum": 0.026716130289612394,
+      "sumsq": 0.07140066217720889
+     },
+     "DDD": {
+      "first": "2023-01-03",
+      "last": "2024-12-31",
+      "last_value": 0.01355741221478568,
+      "max": 0.0735699233212368,
+      "min": -0.07482068646527085,
+      "n": 521,
+      "nan": 0,
+      "sum": -0.3707873203683455,
+      "sumsq": 0.2916289383065529
+     },
+     "__portfolio__": {
+      "first": "2023-01-03",
+      "last": "2024-12-31",
+      "last_value": 0.008523769858910634,
+      "max": 0.029566044158470573,
+      "min": -0.024199982816646814,
+      "n": 729,
+      "nan": 0,
+      "sum": 0.21702118509424664,
+      "sumsq": 0.04758670191747518
+     }
+    }
+   },
+   "scalars": {
+    "end": "2024-12-31",
+    "has_period_volatility": true,
+    "missing": [],
+    "observations": 730,
+    "start": "2023-01-02",
+    "tickers": [
+     "AAA",
+     "BBB",
+     "CCC",
+     "DDD",
+     "BTC-USD"
+    ]
+   },
+   "tables": {
+    "expected": "d7767eac8b5ecf846cf7008ac318b7437a657e7977f152961a4eec334af627e4",
+    "prices": "b5196d55a3dfd8509c594d62f0367eca65dd571b05b928700b861d1a7cda556f",
+    "returns": "ad8080935398957122280f255cd4ed6410645754bf24b33e2a70630da3763710",
+    "statistics": "8a11e88438e6ffa0f484757944755a41fff9e883c4375e919745710bdfb27939",
+    "volatility": "b4691b03011814ffed6e74ab5d2a35eefc254caca282911ea8855b5bc1161e03"
+   }
+  }
+ },
+ "performance": {
+  "quantstats": {
+   "Máxima caída": -0.24761911709931872,
+   "Porcentaje de días positivos": 0.5070422535211268,
+   "Ratio de Calmar": 1.4275456116658294,
+   "Ratio de Sharpe": 1.0810197107030544,
+   "Ratio de Sortino": 1.6177415376606776,
+   "Retorno anual compuesto": 0.3534875839796996,
+   "Volatilidad anualizada": 0.3306068247725885
+  },
+  "strategy": {
+   "CAGR": -0.0013233189016500502,
+   "Máxima caída": -0.46543355452926205,
+   "Ratio de Sharpe": 0.17749052352972475,
+   "Ratio de Sortino": 0.25276155650539606,
+   "Retorno total": -0.003954774997258381,
+   "Volatilidad anualizada": 0.3708522662196742
+  }
+ },
+ "signals": {
+  "metrics": {
+   "Comprar y mantener": {
+    "Máxima caída": -0.1716689507192688,
+    "Operaciones": null,
+    "Ratio de Sharpe": 0.907614451488553,
+    "Retorno total": 0.43514110135808415,
+    "Volatilidad anualizada": 0.21890559992929973
+   },
+   "Señales": {
+    "Máxima caída": -0.09572820247050196,
+    "Operaciones": 10.0,
+    "Ratio de Sharpe": 0.6286228515417566,
+    "Retorno total": 0.11055034070844316,
+    "Volatilidad anualizada": 0.08664936441247406
+   }
+  },
+  "suggestions": [
+   {
+    "last_switch": "2024-12-24",
+    "position": "Cerrada",
+    "state": "Fuera",
+    "ticker": "AAA"
+   },
+   {
+    "last_switch": "2024-07-18",
+    "position": "Cerrada",
+    "state": "Fuera",
+    "ticker": "BBB"
+   },
+   {
+    "last_switch": "2024-09-23",
+    "position": "Abierta",
+    "state": "Mantener",
+    "ticker": "CCC"
+   }
+  ],
+  "trades": [
+   {
+    "entry": "2023-01-02",
+    "entry_price": 151.02030696869932,
+    "exit": "2023-01-25",
+    "exit_price": 155.2492842790573,
+    "return": 0.025974703653087152,
+    "status": "Cerrada",
+    "ticker": "AAA"
+   },
+   {
+    "entry": "2023-03-06",
+    "entry_price": 142.11393366197225,
+    "exit": "2023-07-05",
+    "exit_price": 180.0517925735043,
+    "return": 0.2646868763394311,
+    "status": "Cerrada",
+    "ticker": "AAA"
+   },
+   {
+    "entry": "2024-01-03",
+    "entry_price": 114.41988786993123,
+    "exit": "2024-01-05",
+    "exit_price": 113.16841400870685,
+    "return": -0.01292661783399374,
+    "status": "Cerrada",
+    "ticker": "BBB"
+   },
+   {
+    "entry": "2024-01-11",
+    "entry_price": 114.15569204650502,
+    "exit": "2024-03-12",
+    "exit_price": 121.76587722903037,
+    "return": 0.06459829975228627,
+    "status": "Cerrada",
+    "ticker": "BBB"
+   },
+   {
+    "entry": "2024-06-27",
+    "entry_price": 135.7986728861799,
+    "exit": "2024-07-03",
+    "exit_price": 130.10890380063955,
+    "return": -0.04385666321804891,
+    "status": "Cerrada",
+    "ticker": "BBB"
+   },
+   {
+    "entry": "2024-07-05",
+    "entry_price": 135.95792246653923,
+    "exit": "2024-07-12",
+    "exit_price": 130.0323694463692,
+    "return": -0.045540143595580215,
+    "status": "Cerrada",
+    "ticker": "BBB"
+   },
+   {
+    "entry": "2024-07-17",
+    "entry_price": 133.0312288610344,
+    "exit": "2024-07-18",
+    "exit_price": 132.3461236791919,
+    "return": -0.007144807595332577,
+    "status": "Cerrada",
+    "ticker": "BBB"
+   },
+   {
+    "entry": "2023-01-02",
+    "entry_price": 156.0272910993185,
+    "exit": "2023-03-24",
+    "exit_price": 147.41525967030879,
+    "return": -0.05714047790590832,
+    "status": "Cerrada",
+    "ticker": "CCC"
+   },
+   {
+    "entry": "2023-07-26",
+    "entry_price": 160.18166785901235,
+    "exit": "2023-11-03",
+    "exit_price": 144.4498316703007,
+    "return": -0.10011425091637724,
+    "status": "Cerrada",
+    "ticker": "CCC"
+   },
+   {
+    "entry": "2024-09-23",
+    "entry_price": 147.5789179107539,
+    "exit": null,
+    "exit_price": null,
+    "return": 0.04677045492673024,
+    "status": "Abierta",
+    "ticker": "CCC"
+   }
+  ],
+  "values": {
+   "Comprar y mantener": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 71685.369698206,
+    "max": 84714.5454021379,
+    "min": 48627.06132867345,
+    "n": 522,
+    "nan": 0,
+    "sum": 33249491.763031624,
+    "sumsq": 2179389807400.0293
+   },
+   "Señales": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": 55488.64777349736,
+    "max": 60382.71203445321,
+    "min": 49965.0,
+    "n": 522,
+    "nan": 0,
+    "sum": 28879460.309468046,
+    "sumsq": 1599558915904.5317
+   }
+  }
+ },
+ "statistics_volatility": {
+  "annualized_volatility": {
+   "AAA": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.2726762190806567,
+    "max": 0.4182006850960046,
+    "min": 0.14590164099032626,
+    "n": 35,
+    "nan": 0,
+    "sum": 9.650405171187057,
+    "sumsq": 2.777963990912985
+   },
+   "BBB": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.2943799783774633,
+    "max": 0.4363812974273431,
+    "min": 0.18327211228848742,
+    "n": 35,
+    "nan": 0,
+    "sum": 10.799857243908246,
+    "sumsq": 3.4416449367560173
+   },
+   "BTC-USD": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.3256623063587744,
+    "max": 0.40400356059188997,
+    "min": 0.24562749595149652,
+    "n": 35,
+    "nan": 0,
+    "sum": 11.164388018765475,
+    "sumsq": 3.6189804316165652
+   },
+   "CCC": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.12911167467921048,
+    "max": 0.23045145898292718,
+    "min": 0.11664096588441474,
+    "n": 35,
+    "nan": 0,
+    "sum": 5.601936733989763,
+    "sumsq": 0.9197700625894589
+   },
+   "DDD": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.3612165149213668,
+    "max": 0.39142261457577526,
+    "min": 0.20748259887914278,
+    "n": 35,
+    "nan": 0,
+    "sum": 10.956519038026519,
+    "sumsq": 3.4859534904290452
+   }
+  },
+  "expected": {
+   "Retorno esperado EMA": {
+    "AAA": 0.15196030974870678,
+    "BBB": -0.054287421970262595,
+    "BTC-USD": 0.017264678747285656,
+    "CCC": 0.1006889721911517,
+    "DDD": 0.08978783743066332
+   },
+   "Retorno histórico esperado": {
+    "AAA": 0.2414529768337108,
+    "BBB": -0.0020899518309274168,
+    "BTC-USD": 0.2663983070168212,
+    "CCC": 0.10479048990912898,
+    "DDD": -0.032626195828369564
+   }
+  },
+  "monthly_volatility": {
+   "AAA": {
+    "first": "2022-01-31",
+    "last": "2024-12-31",
+    "last_value": 0.07871484424391324,
+    "max": 0.12072413905773208,
+    "min": 0.0421181758504865,
+    "n": 36,
+    "nan": 0,
+    "sum": 2.8595192096970536,
+    "sumsq": 0.2369268023933361
+   },
+   "BBB": {
+    "first": "2022-01-31",
+    "last": "2024-12-31",
+    "last_value": 0.08498017988013233,
+    "max": 0.12597242976949732,
+    "min": 0.05290610168235476,
+    "n": 36,
+    "nan": 0,
+    "sum": 3.206863476269708,
+    "sumsq": 0.2947627456326784
+   },
+   "BTC-USD": {
+    "first": "2022-01-31",
+    "last": "2024-12-31",
+    "last_value": 0.09401061012057639,
+    "max": 0.11662578223064747,
+    "min": 0.07090655045398511,
+    "n": 36,
+    "nan": 0,
+    "sum": 3.312586028190603,
+    "sumsq": 0.30962865632622494
+   },
+   "CCC": {
+    "first": "2022-01-31",
+    "last": "2024-12-31",
+    "last_value": 0.03727133006578278,
+    "max": 0.06652560593946749,
+    "min": 0.0336713465259524,
+    "n": 36,
+    "nan": 0,
+    "sum": 1.661636016202495,
+    "sumsq": 0.07862741485226214
+   },
+   "DDD": {
+    "first": "2022-01-31",
+    "last": "2024-12-31",
+    "last_value": 0.10427422606279478,
+    "max": 0.11299397594611547,
+    "min": 0.05989506715751811,
+    "n": 36,
+    "nan": 0,
+    "sum": 3.2263227849503218,
+    "sumsq": 0.29452179536163625
+   }
+  },
+  "period_volatility": {
+   "AAA": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.09563741742212496,
+    "max": 0.14667811377755188,
+    "min": 0.051172985268060384,
+    "n": 35,
+    "nan": 0,
+    "sum": 3.353755263272806,
+    "sumsq": 0.33576525282960495
+   },
+   "BBB": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.10324971120592588,
+    "max": 0.15056585204787087,
+    "min": 0.06428016188527244,
+    "n": 35,
+    "nan": 0,
+    "sum": 3.752027187690638,
+    "sumsq": 0.41532955635921565
+   },
+   "BTC-USD": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.11422155564902166,
+    "max": 0.1416986684596884,
+    "min": 0.08474953769181565,
+    "n": 35,
+    "nan": 0,
+    "sum": 3.8799490838647146,
+    "sumsq": 0.43736180447225115
+   },
+   "CCC": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.04528413650078075,
+    "max": 0.080827666059755,
+    "min": 0.03888032196147158,
+    "n": 35,
+    "nan": 0,
+    "sum": 1.946750545254783,
+    "sumsq": 0.11113177985354977
+   },
+   "DDD": {
+    "first": "2022-02-28",
+    "last": "2024-12-31",
+    "last_value": 0.1266917031993958,
+    "max": 0.13505363273323953,
+    "min": 0.0715882978246705,
+    "n": 35,
+    "nan": 0,
+    "sum": 3.8073172112252163,
+    "sumsq": 0.421048784178988
+   }
+  },
+  "statistics": {
+   "Máxima caída": {
+    "AAA": -0.24761911709931905,
+    "BBB": -0.46543355452926194,
+    "BTC-USD": -0.3059778182551749,
+    "CCC": -0.2520503431319405,
+    "DDD": -0.6150659751701315
+   },
+   "Retorno anualizado": {
+    "AAA": 0.24145297683371125,
+    "BBB": -0.0020899518309271947,
+    "BTC-USD": 0.2663983070168212,
+    "CCC": 0.10479048990912898,
+    "DDD": -0.03262619582836934
+   },
+   "Retorno total": {
+    "AAA": 1.555076616360331,
+    "BBB": -0.009033190419614812,
+    "BTC-USD": 1.7853412902746029,
+    "CCC": 0.540700050357539,
+    "DDD": -0.13399931914749486
+   },
+   "Volatilidad anualizada": {
+    "AAA": 0.2795988752947064,
+    "BBB": 0.3134329700998251,
+    "BTC-USD": 0.3202000841461638,
+    "CCC": 0.16199706389758958,
+    "DDD": 0.31653663907975205
+   },
+   "Último precio": {
+    "AAA": 274.44378673341714,
+    "BBB": 99.60452250027416,
+    "BTC-USD": 273.9510063879874,
+    "CCC": 154.62882995694517,
+    "DDD": 88.18694909420486
+   }
+  }
+ },
+ "tracking": {
+  "context": {
+   "drift_ticker": "AAA",
+   "risk_ticker": "AAA",
+   "stale_ticker": null
+  },
+  "drift": {
+   "AAA": 0.11618628553168114,
+   "BBB": -0.0745162738771834,
+   "BTC-USD": -0.04167001165449774
+  },
+  "positions": {
+   "cost": 100.0,
+   "invested": 99900.0,
+   "units": {
+    "AAA": 330.75022162650424,
+    "BBB": 329.6584044723687,
+    "BTC-USD": 101.3987809222721
+   }
+  },
+  "return_contributions": {
+   "AAA": 0.136017515685014,
+   "BBB": 0.06619577047121535,
+   "BTC-USD": 0.21266937745450545
+  },
+  "risk_contributions": {
+   "AAA": 0.5313469214496034,
+   "BBB": 0.1842491783911659,
+   "BTC-USD": 0.28440390015923067
+  },
+  "scalars": {
+   "alpha": 0.173832891345731,
+   "average_correlation": -0.0930741453089527,
+   "average_rolling_volatility_21": 0.20707175545919493,
+   "average_rolling_volatility_63": 0.20769806076618136,
+   "beta": -0.02925215884382464,
+   "cagr": 0.18991317947621256,
+   "calmar": 0.9680460034746529,
+   "cumulative_return": 0.4148826636107348,
+   "cvar_95": 0.026870583302225973,
+   "downside_capture": -0.09483408802824404,
+   "drawdown": -0.17921693914941628,
+   "drawdown_days": 88,
+   "effective_assets": 2.823888334833317,
+   "herfindahl": 0.35412165122280803,
+   "information_ratio": 0.0920616254847451,
+   "max_abs_drift": 0.11618628553168114,
+   "max_drawdown": -0.19618197771030332,
+   "max_drawdown_days": 115,
+   "max_risk_share": 0.5313469214496034,
+   "max_stale_days": 0,
+   "negative_sharpe_days": 9,
+   "observations": 521,
+   "return_mtd": -0.12105203773273654,
+   "return_one_year": 0.1022629234110437,
+   "return_ytd": 0.1022629234110437,
+   "rolling_sharpe_126": -1.0399224191272454,
+   "rolling_volatility_21": 0.1991848446827189,
+   "rolling_volatility_63": 0.198605078117909,
+   "semideviation": 0.14040669858769184,
+   "sharpe": 0.8100631726462804,
+   "sortino": 1.2055896581035728,
+   "tracking_error": 0.3864506533832018,
+   "turnover": 0.25,
+   "upside_capture": 0.005185807093996716,
+   "var_95": 0.020261341972409905,
+   "volatility": 0.2099838110943658
+  },
+  "series": {
+   "average_correlation": {
+    "first": "2023-03-30",
+    "last": "2024-12-31",
+    "last_value": -0.0930741453089527,
+    "max": 0.13667192706572093,
+    "min": -0.1700715529792809,
+    "n": 459,
+    "nan": 0,
+    "sum": -8.35579900110317,
+    "sumsq": 2.2656537949880127
+   },
+   "benchmark_returns": {
+    "first": "2023-01-03",
+    "last": "2024-12-31",
+    "last_value": -0.015925497629975416,
+    "max": 0.05684286528398075,
+    "min": -0.062074452421751025,
+    "n": 521,
+    "nan": 0,
+    "sum": 0.3190634645540281,
+    "sumsq": 0.20537586350833387
+   },
+   "drawdown": {
+    "first": "2023-01-02",
+    "last": "2024-12-31",
+    "last_value": -0.17921693914941628,
+    "max": 0.0,
+    "min": -0.19618197771030332,
+    "n": 522,
+    "nan": 0,
+    "sum": -25.296976745878577,
+    "sumsq": 1.858118577946407
+   },
+   "returns": {
+    "first": "2023-01-03",
+    "last": "2024-12-31",
+    "last_value": 0.010322224558943605,
+    "max": 0.0397809016159425,
+    "min": -0.040690956323775174,
+    "n": 521,
+    "nan": 0,
+    "sum": 0.39261806948169387,
+    "sumsq": 0.09128184145819004
+   },
+   "rolling_sharpe": {
+    "first": "2023-06-27",
+    "last": "2024-12-31",
+    "last_value": -1.0399224191272454,
+    "max": 2.705125522294887,
+    "min": -1.1406285892486812,
+    "n": 396,
+    "nan": 0,
+    "sum": 498.74467276570516,
+    "sumsq": 832.9138288838271
+   },
+   "rolling_volatility_21": {
+    "first": "2023-01-31",
+    "last": "2024-12-31",
+    "last_value": 0.1991848446827189,
+    "max": 0.2964006747649513,
+    "min": 0.13382123446381294,
+    "n": 501,
+    "nan": 0,
+    "sum": 103.74294948505666,
+    "sumsq": 22.007109077609293
+   },
+   "rolling_volatility_63": {
+    "first": "2023-03-30",
+    "last": "2024-12-31",
+    "last_value": 0.198605078117909,
+    "max": 0.2517944813317714,
+    "min": 0.1704198528408555,
+    "n": 459,
+    "nan": 0,
+    "sum": 95.33340989167725,
+    "sumsq": 19.95179081731237
+   }
+  },
+  "summary": {
+   "benchmark_return": 0.24135747908561012,
+   "days": 522,
+   "end": "2024-12-31 00:00:00",
+   "excess_return": 0.172110301861514,
+   "start": "2023-01-02 00:00:00",
+   "total_return": 0.4134677809471241,
+   "value": 141346.7780947124
+  },
+  "total": {
+   "first": "2023-01-02",
+   "last": "2024-12-31",
+   "last_value": 141346.7780947124,
+   "max": 172209.66761696283,
+   "min": 97043.80737173955,
+   "n": 522,
+   "nan": 0,
+   "sum": 69107854.45759329,
+   "sumsq": 9400973214023.377
+  },
+  "weights": {
+   "AAA": 0.44951961886501446,
+   "BBB": 0.2588170594561499,
+   "BTC-USD": 0.2916633216788356
+  }
+ }
+}
