@@ -24,9 +24,9 @@ from flask_login import current_user
 
 from optimizacion_portafolios.profiling import Questionnaire, QuestionnaireError, load_questionnaire
 from optimizacion_portafolios.storage.models import Profile, User
-from optimizacion_portafolios.storage.profiles import get_current_profile
+from optimizacion_portafolios.storage.profiles import get_current_profile, is_current_profile
 from optimizacion_portafolios.web.auth import guard
-from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE
+from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE, canonical_role
 from optimizacion_portafolios.web.auth.session import register_after_login, wants_json
 
 PROFILE_SESSION_KEY = "perfil"
@@ -74,7 +74,7 @@ def profile_summary(profile: Profile, questionnaire: Questionnaire | None = None
         "nivel_horizonte": profile.nivel_horizonte,
         "puntaje_tolerancia": profile.puntaje_tolerancia,
         "puntaje_capacidad": profile.puntaje_capacidad,
-        "rol_sugerido": profile.rol_sugerido,
+        "rol_sugerido": canonical_role(profile.rol_sugerido),
     }
 
 
@@ -92,8 +92,13 @@ def refresh_profile_session(user: User) -> dict | None:
 def session_profile(user: User) -> dict | None:
     """``user``'s profile summary from the session, loading it when missing."""
     summary = session.get(PROFILE_SESSION_KEY)
-    if isinstance(summary, dict) and summary.get("usuario_id") == user.id:
+    if (
+        isinstance(summary, dict)
+        and summary.get("usuario_id") == user.id
+        and is_current_profile(user.id, summary.get("id"))
+    ):
         return summary
+    # Missing, from another user, or replaced in another session/device.
     return refresh_profile_session(user)
 
 

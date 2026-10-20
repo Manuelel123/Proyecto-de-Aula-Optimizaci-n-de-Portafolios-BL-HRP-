@@ -98,7 +98,9 @@ class WebTestCase(unittest.TestCase):
     user_role = "gestor"
 
     def setUp(self) -> None:
-        self.app = create_app({"TESTING": True, "SECRET_KEY": "test-secret"})
+        # The gestor role exists only for GESTOR_EMAILS (checked on every request).
+        gestor_emails = self.user_email if self.user_role == "gestor" else ""
+        self.app = create_app({"TESTING": True, "SECRET_KEY": "test-secret", "GESTOR_EMAILS": gestor_emails})
         self.client = self.app.test_client()
         self.user_id = create_test_user(
             self.app, self.user_email, role=self.user_role, role_confirmed=True, display_name="Tester"

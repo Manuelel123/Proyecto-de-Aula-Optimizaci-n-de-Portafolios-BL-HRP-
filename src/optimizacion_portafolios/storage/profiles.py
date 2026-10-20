@@ -23,6 +23,19 @@ def get_current_profile(user_id: int | str) -> Profile | None:
     )
 
 
+def is_current_profile(user_id: int | str, profile_id) -> bool:
+    """Whether ``profile_id`` is still the user's current (vigente) profile."""
+    if profile_id is None:
+        return False
+    return db.session.scalar(
+        select(Profile.id).where(
+            Profile.id == int(profile_id),
+            Profile.usuario_id == int(user_id),
+            Profile.vigente.is_(True),
+        )
+    ) is not None
+
+
 def list_profiles(user_id: int | str) -> list[Profile]:
     """Every profile of the user, newest first."""
     return list(

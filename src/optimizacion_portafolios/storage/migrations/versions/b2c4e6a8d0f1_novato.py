@@ -1,7 +1,8 @@
 """rename role explorador to novato
 
-The append-only decision log (registro_decisiones) is left as recorded: its
-rows keep the role name in force when each decision was made.
+Only the users table changes. Historical rows of perfiles (rol_sugerido) and
+the append-only registro_decisiones keep the name recorded at the time; the
+code reads "explorador" as "novato" (web.auth.roles.canonical_role).
 
 Revision ID: b2c4e6a8d0f1
 Revises: f3579be64acf
@@ -20,7 +21,6 @@ depends_on = None
 
 def upgrade():
     op.execute("UPDATE users SET role = 'novato' WHERE role = 'explorador'")
-    op.execute("UPDATE perfiles SET rol_sugerido = 'novato' WHERE rol_sugerido = 'explorador'")
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.alter_column('role', server_default='novato')
 
@@ -28,5 +28,4 @@ def upgrade():
 def downgrade():
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.alter_column('role', server_default='explorador')
-    op.execute("UPDATE perfiles SET rol_sugerido = 'explorador' WHERE rol_sugerido = 'novato'")
     op.execute("UPDATE users SET role = 'explorador' WHERE role = 'novato'")

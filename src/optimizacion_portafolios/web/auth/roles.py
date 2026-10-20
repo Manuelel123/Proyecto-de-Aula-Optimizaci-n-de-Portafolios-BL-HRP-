@@ -48,6 +48,15 @@ def initial_role(email: str) -> tuple[str, bool]:
     return DEFAULT_ROLE, False
 
 
+# Earlier role names still present in historical rows (perfiles, decisions).
+LEGACY_ROLES = {"explorador": DEFAULT_ROLE}
+
+
+def canonical_role(role: str | None) -> str | None:
+    """Current name of ``role`` (maps the legacy ``explorador`` to ``novato``)."""
+    return LEGACY_ROLES.get(role, role) if role else role
+
+
 def sync_gestor_role(user: User) -> bool:
     """Grant or revoke ``gestor`` according to ``GESTOR_EMAILS``.
 

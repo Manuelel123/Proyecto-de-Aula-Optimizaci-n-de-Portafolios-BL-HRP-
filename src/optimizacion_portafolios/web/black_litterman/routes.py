@@ -7,6 +7,8 @@ from io import BytesIO
 import numpy as np
 from flask import flash, render_template, request, send_file
 
+from optimizacion_portafolios.web.common.notice import with_notice_html
+
 from optimizacion_portafolios.analytics.statistics import date_years_ago
 from optimizacion_portafolios.data.catalogs import (
     ACTIVOS_HRP,
@@ -246,7 +248,7 @@ def black_litterman():
                 raise yahoo_error(error) from error
             if result.get("report"):
                 return send_file(
-                    BytesIO(result["report"]),
+                    BytesIO(with_notice_html(result["report"])),
                     mimetype="text/html",
                     as_attachment=True,
                     download_name=REPORT_FILENAME,

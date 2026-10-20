@@ -171,7 +171,8 @@
               <p class="card__subtitle">Peso Black-Litterman frente al peso de mercado (capitalización) · suma {{ '%.2f'|format(result.weights_sum * 100) }}%</p>
             </div>
             <div class="card__actions">
-              <a class="button button-ghost button-sm" download="{{ csv_filename }}" href="data:text/csv;charset=utf-8,{{ ('﻿' ~ result.allocation_csv)|urlencode }}">Descargar CSV</a>
+              <a class="button button-ghost button-sm" download="{{ csv_filename }}" href="data:text/csv;charset=utf-8,{{ ('﻿"' ~ educational_notice_text ~ '"
+' ~ result.allocation_csv)|urlencode }}">Descargar CSV</a>
             </div>
           </div>
           <div class="card__body">

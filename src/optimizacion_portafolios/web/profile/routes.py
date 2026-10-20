@@ -12,6 +12,7 @@ import logging
 
 from flask import flash, redirect, render_template, request, url_for
 from flask_login import current_user
+from sqlalchemy.exc import IntegrityError
 
 from optimizacion_portafolios.profiling import (
     PRIOR_STEP,
@@ -33,7 +34,7 @@ from optimizacion_portafolios.storage.profiles import (
     save_draft,
     save_profile,
 )
-from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE, SELECTABLE_ROLES, is_gestor_email
+from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE, SELECTABLE_ROLES, canonical_role, is_gestor_email
 from optimizacion_portafolios.web.profile import bp
 from optimizacion_portafolios.web.profile.access import get_questionnaire, refresh_profile_session
 
@@ -188,7 +189,13 @@ def save_step():
     except AnswerError as error:  # defensive: the steps were validated above
         flash(str(error), "error")
         return redirect(url_for("profile.questionnaire", paso=0))
-    profile = save_profile(current_user.id, result)
+    try:
+        profile = save_profile(current_user.id, result)
+    except IntegrityError:
+        # Two submissions at once: the other one already stored the profile.
+        refresh_profile_session(current_user)
+        flash("Tu perfil ya se había guardado en otra pestaña o envío.", "info")
+        return redirect(url_for("profile.result"))
     refresh_profile_session(current_user)
     logger.info("Risk profile %s saved for user %s (%s)", profile.id, current_user.id, result.final_level)
     flash("Tu perfil de riesgo quedó guardado.", "success")
@@ -238,7 +245,7 @@ def _profile_view(questionnaire: Questionnaire, profile: Profile) -> dict:
             f"Máximo {label(profile.nivel_horizonte).lower()}" if horizon_capped else "Sin tope",
         ),
         "capital": choice_text(questionnaire.capital, profile.capital_rango),
-        "suggested_role": profile.rol_sugerido,
+        "suggested_role": canonical_role(profile.rol_sugerido),
     }
 
 
@@ -252,7 +259,7 @@ def result():
     if profile is None:
         return redirect(url_for("profile.questionnaire"))
     view = _profile_view(get_questionnaire(), profile)
-    selected = current_user.role if current_user.role_confirmed else profile.rol_sugerido
+    selected = current_user.role if current_user.role_confirmed else canonical_role(profile.rol_sugerido)
     return render_template(
         "profile/result.html",
         view=view,

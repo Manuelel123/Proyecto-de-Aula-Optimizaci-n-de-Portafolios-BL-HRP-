@@ -7,6 +7,8 @@ from io import BytesIO
 import numpy as np
 from flask import flash, render_template, request, send_file
 
+from optimizacion_portafolios.web.common.notice import with_notice_html
+
 from optimizacion_portafolios.analytics.statistics import date_years_ago
 from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS
 from optimizacion_portafolios.data.catalogs import (
@@ -307,7 +309,7 @@ def hrp():
                 )
             if download_requested:
                 return send_file(
-                    BytesIO(report),
+                    BytesIO(with_notice_html(report)),
                     mimetype="text/html",
                     as_attachment=True,
                     download_name=REPORT_FILENAME,

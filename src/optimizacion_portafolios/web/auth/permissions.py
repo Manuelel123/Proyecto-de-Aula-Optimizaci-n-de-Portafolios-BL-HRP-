@@ -23,6 +23,7 @@ from flask import Flask, flash, jsonify, redirect, request, url_for
 from flask_login import current_user
 
 from optimizacion_portafolios.web.auth import guard
+from optimizacion_portafolios.web.auth.roles import canonical_role
 from optimizacion_portafolios.web.auth.session import wants_json
 
 NOVATO = "novato"
@@ -102,12 +103,10 @@ def user_role(user=None) -> str | None:
     return user.role
 
 
-# Earlier name of the novato role, still present in old decision log rows.
-_LEGACY_LABELS = {"explorador": "Novato"}
-
-
 def role_label(role: str | None) -> str:
-    return ROLE_LABELS.get(role or "") or _LEGACY_LABELS.get(role or "", role or "")
+    """Label of a role, including legacy names of historical rows."""
+    role = canonical_role(role) or ""
+    return ROLE_LABELS.get(role, role)
 
 
 def allowed_roles(endpoint: str, method: str = "GET") -> frozenset[str]:

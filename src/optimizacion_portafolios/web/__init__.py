@@ -236,16 +236,20 @@ def _register_blueprints(app: Flask) -> None:
 def _register_csrf_protection(app: Flask) -> None:
     @app.context_processor
     def inject_csrf_token():
+        from optimizacion_portafolios.web.common.notice import EDUCATIONAL_NOTICE
+
         if "csrf_token" not in session:
             session["csrf_token"] = secrets.token_urlsafe(32)
-        return {"csrf_token": session["csrf_token"]}
+        return {"csrf_token": session["csrf_token"], "educational_notice_text": EDUCATIONAL_NOTICE}
 
     @app.before_request
     def validate_csrf_token():
-        if request.method == "POST" and not hmac.compare_digest(
-            session.get("csrf_token", ""),
-            request.form.get("csrf_token", ""),
-        ):
+        if request.method != "POST":
+            return
+        expected = session.get("csrf_token")
+        # No token in the session (e.g. a cross-site POST to the sign-in form)
+        # is rejected too: comparing two empty strings would succeed.
+        if not expected or not hmac.compare_digest(expected, request.form.get("csrf_token", "")):
             abort(400, description="La sesión del formulario expiró. Vuelve a cargarlo.")
 
 

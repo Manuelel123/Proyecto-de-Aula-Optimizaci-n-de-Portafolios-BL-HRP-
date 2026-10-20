@@ -18,6 +18,7 @@ from flask_login import LoginManager
 from optimizacion_portafolios.storage import db
 from optimizacion_portafolios.storage.models import User
 from optimizacion_portafolios.storage.users import get_user
+from optimizacion_portafolios.web.auth.roles import sync_gestor_role
 
 # Session keys left by the former InsForge sign-in; removed on sight.
 LEGACY_SESSION_KEYS = ("auth", "auth_pending_email", "auth_reset_email", "auth_oauth")
@@ -33,7 +34,12 @@ login_manager.session_protection = "basic"
 
 @login_manager.user_loader
 def _load_user(user_id: str) -> User | None:
-    return get_user(user_id)
+    """The signed-in user; adding or removing an email in ``GESTOR_EMAILS``
+    takes effect on the next request (not only at the next sign-in)."""
+    user = get_user(user_id)
+    if user is not None and sync_gestor_role(user):
+        db.session.commit()
+    return user
 
 
 def wants_json() -> bool:
