@@ -1,9 +1,15 @@
 {# Shared pieces of the "Mis portafolios" pages. #}
 
 {% macro disclaimer() %}
+  {% if original_mode() %}
+  <p class="notice notice--info portfolio-disclaimer">
+    Capital nocional. Los resultados se basan en datos históricos y en los supuestos de cada modelo; nada de esto constituye una recomendación de inversión.
+  </p>
+  {% else %}
   <div class="notice notice--warning educational-notice portfolio-disclaimer" role="note">
     <p><strong>Información educativa. No es recomendación de inversión ni asesoría financiera.</strong> Capital nocional: los resultados se basan en datos históricos y en los supuestos de cada modelo.</p>
   </div>
+  {% endif %}
 {% endmacro %}
 
 {% macro money(value) -%}

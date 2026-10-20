@@ -157,10 +157,10 @@ class MatrixMixin:
         nav = re.search(r'<nav class="site-nav"[^>]*>(.*?)</nav>', html, re.S).group(1)
         links = set(re.findall(r'href="([^"]+)"', nav))
         expected = {"/", "/hrp", "/black-litterman", "/portafolios/"}
-        if self.role != "novato":
+        if self.role == "inversionista":
             expected.add("/comparar")
         if self.role == "gestor":
-            expected.add("/monitoring")
+            expected.add("/monitoring")  # the original menu, without the new pages
         self.assertEqual(links, expected)
         self.assertEqual("/cuenta/backtests" in html, self.role == "gestor")
 
@@ -333,14 +333,18 @@ class GestorTests(MatrixMixin, RoleTestCase):
         self.assertIn("Opciones", self.client.get("/monitoring").data.decode())
 
     @patch("optimizacion_portafolios.web.portfolios.services.download_prices", side_effect=OFFLINE)
-    def test_result_pages_show_the_exact_notice(self, _download):
+    def test_original_mode_has_no_educational_additions(self, _download):
+        """The gestor sees the pages exactly as before the educational layer."""
         portfolio_id = self.portfolio()
-        for path in ("/hrp", "/black-litterman", "/comparar", "/monitoring", "/portafolios/",
+        for path in ("/hrp", "/black-litterman", "/monitoring", "/portafolios/",
                      f"/portafolios/{portfolio_id}", f"/portafolios/{portfolio_id}/alertas",
                      f"/portafolios/{portfolio_id}/versiones", f"/portafolios/{portfolio_id}/gestionar",
-                     "/cuenta/backtests", "/glosario", "/"):
+                     "/cuenta/backtests", "/"):
             with self.subTest(path=path):
-                self.assertEqual(notice_block(self.client.get(path).data.decode()), NOTICE, path)
+                html = self.client.get(path).data.decode()
+                self.assertIsNone(notice_block(html), path)
+                self.assertNotIn("Mi perfil", html, path)
+                self.assertNotIn("Glosario", html, path)
 
 
 class PortadaTests(unittest.TestCase):

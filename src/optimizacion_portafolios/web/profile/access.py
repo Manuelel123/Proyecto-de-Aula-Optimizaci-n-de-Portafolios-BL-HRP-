@@ -114,7 +114,12 @@ def needs_role_confirmation(user: User) -> bool:
 
 
 def pending_profile_step(user: User) -> str | None:
-    """Endpoint the user must visit before using the tools, if any."""
+    """Endpoint the user must visit before using the tools, if any.
+
+    The gestor uses the original app ("modo original"): no questionnaire.
+    """
+    if user.role == GESTOR_ROLE:
+        return None
     if session_profile(user) is None:
         return "profile.questionnaire"
     if needs_role_confirmation(user):

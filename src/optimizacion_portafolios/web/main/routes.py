@@ -14,12 +14,53 @@ from optimizacion_portafolios.web.auth.permissions import (
     role_label,
 )
 from optimizacion_portafolios.web.auth.passwords import password_rules
+from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE
 from optimizacion_portafolios.web.common.guided import glossary as glossary_items
 from optimizacion_portafolios.web.main import bp
 from optimizacion_portafolios.web.profile.access import current_profile, pending_profile_step
 
 MODEL_COUNT = 2
 DATA_SOURCE_COUNT = 2
+
+# Modules of the original home page, shown to the gestor ("modo original").
+GESTOR_MODULES = (
+    {
+        "key": "market",
+        "endpoint": "monitoring.monitoring",
+        "eyebrow": "Mercado",
+        "title": "Monitoreo de mercado",
+        "description": "Precios, retornos, volatilidad y fundamentales de cada activo en un solo lugar.",
+        "features": (
+            "Gráfico de precios interactivo con rangos",
+            "Volatilidad histórica por periodo",
+            "Perfil fundamental de cada compañía",
+        ),
+    },
+    {
+        "key": "hrp",
+        "endpoint": "hrp.hrp",
+        "eyebrow": "Riesgo jerárquico",
+        "title": "Optimización HRP",
+        "description": "Reparte el riesgo por clusters de correlación sin estimar retornos esperados.",
+        "features": (
+            "Clustering por correlación y dendrograma",
+            "Límites de peso globales y por activo",
+            "Desempeño histórico frente a un benchmark",
+        ),
+    },
+    {
+        "key": "black_litterman",
+        "endpoint": "black_litterman.black_litterman",
+        "eyebrow": "Equilibrio + views",
+        "title": "Black-Litterman",
+        "description": "Combina el equilibrio implícito del mercado con tus expectativas por activo.",
+        "features": (
+            "Prior de equilibrio por capitalización",
+            "Views anuales con confianza de Idzorek",
+            "Objetivos de Sharpe, Sortino, CVaR y utilidad",
+        ),
+    },
+)
 
 # Tools of the main screen; each card shows only if the role can open it.
 TOOLS = (
@@ -104,6 +145,14 @@ def index():
             roles=ROLES_OVERVIEW,
             password_rules=password_rules(),
         )
+    if current_user.role == GESTOR_ROLE:
+        # The gestor uses the app exactly as before the educational layer.
+        stats = (
+            {"value": catalog_asset_count(), "label": "activos e índices en catálogo"},
+            {"value": MODEL_COUNT, "label": "modelos de optimización"},
+            {"value": DATA_SOURCE_COUNT, "label": "fuentes de datos de mercado"},
+        )
+        return render_template("main/original_index.html", modules=GESTOR_MODULES, stats=stats)
     # The home page is public, so the access checks do not run here: a user
     # without a profile (or role) sees the pending step instead of the tools.
     step = pending_profile_step(current_user)

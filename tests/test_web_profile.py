@@ -264,15 +264,12 @@ class RoleConfirmationTests(ProfileTestCase):
         self.post("/perfil/rol", rol="gestor")
         self.assertEqual(self.user("nuevo@example.com").role, "inversionista")
 
-    def test_gestor_is_profiled_but_never_asked_for_a_role(self):
+    def test_gestor_skips_the_questionnaire(self):
+        """The gestor uses the original app: no questionnaire, no role step."""
         response = self.sign_in_new("jefa@example.com")
-        self.assertEqual(path_of(response), QUESTIONNAIRE_PATH)
+        self.assertNotEqual(path_of(response), QUESTIONNAIRE_PATH)
         self.assertEqual(self.user("jefa@example.com").role, "gestor")
-        self.assertEqual(path_of(self.client.get("/hrp")), QUESTIONNAIRE_PATH)
-        self.complete_questionnaire()
-        html = self.client.get("/perfil/resultado").data.decode()
-        self.assertIn("rol <strong>Gestor</strong>", html)
-        self.assertNotIn('name="rol"', html)
+        self.assertEqual(self.client.get("/hrp").status_code, 200)
         self.post("/perfil/rol", rol="novato")
         user = self.user("jefa@example.com")
         self.assertEqual((user.role, user.role_confirmed), ("gestor", True))

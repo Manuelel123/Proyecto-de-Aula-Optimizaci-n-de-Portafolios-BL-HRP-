@@ -159,16 +159,29 @@ NAV_ITEMS = (
 )
 
 
+# Pages added with the educational layer; the gestor's menu leaves them out
+# so it matches the original app exactly ("modo original").
+EDUCATIONAL_NAV = frozenset({"compare.compare"})
+
+
+def original_mode() -> bool:
+    """True for the gestor: the app looks and works exactly as before."""
+    return user_role() == GESTOR
+
+
 def nav_items(role: str | None) -> list[tuple[str, str, str]]:
     if role is None:
         return []
-    return [item for item in NAV_ITEMS if role_allows(role, item[1])]
+    items = [item for item in NAV_ITEMS if role_allows(role, item[1])]
+    if role == GESTOR:
+        items = [item for item in items if item[1] not in EDUCATIONAL_NAV]
+    return items
 
 
 def init_app(app: Flask) -> None:
     guard.register_access_check(app, require_role)
     # Globals, so macros imported without context can use them too.
-    app.jinja_env.globals.update(can=can, can_open=can_open)
+    app.jinja_env.globals.update(can=can, can_open=can_open, original_mode=original_mode)
 
     @app.context_processor
     def inject_permissions():

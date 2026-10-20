@@ -9,7 +9,7 @@ from support import WebTestCase
 class WebInterfaceTests(WebTestCase):
     def test_all_primary_pages_render(self) -> None:
         for path, title in (
-            ("/", "Hola, Tester"),
+            ("/", "Construye portafolios con"),  # the gestor's original home
             ("/monitoring", "Monitoreo de activos"),
             ("/hrp", "Optimización HRP"),
             ("/black-litterman", "Black-Litterman"),
@@ -40,13 +40,11 @@ class WebInterfaceTests(WebTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn("Página no encontrada".encode(), response.data)
 
-    def test_home_lists_every_tool_of_the_gestor(self) -> None:
+    def test_gestor_home_is_the_original_one(self) -> None:
         html = self.client.get("/").get_data(as_text=True)
         modules = re.findall(r'<a class="module-card" href="([^"]+)"', html)
-        self.assertEqual(
-            modules, ["/hrp", "/black-litterman", "/comparar", "/monitoring", "/portafolios/", "/historial", "/glosario"]
-        )
-        self.assertIn("Tu perfil vigente: Moderado", html)
+        self.assertEqual(modules, ["/monitoring", "/hrp", "/black-litterman"])
+        self.assertNotIn("Tu perfil vigente", html)
 
     def test_portada_shows_real_catalog_stats(self) -> None:
         from optimizacion_portafolios.web.main.routes import catalog_asset_count

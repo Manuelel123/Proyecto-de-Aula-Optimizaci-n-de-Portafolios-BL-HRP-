@@ -400,7 +400,7 @@
           const lines = Array.from(table.querySelectorAll("thead tr, tbody tr"), (row) =>
             Array.from(row.cells, (cell) => quote(cell.textContent)).join(",")
           );
-          lines.unshift(quote({{ educational_notice_text|tojson }}));
+          {% if not original_mode() %}lines.unshift(quote({{ educational_notice_text|tojson }}));{% endif %}
           const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
           const link = document.createElement("a");
           link.href = URL.createObjectURL(blob);

@@ -13,7 +13,14 @@ _BANNER = (
 
 
 def with_notice_html(report: bytes) -> bytes:
-    """``report`` (an HTML document) with the notice right after ``<body>``."""
+    """``report`` (an HTML document) with the notice right after ``<body>``.
+
+    The gestor's downloads stay as they were ("modo original").
+    """
+    from optimizacion_portafolios.web.auth.permissions import original_mode
+
+    if original_mode():
+        return report
     match = _BODY_TAG.search(report)
     if match is None:
         return _BANNER + report

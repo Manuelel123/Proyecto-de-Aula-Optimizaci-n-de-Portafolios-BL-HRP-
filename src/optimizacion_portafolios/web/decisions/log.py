@@ -25,6 +25,8 @@ def record(method: str, weights: dict[str, float], params: dict, source: str | N
     if not current_user.is_authenticated or not weights:
         return False
     profile = current_profile() or {}
+    # The gestor has no risk profile ("modo original"): the row says so.
+    profile_level = "gestor" if current_user.role == "gestor" else profile.get("perfil_final")
     try:
         record_decision(
             current_user.id,
@@ -33,7 +35,7 @@ def record(method: str, weights: dict[str, float], params: dict, source: str | N
             weights=weights,
             params=params,
             profile_id=profile.get("id"),
-            profile_level=profile.get("perfil_final"),
+            profile_level=profile_level,
             role=current_user.role,
         )
     except (SQLAlchemyError, ValueError):
