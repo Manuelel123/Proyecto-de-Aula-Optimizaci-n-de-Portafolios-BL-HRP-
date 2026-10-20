@@ -17,6 +17,7 @@ import logging
 import os
 import smtplib
 import ssl
+import sys
 from email.message import EmailMessage
 
 from flask import current_app
@@ -49,7 +50,13 @@ def send_mail(to: str, subject: str, body: str) -> None:
     if not username or not password:
         if app.debug:
             # Development fallback only: the code is shown on the server console.
-            logger.warning("MAIL_USERNAME/MAIL_PASSWORD not set; email to %s not sent:\n%s\n%s", to, subject, body)
+            # Printed rather than logged: the migrations' logging config can
+            # disable this module's logger at startup.
+            print(
+                f"[Atlas] MAIL_USERNAME/MAIL_PASSWORD sin configurar; correo a {to} no enviado:\n{subject}\n{body}",
+                file=sys.stderr,
+                flush=True,
+            )
             return
         raise MailError("El envío de correos no está configurado en el servidor.")
     message = EmailMessage()
