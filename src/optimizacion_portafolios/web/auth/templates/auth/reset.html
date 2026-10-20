@@ -1,0 +1,27 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Nueva contraseña{% endblock %}
+{% block eyebrow %}Recuperación{% endblock %}
+{% block heading %}Crea una contraseña nueva{% endblock %}
+{% block intro %}<p class="auth-card__lead">Escribe el código que enviamos a <strong>{{ email }}</strong> y tu nueva contraseña.</p>{% endblock %}
+{% block form %}
+  <form method="post" class="form-stack" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-field">
+      <label for="code">Código</label>
+      <input id="code" name="code" class="auth-code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+    </div>
+    <div class="form-field">
+      <label for="password">Contraseña nueva</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128"{% if password_rules %} aria-describedby="password-help"{% endif %}>
+      {% if password_rules %}<p class="help-text" id="password-help">Debe tener {{ password_rules|join(' y ') }}.</p>{% endif %}
+    </div>
+    <div class="form-field">
+      <label for="password_confirm">Confirma la contraseña</label>
+      <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required>
+    </div>
+    <button class="button button-primary button-block" type="submit">Guardar contraseña</button>
+  </form>
+{% endblock %}
+{% block card_footer %}
+  <div class="card__footer auth-card__footer"><a href="{{ url_for('auth.forgot_password') }}">Pedir otro código</a></div>
+{% endblock %}

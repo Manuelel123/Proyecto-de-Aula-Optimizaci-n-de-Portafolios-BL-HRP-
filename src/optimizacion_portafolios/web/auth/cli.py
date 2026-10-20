@@ -46,9 +46,14 @@ def make_gestor(email: str, replace: bool):
     """Otorga el rol gestor (acceso total) a la cuenta de EMAIL.
 
     Es la única forma de obtener ese rol: no se puede elegir desde la web.
-    Solo puede haber una cuenta gestor.
+    Solo puede haber una cuenta gestor, y su correo debe estar verificado.
     """
     user = _account(email)
+    if not user.email_verified:
+        raise click.ClickException(
+            f"{user.email} aún no verificó su correo: inicia sesión con esa cuenta y "
+            "escribe el código que llega por correo antes de darle el rol gestor."
+        )
     try:
         demoted = grant_gestor(user, replace=replace)
     except ValueError as error:

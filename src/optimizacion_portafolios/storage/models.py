@@ -59,13 +59,39 @@ class User(UserMixin, db.Model):
     plan: Mapped[str] = mapped_column(String(20), default=DEFAULT_PLAN, server_default=DEFAULT_PLAN)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set when the owner proves the email (verification or reset code).
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @property
     def name(self) -> str:
         return self.display_name or self.email.split("@")[0]
 
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
+
     def __repr__(self) -> str:  # never includes the password hash
         return f"<User {self.id} {self.email} {self.role}>"
+
+
+class EmailCode(db.Model):
+    """One-time 6-digit code sent by email (account verification or password reset).
+
+    Only a keyed hash of the code is stored. A new code of the same purpose
+    replaces the previous one; a code expires, is used once, and is burned
+    after too many wrong attempts.
+    """
+
+    __tablename__ = "email_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    purpose: Mapped[str] = mapped_column(String(10))  # "verify" | "reset"
+    code_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class BacktestRun(db.Model):

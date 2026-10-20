@@ -2288,3 +2288,15 @@ input.badge:disabled { background: var(--accent-subtle); color: var(--accent); }
   .landing-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .dashboard-profile .card__body { padding-top: 0; }
+
+
+/* Sign-in codes (verification, password reset). */
+.auth-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.auth-link { font-size: var(--fs-sm); }
+.form-field input.auth-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-lg);
+  letter-spacing: .35em;
+  text-align: center;
+}
+.auth-secondary-action { margin-top: var(--sp-3); text-align: center; }

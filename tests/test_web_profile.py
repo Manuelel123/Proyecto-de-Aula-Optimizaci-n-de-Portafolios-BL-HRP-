@@ -68,7 +68,7 @@ class MandatoryProfileTests(ProfileTestCase):
         checked = 0
         for rule in self.app.url_map.iter_rules():
             endpoint = rule.endpoint
-            if (endpoint in {"static", "main.index", "auth.login", "auth.register", "auth.logout"}
+            if (endpoint in {"static", "main.index", "auth.login", "auth.register", "auth.logout", "auth.verify", "auth.resend_verification", "auth.forgot_password", "auth.reset_password"}
                     or endpoint.endswith(".static") or endpoint.startswith("profile.")
                     or "GET" not in rule.methods):
                 continue

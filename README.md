@@ -14,7 +14,7 @@ Herramienta web **educativa** (Flask) para personas jóvenes e inexpertas que qu
 
 ```powershell
 uv sync                                    # crea .venv e instala las dependencias de uv.lock
-Copy-Item .env.example .env                # y completa FLASK_SECRET_KEY
+Copy-Item .env.example .env                # y completa FLASK_SECRET_KEY y el correo (MAIL_*)
 uv run flask --app wsgi:app run --debug    # servidor de desarrollo
 ```
 
@@ -42,6 +42,21 @@ uv run flask --app wsgi:app users list-gestor                                  #
 ```
 
 El cambio aplica en la siguiente petición, sin reiniciar el servidor.
+
+### Correo: verificación de la cuenta y recuperación de contraseña
+
+Al registrarse, cada cuenta recibe un código de 6 dígitos por correo y no puede entrar hasta escribirlo (`/auth/verificar`). «¿La olvidaste?» (`/auth/recuperar`) envía otro código para crear una contraseña nueva (`/auth/restablecer`). Los códigos vencen a los 15 minutos, sirven una sola vez, se invalidan tras 5 intentos fallidos y solo se guarda su hash (HMAC con `FLASK_SECRET_KEY`). Las respuestas no revelan si un correo tiene cuenta.
+
+Los correos salen por Gmail SMTP. Configura en `.env`:
+
+```dotenv
+MAIL_USERNAME=tu-cuenta@gmail.com
+MAIL_PASSWORD=xxxx xxxx xxxx xxxx     # contraseña de aplicación, no la normal
+# MAIL_FROM=Atlas <tu-cuenta@gmail.com>   (opcional)
+# MAIL_SMTP_HOST=smtp.gmail.com  MAIL_SMTP_PORT=465   (valores por defecto)
+```
+
+La contraseña de aplicación se crea en tu cuenta de Google → Seguridad → Verificación en dos pasos (debe estar activa) → Contraseñas de aplicaciones. Sin estas variables, el servidor de desarrollo (`--debug`) muestra el código en su consola en lugar de enviarlo; fuera de desarrollo el envío falla con un mensaje.
 
 ## Uso: flujo de pantallas y roles
 

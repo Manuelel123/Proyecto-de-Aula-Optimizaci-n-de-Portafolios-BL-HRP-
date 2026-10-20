@@ -61,6 +61,9 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     _configure_price_store(testing)
     _configure_storage(app, testing)
+    from optimizacion_portafolios.web.auth import mailer
+
+    mailer.configure(app)
     _register_access_guard(app)
     _register_profile_requirement(app)
     _register_role_permissions(app)

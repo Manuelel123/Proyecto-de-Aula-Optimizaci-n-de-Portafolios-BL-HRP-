@@ -23,7 +23,16 @@ from flask_login import current_user
 from optimizacion_portafolios.web.auth.session import LEGACY_SESSION_KEYS, unauthorized_response
 
 # Endpoints reachable without a session. Keep it minimal.
-PUBLIC_ENDPOINTS: set[str] = {"main.index", "auth.login", "auth.register", "static"}
+PUBLIC_ENDPOINTS: set[str] = {
+    "main.index",
+    "auth.login",
+    "auth.register",
+    "auth.verify",
+    "auth.resend_verification",
+    "auth.forgot_password",
+    "auth.reset_password",
+    "static",
+}
 # Endpoints that need a session but skip the registered access checks.
 CHECK_EXEMPT_ENDPOINTS: set[str] = {"auth.logout"}
 

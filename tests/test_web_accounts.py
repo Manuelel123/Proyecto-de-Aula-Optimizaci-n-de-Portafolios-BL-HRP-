@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -72,6 +73,12 @@ class AccountTestCase(unittest.TestCase):
         self.refresh_csrf()
         return response
 
+    def last_code(self, email: str) -> str:
+        """6-digit code of the last email sent to ``email`` (test outbox)."""
+        messages = [m for m in self.app.extensions["mail_outbox"] if m["to"] == email]
+        self.assertTrue(messages, f"no email to {email}")
+        return re.search(r"\b(\d{6})\b", messages[-1]["body"]).group(1)
+
     def register(self, email="nueva@example.com", password="clave2026", confirm=None, **extra):
         return self.post(
             "/auth/registro", email=email, password=password,
@@ -82,7 +89,13 @@ class AccountTestCase(unittest.TestCase):
 class RegistrationTests(AccountTestCase):
     def test_register_creates_user_and_signs_in(self):
         response = self.register(email="  Nueva@Example.COM ", name="Nueva")
-        self.assertEqual(response.status_code, 302)
+        # The email must be verified first: no session until the code is typed.
+        self.assertEqual(urlsplit(response.location).path, "/auth/verificar")
+        with self.client.session_transaction() as session:
+            self.assertNotIn("_user_id", session)
+        code = self.last_code("nueva@example.com")
+        response = self.post("/auth/verificar", code=code)
+        self.refresh_csrf()
         # A new account has no risk profile yet: straight to the questionnaire.
         self.assertEqual(urlsplit(response.location).path, "/perfil/cuestionario")
         user = self.user("nueva@example.com")
@@ -261,7 +274,7 @@ class GestorRoleTests(AccountTestCase):
 
 
 class GlobalGuardTests(AccountTestCase):
-    PUBLIC = {"main.index", "auth.login", "auth.register"}
+    PUBLIC = {"main.index", "auth.login", "auth.register", "auth.verify", "auth.resend_verification", "auth.forgot_password", "auth.reset_password"}
 
     def _assert_blocked(self, response, path):
         if path.startswith("/api/"):
@@ -290,8 +303,14 @@ class GlobalGuardTests(AccountTestCase):
                 response = self.client.open(path, method=method, data=data)
                 self._assert_blocked(response, path)
                 checked += 1
-            if rule.endpoint in self.PUBLIC:
-                self.assertEqual(self.client.get(path).status_code, 200, path)
+            if rule.endpoint in self.PUBLIC and "GET" in methods:
+                response = self.client.get(path)
+                # Public pages render, or send back to another auth page when
+                # nothing is pending (e.g. /auth/verificar without an account).
+                if response.status_code == 302:
+                    self.assertTrue(urlsplit(response.location).path.startswith("/auth/"), path)
+                else:
+                    self.assertEqual(response.status_code, 200, path)
         self.assertGreater(checked, 20)
 
     @patch("optimizacion_portafolios.web.history.services.download_prices")

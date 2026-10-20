@@ -2,11 +2,13 @@
 
 import re
 import unittest
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 
 from optimizacion_portafolios.profiling import evaluate, load_questionnaire
+from optimizacion_portafolios.storage import db
 from optimizacion_portafolios.storage.profiles import get_current_profile, save_profile
 from optimizacion_portafolios.storage.users import create_user, get_user_by_email
 from optimizacion_portafolios.web import create_app
@@ -37,20 +39,27 @@ def create_test_user(
     role_confirmed: bool | None = None,
     display_name: str | None = "Ana",
     profile: bool = True,
+    verified: bool = True,
 ) -> str:
     """Add a local user straight to the database; return ``str(user.id)``.
 
     By default the user has already been profiled: a current risk profile
     (``TEST_PROFILE_ANSWERS``) and a confirmed role, so the tools are open.
-    Pass ``profile=False`` for a brand-new user (no profile, unconfirmed role).
+    Pass ``profile=False`` for a brand-new user (no profile, unconfirmed role)
+    and ``verified=False`` for an account that has not proved its email yet.
     """
     if role_confirmed is None:
         role_confirmed = profile
     password_hash = _TEST_PASSWORD_HASH if password == TEST_PASSWORD else hash_password(password)
     with app.app_context():
-        user = get_user_by_email(email) or create_user(
-            email, password_hash, display_name=display_name, role=role, role_confirmed=role_confirmed
-        )
+        user = get_user_by_email(email)
+        if user is None:
+            user = create_user(
+                email, password_hash, display_name=display_name, role=role, role_confirmed=role_confirmed
+            )
+            if verified:
+                user.email_verified_at = datetime.now(timezone.utc)
+                db.session.commit()
         if profile and get_current_profile(user.id) is None:
             add_test_profile(app, user.id)
         return str(user.id)
