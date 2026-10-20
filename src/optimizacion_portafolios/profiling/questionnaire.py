@@ -21,7 +21,7 @@ DEFAULT_PATH = Path(__file__).resolve().parents[3] / "config" / "cuestionario.ya
 PATH_ENV_VAR = "ATLAS_QUESTIONNAIRE_PATH"
 OPTIONS_PER_QUESTION = 4
 # Roles the questionnaire may suggest ("gestor" is never suggested nor chosen).
-SUGGESTABLE_ROLES = ("explorador", "inversionista")
+SUGGESTABLE_ROLES = ("novato", "inversionista")
 VETO_FACTOR = "veto"
 HORIZON_FACTOR = "horizonte"
 PRIOR_STEP = "datos_previos"

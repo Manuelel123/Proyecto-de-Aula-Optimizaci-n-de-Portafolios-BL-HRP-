@@ -1,4 +1,4 @@
-"""Guided mode of HRP, Black-Litterman and the comparison (explorador / inversionista).
+"""Guided mode of HRP, Black-Litterman and the comparison (novato / inversionista).
 
 The guided pages only let the user pick a predefined universe (and, from
 ``inversionista``, exclude assets and cap the weight per asset). Every other
@@ -66,7 +66,7 @@ def guided_start(today: date | None = None) -> date:
 def guided_selection(universes: dict, default_universe: str = GUIDED_DEFAULT_UNIVERSE) -> tuple[str, list[str], list[str]]:
     """``(universe, available, selected)`` of a guided form.
 
-    Only predefined universes; an explorador always gets every asset of the
+    Only predefined universes; an novato always gets every asset of the
     universe, an inversionista may uncheck (exclude) some. Anything else in
     the form (custom tickers, dates, per-asset limits, views...) is ignored.
     """

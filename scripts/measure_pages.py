@@ -2,7 +2,7 @@
 
 Runs the app in-process with Flask's test client (the server on port 5000 is
 never touched), a throw-away SQLite database in a temporary directory and
-test users created here (explorador, inversionista and gestor). Market data
+test users created here (novato, inversionista and gestor). Market data
 is real (Tiingo when ``TIINGO_API_KEY`` is set, else Yahoo Finance); the
 InsForge price store is *not* used, so "cold" means every in-process cache
 is empty and the data comes from the providers.
@@ -43,7 +43,7 @@ ERROR_FLASH = re.compile(rb'class="flash flash-error"[\s\S]*?class="flash__messa
 PASSWORD = "medicion-1"
 PROFILE_ANSWERS = {"p1": 3, "p2": 2, "p3": 3, "p4": 3, "p5": 2, "p6": 2, "p7": 2, "p8": 3, "k1": 3, "k2": 2}
 USERS = {
-    "explorador": "explorador@medicion.local",
+    "novato": "novato@medicion.local",
     "inversionista": "inversionista@medicion.local",
     "gestor": "gestor@medicion.local",
 }
@@ -178,12 +178,12 @@ def pages(portfolio_id: int) -> list[dict]:
     }
     return [
         {"name": "Portada sin sesión", "role": None, "method": "GET", "path": "/"},
-        {"name": "Principal con sesión", "role": "explorador", "method": "GET", "path": "/"},
-        {"name": "HRP GET (explorador)", "role": "explorador", "method": "GET", "path": "/hrp"},
-        {"name": "HRP POST guiado (explorador)", "role": "explorador", "method": "POST", "path": "/hrp", "form": guided},
+        {"name": "Principal con sesión", "role": "novato", "method": "GET", "path": "/"},
+        {"name": "HRP GET (novato)", "role": "novato", "method": "GET", "path": "/hrp"},
+        {"name": "HRP POST guiado (novato)", "role": "novato", "method": "POST", "path": "/hrp", "form": guided},
         {"name": "HRP POST completo + backtest (gestor)", "role": "gestor", "method": "POST", "path": "/hrp", "form": hrp_full},
-        {"name": "Black-Litterman GET (explorador)", "role": "explorador", "method": "GET", "path": "/black-litterman"},
-        {"name": "Black-Litterman POST guiado (explorador)", "role": "explorador", "method": "POST", "path": "/black-litterman", "form": guided},
+        {"name": "Black-Litterman GET (novato)", "role": "novato", "method": "GET", "path": "/black-litterman"},
+        {"name": "Black-Litterman POST guiado (novato)", "role": "novato", "method": "POST", "path": "/black-litterman", "form": guided},
         {"name": "Comparación POST (inversionista)", "role": "inversionista", "method": "POST", "path": "/comparar", "form": compare_form},
         {"name": "Mercado GET (gestor)", "role": "gestor", "method": "GET", "path": "/monitoring"},
         {"name": "Mercado POST portafolio (gestor)", "role": "gestor", "method": "POST", "path": "/monitoring", "form": market_form},

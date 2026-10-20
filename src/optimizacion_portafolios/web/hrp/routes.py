@@ -157,7 +157,7 @@ def _backtest_config() -> BacktestConfig | None:
 
 
 def _guided_hrp():
-    """HRP for explorador / inversionista: predefined universe, fixed inputs."""
+    """HRP for novato / inversionista: predefined universe, fixed inputs."""
     universes = guided.GUIDED_HRP_UNIVERSES
     universe_name, available, selected = guided.guided_selection(universes)
     start_date = guided.guided_start()

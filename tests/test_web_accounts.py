@@ -91,7 +91,7 @@ class RegistrationTests(AccountTestCase):
         user = self.user("nueva@example.com")
         self.assertEqual(user.email, "nueva@example.com")
         self.assertEqual(user.display_name, "Nueva")
-        self.assertEqual((user.role, user.role_confirmed, user.plan), ("explorador", False, "piloto"))
+        self.assertEqual((user.role, user.role_confirmed, user.plan), ("novato", False, "piloto"))
         self.assertIsNotNone(user.created_at)
         self.assertIsNotNone(user.last_login_at)
         with self.client.session_transaction() as session:
@@ -235,7 +235,7 @@ class GestorRoleTests(AccountTestCase):
             self.assertTrue(is_gestor_email(" JEFA@example.com"))
             self.assertFalse(is_gestor_email("ana@example.com"))
             self.assertEqual(initial_role("jefa@example.com"), ("gestor", True))
-            self.assertEqual(initial_role("ana@example.com"), ("explorador", False))
+            self.assertEqual(initial_role("ana@example.com"), ("novato", False))
 
     def test_listed_email_registers_as_confirmed_gestor(self):
         self.register(email="JEFA@example.com")
@@ -245,10 +245,10 @@ class GestorRoleTests(AccountTestCase):
     def test_gestor_cannot_be_chosen_in_the_form(self):
         self.register(email="ana@example.com", role="gestor", role_confirmed="1")
         user = self.user("ana@example.com")
-        self.assertEqual((user.role, user.role_confirmed), ("explorador", False))
+        self.assertEqual((user.role, user.role_confirmed), ("novato", False))
 
     def test_role_follows_the_list_on_sign_in(self):
-        self.create_user("otro@example.com")  # stored as explorador, then listed
+        self.create_user("otro@example.com")  # stored as novato, then listed
         self.post("/auth/ingresar", email="otro@example.com", password=TEST_PASSWORD)
         self.assertEqual(self.user("otro@example.com").role, "gestor")
 
@@ -258,7 +258,7 @@ class GestorRoleTests(AccountTestCase):
         self.refresh_csrf()
         self.post("/auth/ingresar", email="ex@example.com", password=TEST_PASSWORD)
         user = self.user("ex@example.com")
-        self.assertEqual((user.role, user.role_confirmed), ("explorador", False))
+        self.assertEqual((user.role, user.role_confirmed), ("novato", False))
 
     def test_sync_keeps_other_roles(self):
         user = User(email="ana@example.com", password_hash="x", role="inversionista", role_confirmed=True)

@@ -138,10 +138,10 @@ class QuestionnaireFlowTests(ProfileTestCase):
 
         # Profile done but the role is not confirmed yet: the tools still wait.
         self.assertEqual(path_of(self.client.get("/hrp")), "/perfil/resultado")
-        response = self.post("/perfil/rol", rol="explorador")
+        response = self.post("/perfil/rol", rol="novato")
         self.assertEqual(path_of(response), "/")
         user = self.user("nuevo@example.com")
-        self.assertEqual((user.role, user.role_confirmed), ("explorador", True))
+        self.assertEqual((user.role, user.role_confirmed), ("novato", True))
         self.assertEqual(self.client.get("/hrp").status_code, 200)
 
         # Next sign-in: no questionnaire, straight to the home page.
@@ -257,7 +257,7 @@ class RoleConfirmationTests(ProfileTestCase):
         response = self.post("/perfil/rol", rol="gestor")
         self.assertEqual(path_of(response), "/perfil/resultado")
         user = self.user("nuevo@example.com")
-        self.assertEqual((user.role, user.role_confirmed), ("explorador", False))
+        self.assertEqual((user.role, user.role_confirmed), ("novato", False))
         self.post("/perfil/rol", rol="inversionista")
         user = self.user("nuevo@example.com")
         self.assertEqual((user.role, user.role_confirmed), ("inversionista", True))
@@ -273,7 +273,7 @@ class RoleConfirmationTests(ProfileTestCase):
         html = self.client.get("/perfil/resultado").data.decode()
         self.assertIn("rol <strong>Gestor</strong>", html)
         self.assertNotIn('name="rol"', html)
-        self.post("/perfil/rol", rol="explorador")
+        self.post("/perfil/rol", rol="novato")
         user = self.user("jefa@example.com")
         self.assertEqual((user.role, user.role_confirmed), ("gestor", True))
         self.assertEqual(self.client.get("/hrp").status_code, 200)

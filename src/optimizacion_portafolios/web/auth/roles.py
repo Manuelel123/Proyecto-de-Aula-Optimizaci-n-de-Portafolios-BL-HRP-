@@ -52,7 +52,7 @@ def sync_gestor_role(user: User) -> bool:
     """Grant or revoke ``gestor`` according to ``GESTOR_EMAILS``.
 
     A listed email becomes a confirmed ``gestor``; a ``gestor`` no longer
-    listed goes back to an unconfirmed ``explorador`` (so the interface asks
+    listed goes back to an unconfirmed ``novato`` (so the interface asks
     them to confirm a role). Returns whether the user changed; the caller
     commits.
     """

@@ -33,7 +33,7 @@ def create_test_user(
     email: str = "ana@example.com",
     password: str = TEST_PASSWORD,
     *,
-    role: str = "explorador",
+    role: str = "novato",
     role_confirmed: bool | None = None,
     display_name: str | None = "Ana",
     profile: bool = True,

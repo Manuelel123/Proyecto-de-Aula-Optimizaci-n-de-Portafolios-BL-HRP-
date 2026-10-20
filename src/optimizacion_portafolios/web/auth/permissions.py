@@ -1,6 +1,6 @@
 """What each role may open and do: one table, one access check.
 
-Roles are tiered (``storage.models.ROLES``): ``explorador`` < ``inversionista``
+Roles are tiered (``storage.models.ROLES``): ``novato`` < ``inversionista``
 < ``gestor``. Two tables decide everything:
 
 - ``ENDPOINT_ROLES``: endpoint -> roles that may open it. ``METHOD_ROLES``
@@ -25,18 +25,18 @@ from flask_login import current_user
 from optimizacion_portafolios.web.auth import guard
 from optimizacion_portafolios.web.auth.session import wants_json
 
-EXPLORADOR = "explorador"
+NOVATO = "novato"
 INVERSIONISTA = "inversionista"
 GESTOR = "gestor"
 
-EVERYONE = frozenset({EXPLORADOR, INVERSIONISTA, GESTOR})
+EVERYONE = frozenset({NOVATO, INVERSIONISTA, GESTOR})
 INVESTORS = frozenset({INVERSIONISTA, GESTOR})
 MANAGERS = frozenset({GESTOR})
 
-ROLE_LABELS = {EXPLORADOR: "Explorador", INVERSIONISTA: "Inversionista", GESTOR: "Gestor"}
+ROLE_LABELS = {NOVATO: "Novato", INVERSIONISTA: "Inversionista", GESTOR: "Gestor"}
 ROLE_SUMMARIES = {
-    EXPLORADOR: "HRP y Black-Litterman guiados, con explicaciones y glosario. Mis portafolios en solo lectura.",
-    INVERSIONISTA: "Lo del explorador, más límites de peso, excluir activos, comparar HRP con Black-Litterman, fijar y gestionar portafolios.",
+    NOVATO: "HRP y Black-Litterman guiados, con explicaciones y glosario. Mis portafolios en solo lectura.",
+    INVERSIONISTA: "Lo del novato, más límites de peso, excluir activos, comparar HRP con Black-Litterman, fijar y gestionar portafolios.",
     GESTOR: "Acceso total: todos los parámetros, Mercado y Opciones, backtests, señales y gestión.",
 }
 
@@ -102,8 +102,12 @@ def user_role(user=None) -> str | None:
     return user.role
 
 
+# Earlier name of the novato role, still present in old decision log rows.
+_LEGACY_LABELS = {"explorador": "Novato"}
+
+
 def role_label(role: str | None) -> str:
-    return ROLE_LABELS.get(role or "", role or "")
+    return ROLE_LABELS.get(role or "") or _LEGACY_LABELS.get(role or "", role or "")
 
 
 def allowed_roles(endpoint: str, method: str = "GET") -> frozenset[str]:

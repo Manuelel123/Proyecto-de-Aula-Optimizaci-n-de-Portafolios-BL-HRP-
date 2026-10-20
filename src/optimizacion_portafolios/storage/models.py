@@ -25,8 +25,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from optimizacion_portafolios.storage import db
 
 # Access tiers, lowest to highest. "gestor" is only granted via GESTOR_EMAILS.
-ROLES = ("explorador", "inversionista", "gestor")
-DEFAULT_ROLE = "explorador"
+ROLES = ("novato", "inversionista", "gestor")
+DEFAULT_ROLE = "novato"
 DEFAULT_PLAN = "piloto"
 MODELS = ("hrp", "black_litterman")
 VERSION_REASONS = ("fix", "rebalance", "reoptimize", "remove", "add")

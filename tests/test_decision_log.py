@@ -35,15 +35,15 @@ class DecisionLogMixin:
             return get_current_profile(self.user_id).id
 
 
-class ExploradorDecisionTests(DecisionLogMixin, RoleTestCase):
-    role = "explorador"
+class NovatoDecisionTests(DecisionLogMixin, RoleTestCase):
+    role = "novato"
 
     @patch(HRP_PRICES, side_effect=priced)
     def test_guided_hrp_inserts_one_row_with_the_current_profile(self, _download):
         self.post("/hrp", action="optimize", universe="Acciones y Bitcoin", min_weight="40")
         (row,) = self.records()
         self.assertEqual(row.usuario_id, int(self.user_id))
-        self.assertEqual((row.metodo, row.origen, row.rol), ("hrp", "hrp", "explorador"))
+        self.assertEqual((row.metodo, row.origen, row.rol), ("hrp", "hrp", "novato"))
         self.assertEqual(row.perfil_id, self.current_profile_id())
         self.assertEqual(row.perfil_final, "moderado")
         self.assertEqual(set(row.activos), {"AAPL", "MSFT", "GOOGL", "BTC-USD"})
@@ -88,7 +88,7 @@ class ExploradorDecisionTests(DecisionLogMixin, RoleTestCase):
             from support import create_test_user
 
             other = create_test_user(self.app, "otra@example.com")
-            record_decision(other, method="hrp", source="hrp", weights={"ZZZZ": 1.0}, role="explorador")
+            record_decision(other, method="hrp", source="hrp", weights={"ZZZZ": 1.0}, role="novato")
         html = self.client.get("/historial").data.decode()
         self.assertIn("Mi historial de decisiones", html)
         self.assertEqual(len(re.findall(r"<tr data-decision=", html)), 1)
@@ -99,7 +99,7 @@ class ExploradorDecisionTests(DecisionLogMixin, RoleTestCase):
 
     def test_rows_cannot_be_changed_or_deleted(self):
         with self.app.app_context():
-            row = record_decision(self.user_id, method="hrp", source="hrp", weights={"AAPL": 1.0}, role="explorador")
+            row = record_decision(self.user_id, method="hrp", source="hrp", weights={"AAPL": 1.0}, role="novato")
             row.activos = {"AAPL": 0.5}
             with self.assertRaises(AppendOnlyError):
                 db.session.commit()

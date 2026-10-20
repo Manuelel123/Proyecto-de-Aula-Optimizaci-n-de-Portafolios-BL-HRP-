@@ -74,7 +74,7 @@ TOOLS = (
     },
 )
 ROLES_OVERVIEW = (
-    ("Explorador", ROLE_SUMMARIES["explorador"]),
+    ("Novato", ROLE_SUMMARIES["novato"]),
     ("Inversionista", ROLE_SUMMARIES["inversionista"]),
     ("Gestor", ROLE_SUMMARIES["gestor"]),
 )

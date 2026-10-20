@@ -178,4 +178,4 @@ rol_sugerido:
   experiencia_minima: Fondos o acciones   # esta opción o una posterior
   pregunta_control: k2                    # debe responderse con la opción `correcta`
   si_cumple: inversionista
-  si_no: explorador
+  si_no: novato

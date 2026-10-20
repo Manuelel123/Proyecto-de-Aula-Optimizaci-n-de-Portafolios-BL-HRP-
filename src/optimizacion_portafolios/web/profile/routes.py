@@ -41,10 +41,10 @@ logger = logging.getLogger(__name__)
 
 DISCLAIMER = "Información educativa. No es recomendación de inversión ni asesoría financiera."
 ROLE_DESCRIPTIONS = {
-    "explorador": "HRP y Black-Litterman guiados, sin parámetros avanzados. Ideal para empezar.",
+    "novato": "HRP y Black-Litterman guiados, sin parámetros avanzados. Ideal para empezar.",
     "inversionista": "Además: límites de peso, excluir activos, comparar HRP con Black-Litterman, fijar y rebalancear portafolios.",
 }
-ROLE_LABELS = {"explorador": "Explorador", "inversionista": "Inversionista", "gestor": "Gestor"}
+ROLE_LABELS = {"novato": "Novato", "inversionista": "Inversionista", "gestor": "Gestor"}
 PRIOR_FIELDS = ("capital_rango", "horizonte")
 
 
@@ -273,7 +273,7 @@ def confirm_role():
         return redirect(url_for("profile.questionnaire"))
     role = request.form.get("rol", "")
     if role not in SELECTABLE_ROLES:
-        flash("Elige explorador o inversionista.", "error")
+        flash("Elige novato o inversionista.", "error")
         return redirect(url_for("profile.result"))
     current_user.role = role
     current_user.role_confirmed = True

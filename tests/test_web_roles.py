@@ -19,7 +19,7 @@ from optimizacion_portafolios.web.portfolios.snapshots import sign
 from support import create_test_user, csrf_from, login_session, make_prices
 
 NOTICE = "Información educativa. No es recomendación de inversión ni asesoría financiera."
-ROLES = ("explorador", "inversionista", "gestor")
+ROLES = ("novato", "inversionista", "gestor")
 MARKET_CAPS = {
     "AAPL": 3.0e12,
     "MSFT": 3.5e12,
@@ -42,7 +42,7 @@ def priced(tickers, _start, _end):
 class RoleTestCase(unittest.TestCase):
     """Client signed in with ``role`` (gestor via GESTOR_EMAILS, like the real app)."""
 
-    role = "explorador"
+    role = "novato"
 
     def setUp(self):
         email = f"{self.role}@example.com"
@@ -157,7 +157,7 @@ class MatrixMixin:
         nav = re.search(r'<nav class="site-nav"[^>]*>(.*?)</nav>', html, re.S).group(1)
         links = set(re.findall(r'href="([^"]+)"', nav))
         expected = {"/", "/hrp", "/black-litterman", "/portafolios/"}
-        if self.role != "explorador":
+        if self.role != "novato":
             expected.add("/comparar")
         if self.role == "gestor":
             expected.add("/monitoring")
@@ -165,12 +165,12 @@ class MatrixMixin:
         self.assertEqual("/cuenta/backtests" in html, self.role == "gestor")
 
 
-class ExploradorTests(MatrixMixin, RoleTestCase):
-    role = "explorador"
+class NovatoTests(MatrixMixin, RoleTestCase):
+    role = "novato"
 
     def test_denied_page_explains_the_role(self):
         response = self.client.get("/monitoring", follow_redirects=True)
-        self.assertIn("Tu rol (Explorador) no incluye esta función.", response.data.decode())
+        self.assertIn("Tu rol (Novato) no incluye esta función.", response.data.decode())
 
     @patch("optimizacion_portafolios.web.portfolios.services.download_prices", side_effect=OFFLINE)
     def test_portfolios_are_read_only(self, _download):
@@ -368,7 +368,7 @@ class PortadaTests(unittest.TestCase):
         self.assertIn("Hola, Ana", html)
         self.assertIn("Tu perfil vigente: Moderado", html)
         self.assertIn("Factor limitante: Capacidad", html)
-        self.assertIn("Explorador", html)
+        self.assertIn("Novato", html)
 
     def test_signed_in_without_profile_sees_no_tools(self):
         user_id = create_test_user(self.app, "nuevo@example.com", profile=False)

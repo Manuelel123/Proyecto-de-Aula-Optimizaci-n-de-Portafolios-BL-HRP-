@@ -199,9 +199,9 @@ class SuggestedRoleTests(unittest.TestCase):
         cases = {
             (3, 2): "inversionista",  # funds or stocks, knows what diversifying means
             (4, 2): "inversionista",
-            (4, 1): "explorador",  # experienced but wrong answer
-            (2, 2): "explorador",  # right answer, only savings/CDT
-            (1, 4): "explorador",
+            (4, 1): "novato",  # experienced but wrong answer
+            (2, 2): "novato",  # right answer, only savings/CDT
+            (1, 4): "novato",
         }
         for (k1, k2), role in cases.items():
             self.assertEqual(suggest_role(QUESTIONNAIRE, {"k1": k1, "k2": k2}), role, (k1, k2))

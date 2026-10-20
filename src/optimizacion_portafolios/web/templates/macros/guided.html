@@ -1,7 +1,7 @@
-{# Form pieces of the guided pages (explorador / inversionista). Import "with context" (reads can()). #}
+{# Form pieces of the guided pages (novato / inversionista). Import "with context" (reads can()). #}
 {% from "macros/forms.html" import universe_select, asset_selector, percent_input, help_tip %}
 
-{# Universe choice: radio cards for the explorador; select + asset chips (exclusion) from inversionista. #}
+{# Universe choice: radio cards for the novato; select + asset chips (exclusion) from inversionista. #}
 {% macro universe_fields(universes, names, selected_name, descriptions, payload, available, selected, labels) %}
   {% if can('exclude_assets') %}
     <div class="form-field">

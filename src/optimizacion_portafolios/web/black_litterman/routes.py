@@ -69,7 +69,7 @@ def yahoo_error(error: Exception) -> ValueError:
 
 
 def _guided_black_litterman():
-    """Black-Litterman for explorador / inversionista: neutral views, fixed inputs."""
+    """Black-Litterman for novato / inversionista: neutral views, fixed inputs."""
     universes = guided.GUIDED_UNIVERSES
     universe_name, available, selected = guided.guided_selection(universes)
     labels = guided.asset_labels(universes[universe_name])
