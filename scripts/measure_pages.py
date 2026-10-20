@@ -144,7 +144,8 @@ def csrf(client) -> str:
 
 def pages(portfolio_id: int) -> list[dict]:
     """``(name, role, method, path, form)`` of every measured page."""
-    from optimizacion_portafolios.data.catalogs import BENCHMARKS, UNIVERSOS_HRP
+    from optimizacion_portafolios.data.catalogs import BENCHMARKS, PORTAFOLIOS_MONITOREO, UNIVERSOS_HRP
+    from optimizacion_portafolios.web.common.guided import GUIDED_UNIVERSES
     from optimizacion_portafolios.web.hrp.routes import BACKTEST_DEFAULTS
 
     universe = "Portafolio actual"
@@ -160,6 +161,15 @@ def pages(portfolio_id: int) -> list[dict]:
         **BACKTEST_DEFAULTS,
     }
     guided = {"action": "optimize", "universe": "Acciones y Bitcoin"}
+    # inversionista may exclude assets, so its form posts the checked tickers.
+    compare_form = {**guided, "tickers": list(GUIDED_UNIVERSES[guided["universe"]].values()), "max_weight": "100"}
+    monitored = next(iter(PORTAFOLIOS_MONITOREO))
+    market_form = {
+        "action": "analyze",
+        "view": "portfolio",
+        "universe": monitored,
+        "tickers": list(PORTAFOLIOS_MONITOREO[monitored].values()),
+    }
     return [
         {"name": "Portada sin sesión", "role": None, "method": "GET", "path": "/"},
         {"name": "Principal con sesión", "role": "explorador", "method": "GET", "path": "/"},
@@ -168,9 +178,9 @@ def pages(portfolio_id: int) -> list[dict]:
         {"name": "HRP POST completo + backtest (gestor)", "role": "gestor", "method": "POST", "path": "/hrp", "form": hrp_full},
         {"name": "Black-Litterman GET (explorador)", "role": "explorador", "method": "GET", "path": "/black-litterman"},
         {"name": "Black-Litterman POST guiado (explorador)", "role": "explorador", "method": "POST", "path": "/black-litterman", "form": guided},
-        {"name": "Comparación POST (inversionista)", "role": "inversionista", "method": "POST", "path": "/comparar", "form": guided},
+        {"name": "Comparación POST (inversionista)", "role": "inversionista", "method": "POST", "path": "/comparar", "form": compare_form},
         {"name": "Mercado GET (gestor)", "role": "gestor", "method": "GET", "path": "/monitoring"},
-        {"name": "Mercado POST portafolio (gestor)", "role": "gestor", "method": "POST", "path": "/monitoring", "form": {"action": "analyze", "view": "portfolio"}},
+        {"name": "Mercado POST portafolio (gestor)", "role": "gestor", "method": "POST", "path": "/monitoring", "form": market_form},
         {"name": "Mis portafolios lista (gestor)", "role": "gestor", "method": "GET", "path": "/portafolios/"},
         {"name": "Mis portafolios panel (gestor)", "role": "gestor", "method": "GET", "path": f"/portafolios/{portfolio_id}"},
     ]
@@ -188,7 +198,7 @@ def request_once(client, token: str, page: dict) -> tuple[float, int, str | None
 
 
 def measure(repeat: int) -> dict:
-    with tempfile.TemporaryDirectory(prefix="atlas-measure-") as directory:
+    with tempfile.TemporaryDirectory(prefix="atlas-measure-", ignore_cleanup_errors=True) as directory:
         instance = Path(directory)
         app = build_app(instance)
         users = create_users(app)
@@ -226,6 +236,10 @@ def measure(repeat: int) -> dict:
                 "warm_median": round(median(warm), 4),
             }
             print(f"{page['name']:<45} cold {median(cold):7.3f} s  warm {median(warm):7.3f} s  {sorted(statuses)} {sorted(errors) or ''}", flush=True)
+        from optimizacion_portafolios.storage import db
+
+        with app.app_context():
+            db.engine.dispose()  # release the SQLite file so the directory can be removed
     return results
 
 
