@@ -1,144 +1,104 @@
-"""Sign-in, sign-up, email verification, password reset and OAuth routes.
+"""Local sign-up, sign-in, email verification, password reset and sign-out.
 
-Flows follow the project's InsForge Auth configuration (``public-config``):
-email verification and password reset use 6-digit codes, and OAuth uses PKCE
-with the code verifier kept in the session.
+Passwords are argon2 hashes. An account must prove its email with a 6-digit
+code before its first sign-in; the same kind of code resets a forgotten
+password. Messages never reveal whether an email has an account.
 """
 
-import base64
-import hashlib
 import logging
 import re
-import secrets
 
-from flask import flash, redirect, render_template, request, session, url_for
+from datetime import datetime, timezone
 
-from optimizacion_portafolios.insforge import InsForgeError
+from flask import current_app, flash, redirect, render_template, request, session, url_for
+from flask_login import current_user
+from sqlalchemy.exc import IntegrityError
+
+from optimizacion_portafolios.storage import db
+from optimizacion_portafolios.storage.email_codes import check_code, issue_code, seconds_until_resend
+from optimizacion_portafolios.storage.models import DEFAULT_ROLE
+from optimizacion_portafolios.storage.users import (
+    create_user,
+    get_user,
+    get_user_by_email,
+    normalize_email,
+)
 from optimizacion_portafolios.web.auth import bp
-from optimizacion_portafolios.web.auth.throttle import login_throttle
+from optimizacion_portafolios.web.auth.mailer import MailError, send_code
+from optimizacion_portafolios.web.auth.passwords import (
+    hash_password,
+    needs_rehash,
+    password_errors,
+    password_rules,
+    verify_password,
+)
 from optimizacion_portafolios.web.auth.session import (
-    access_token,
-    current_user,
-    insforge_client,
+    after_login_response,
     login_user,
     logout_user,
     safe_next,
 )
+from optimizacion_portafolios.web.auth.throttle import login_throttle
 
 logger = logging.getLogger(__name__)
 
-_PENDING_VERIFICATION = "auth_pending_email"
-_PENDING_RESET = "auth_reset_email"
-_OAUTH_STATE = "auth_oauth"
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_EMAIL_MAX_LENGTH = 254
+_NAME_MAX_LENGTH = 80
+_BAD_CREDENTIALS = "Correo o contraseña incorrectos."
+_BAD_CODE = "El código no es correcto o ya venció. Revisa el último correo o pide uno nuevo."
+_PENDING_VERIFY = "auth_verify"
+_PENDING_RESET = "auth_reset"
 _CODE_PATTERN = re.compile(r"^\d{6}$")
-OAUTH_LABELS = {
-    "google": "Google",
-    "github": "GitHub",
-    "microsoft": "Microsoft",
-    "discord": "Discord",
-    "linkedin": "LinkedIn",
-    "facebook": "Facebook",
-    "apple": "Apple",
-    "x": "X",
-    "spotify": "Spotify",
-}
-
-
-@bp.before_request
-def require_configuration():
-    if insforge_client() is None:
-        flash("Las cuentas de usuario no están configuradas en este servidor.", "warning")
-        return redirect(url_for("main.index"))
-    return None
-
-
-def _signed_in() -> bool:
-    try:
-        return current_user() is not None and access_token() is not None
-    except InsForgeError:
-        return False
-
-
-def _public_config() -> dict:
-    try:
-        return insforge_client().public_config()
-    except InsForgeError as error:
-        logger.warning("InsForge public config unavailable: %s", error)
-        return {}
-
-
-def _oauth_providers(config: dict) -> list[tuple[str, str]]:
-    return [
-        (provider, OAUTH_LABELS.get(provider, provider.title()))
-        for provider in config.get("oAuthProviders", [])
-    ]
 
 
 def _email_field() -> str:
-    email = request.form.get("email", "").strip().lower()
-    if not _EMAIL_PATTERN.match(email):
+    email = normalize_email(request.form.get("email"))
+    if len(email) > _EMAIL_MAX_LENGTH or not _EMAIL_PATTERN.match(email):
         raise ValueError("Escribe un correo electrónico válido.")
     return email
 
 
-def _password_errors(password: str, config: dict) -> list[str]:
-    """Password policy of the project, checked before calling InsForge."""
-    errors = []
-    minimum = int(config.get("passwordMinLength") or 6)
-    if len(password) < minimum:
-        errors.append(f"al menos {minimum} caracteres")
-    if config.get("requireNumber") and not re.search(r"\d", password):
-        errors.append("un número")
-    if config.get("requireLowercase") and not re.search(r"[a-z]", password):
-        errors.append("una minúscula")
-    if config.get("requireUppercase") and not re.search(r"[A-Z]", password):
-        errors.append("una mayúscula")
-    if config.get("requireSpecialChar") and not re.search(r"[^A-Za-z0-9]", password):
-        errors.append("un carácter especial")
-    return errors
-
-
-def _new_password(config: dict) -> str:
-    password = request.form.get("password", "")
-    if password != request.form.get("password_confirm", ""):
-        raise ValueError("Las contraseñas no coinciden.")
-    errors = _password_errors(password, config)
-    if errors:
-        raise ValueError("La contraseña debe tener " + ", ".join(errors) + ".")
-    return password
-
-
-def _code_field(field: str = "code") -> str:
-    code = re.sub(r"\s", "", request.form.get(field, ""))
+def _code_field() -> str:
+    code = re.sub(r"\s", "", request.form.get("code", ""))
     if not _CODE_PATTERN.match(code):
-        raise ValueError("El código debe tener 6 dígitos.")
+        raise ValueError("El código tiene 6 dígitos.")
     return code
 
 
-def _finish_sign_in(auth_response: dict, next_url: str | None):
-    login_user(auth_response)
-    user = current_user() or {}
-    flash(f"Hola, {user.get('name') or user.get('email')}. Sesión iniciada.", "success")
-    return redirect(safe_next(next_url))
+def _send(user, purpose: str) -> bool:
+    """Issue and email a code unless one was sent moments ago; True if sent."""
+    if seconds_until_resend(user.id, purpose):
+        return False
+    code = issue_code(user.id, purpose, current_app.secret_key)
+    try:
+        send_code(user.email, purpose, code)
+    except MailError as error:
+        flash(str(error), "error")
+        return False
+    return True
 
 
-def _start_verification(email: str, next_url: str | None, send: bool):
-    session[_PENDING_VERIFICATION] = {"email": email, "next": next_url}
-    if send:
-        insforge_client().send_verification(email)
+def _start_verification(user, next_url: str | None):
+    session[_PENDING_VERIFY] = {"user_id": user.id, "next": next_url}
+    if _send(user, "verify"):
+        flash(f"Te enviamos un código de verificación a {user.email}.", "info")
     return redirect(url_for("auth.verify"))
+
+
+def _finish_sign_in(user, next_url: str | None):
+    login_user(user)
+    flash(f"Hola, {user.name}. Sesión iniciada.", "success")
+    return after_login_response(user) or redirect(safe_next(next_url))
 
 
 @bp.route("/ingresar", methods=["GET", "POST"])
 def login():
     next_url = request.values.get("next")
-    if _signed_in():
+    if current_user.is_authenticated:
         return redirect(safe_next(next_url))
-    config = _public_config()
     email = ""
     if request.method == "POST":
-        throttle_keys = ()
         try:
             email = _email_field()
             password = request.form.get("password", "")
@@ -151,119 +111,124 @@ def login():
                     "Demasiados intentos fallidos. Vuelve a intentar en "
                     f"{max(1, round(wait / 60))} min."
                 )
-            response = insforge_client().sign_in(email, password)
+            user = get_user_by_email(email)
+            if not verify_password(user.password_hash if user else None, password):
+                login_throttle.record_failure(*throttle_keys)
+                raise ValueError(_BAD_CREDENTIALS)
             login_throttle.reset(f"email:{email}")
-            return _finish_sign_in(response, next_url)
+            if needs_rehash(user.password_hash):
+                user.password_hash = hash_password(password)
+                db.session.commit()
+            if not user.email_verified:
+                return _start_verification(user, next_url)
+            return _finish_sign_in(user, next_url)
         except ValueError as error:
             flash(str(error), "error")
-        except InsForgeError as error:
-            if error.status == 401 and throttle_keys:
-                login_throttle.record_failure(*throttle_keys)
-            # Valid credentials of an unverified account answer 403.
-            if error.code == "EMAIL_NOT_VERIFIED" or error.status == 403:
-                flash("Tu correo aún no está verificado. Te enviamos un código.", "info")
-                try:
-                    return _start_verification(email, next_url, send=True)
-                except InsForgeError as send_error:
-                    flash(send_error.user_message, "error")
-            elif error.status == 401:
-                flash("Correo o contraseña incorrectos.", "error")
-            else:
-                flash(error.user_message, "error")
-    return render_template(
-        "auth/login.html",
-        email=email,
-        next_url=next_url or "",
-        oauth_providers=_oauth_providers(config),
-    )
+    return render_template("auth/login.html", email=email, next_url=next_url or "")
 
 
 @bp.route("/registro", methods=["GET", "POST"])
 def register():
     next_url = request.values.get("next")
-    if _signed_in():
+    if current_user.is_authenticated:
         return redirect(safe_next(next_url))
-    config = _public_config()
-    if config.get("disableSignup"):
-        flash("El registro de cuentas nuevas está deshabilitado.", "warning")
-        return redirect(url_for("auth.login"))
     values = {"name": "", "email": ""}
     if request.method == "POST":
-        values["name"] = request.form.get("name", "").strip()[:80]
+        values["name"] = request.form.get("name", "").strip()[:_NAME_MAX_LENGTH]
         try:
             values["email"] = email = _email_field()
-            password = _new_password(config)
-            response = insforge_client().sign_up(email, password, values["name"] or None)
-            if response.get("requireEmailVerification") or not response.get("accessToken"):
-                flash(f"Te enviamos un código de verificación a {email}.", "info")
-                return _start_verification(email, next_url, send=False)
-            return _finish_sign_in(response, next_url)
+            password = request.form.get("password", "")
+            if password != request.form.get("password_confirm", ""):
+                raise ValueError("Las contraseñas no coinciden.")
+            errors = password_errors(password, email)
+            if errors:
+                raise ValueError(" ".join(errors))
+            # The role never comes from the form; gestor is granted only by CLI.
+            role, confirmed = DEFAULT_ROLE, False
+            try:
+                user = create_user(
+                    email,
+                    hash_password(password),
+                    display_name=values["name"] or None,
+                    role=role,
+                    role_confirmed=confirmed,
+                )
+            except IntegrityError as error:  # concurrent sign-up with the same email
+                db.session.rollback()
+                raise ValueError("Ya existe una cuenta con ese correo.") from error
+            logger.info("New local account %s (role %s)", user.id, user.role)
+            flash("Cuenta creada. Verifica tu correo para entrar.", "success")
+            return _start_verification(user, next_url)
         except ValueError as error:
             flash(str(error), "error")
-        except InsForgeError as error:
-            flash(error.user_message, "error")
     return render_template(
         "auth/register.html",
         values=values,
         next_url=next_url or "",
-        oauth_providers=_oauth_providers(config),
-        password_rules=_password_errors("", config),
+        password_rules=password_rules(),
     )
+
+
+@bp.post("/salir")
+def logout():
+    logout_user()
+    flash("Cerraste sesión.", "info")
+    return redirect(url_for("main.index"))
 
 
 @bp.route("/verificar", methods=["GET", "POST"])
 def verify():
-    pending = session.get(_PENDING_VERIFICATION)
-    if not pending:
+    pending = session.get(_PENDING_VERIFY) or {}
+    user = get_user(pending.get("user_id")) if pending else None
+    if user is None:
         return redirect(url_for("auth.login"))
     if request.method == "POST":
         try:
-            response = insforge_client().verify_email(pending["email"], _code_field())
-            session.pop(_PENDING_VERIFICATION, None)
-            flash("Correo verificado.", "success")
-            return _finish_sign_in(response, pending.get("next"))
+            if not check_code(user.id, "verify", _code_field(), current_app.secret_key):
+                raise ValueError(_BAD_CODE)
         except ValueError as error:
             flash(str(error), "error")
-        except InsForgeError as error:
-            flash(
-                "El código no es válido o expiró."
-                if error.status in (400, 401, 403)
-                else error.user_message,
-                "error",
-            )
-    return render_template("auth/verify.html", email=pending["email"])
+        else:
+            user.email_verified_at = datetime.now(timezone.utc)
+            db.session.commit()
+            session.pop(_PENDING_VERIFY, None)
+            flash("Correo verificado.", "success")
+            return _finish_sign_in(user, pending.get("next"))
+    return render_template("auth/verify.html", email=user.email)
 
 
 @bp.post("/verificar/reenviar")
 def resend_verification():
-    pending = session.get(_PENDING_VERIFICATION)
-    if not pending:
+    pending = session.get(_PENDING_VERIFY) or {}
+    user = get_user(pending.get("user_id")) if pending else None
+    if user is None:
         return redirect(url_for("auth.login"))
-    try:
-        insforge_client().send_verification(pending["email"])
+    wait = seconds_until_resend(user.id, "verify")
+    if wait:
+        flash(f"Espera {wait} s para pedir otro código.", "info")
+    elif _send(user, "verify"):
         flash("Te enviamos un código nuevo.", "info")
-    except InsForgeError as error:
-        flash(error.user_message, "error")
     return redirect(url_for("auth.verify"))
 
 
 @bp.route("/recuperar", methods=["GET", "POST"])
 def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.index"))
     email = ""
     if request.method == "POST":
         try:
             email = _email_field()
-            insforge_client().send_password_reset(email)
-            session[_PENDING_RESET] = email
-            flash(
-                f"Si {email} tiene una cuenta, recibirás un código para restablecer la contraseña.",
-                "info",
-            )
-            return redirect(url_for("auth.reset_password"))
         except ValueError as error:
             flash(str(error), "error")
-        except InsForgeError as error:
-            flash(error.user_message, "error")
+        else:
+            user = get_user_by_email(email)
+            if user is not None:
+                _send(user, "reset")
+            session[_PENDING_RESET] = email
+            # Same answer whether or not the email has an account.
+            flash(f"Si {email} tiene una cuenta, recibirás un código para crear una contraseña nueva.", "info")
+            return redirect(url_for("auth.reset_password"))
     return render_template("auth/forgot.html", email=email)
 
 
@@ -272,80 +237,28 @@ def reset_password():
     email = session.get(_PENDING_RESET)
     if not email:
         return redirect(url_for("auth.forgot_password"))
-    config = _public_config()
     if request.method == "POST":
         try:
             code = _code_field()
-            password = _new_password(config)
-            client = insforge_client()
-            client.reset_password(client.exchange_reset_code(email, code), password)
-            session.pop(_PENDING_RESET, None)
-            flash("Contraseña actualizada. Inicia sesión con la nueva contraseña.", "success")
-            return redirect(url_for("auth.login"))
+            password = request.form.get("password", "")
+            if password != request.form.get("password_confirm", ""):
+                raise ValueError("Las contraseñas no coinciden.")
+            errors = password_errors(password, email)
+            if errors:
+                raise ValueError(" ".join(errors))
+            user = get_user_by_email(email)
+            if user is None or not check_code(user.id, "reset", code, current_app.secret_key):
+                raise ValueError(_BAD_CODE)
         except ValueError as error:
             flash(str(error), "error")
-        except InsForgeError as error:
-            flash(
-                "El código no es válido o expiró."
-                if error.status in (400, 401, 403)
-                else error.user_message,
-                "error",
-            )
-    return render_template(
-        "auth/reset.html", email=email, password_rules=_password_errors("", config)
-    )
-
-
-@bp.post("/salir")
-def logout():
-    state = session.get("auth") or {}
-    if state.get("access"):
-        try:
-            insforge_client().sign_out(state["access"])
-        except InsForgeError as error:
-            logger.info("InsForge logout failed (%s); clearing the session anyway", error)
-    logout_user()
-    flash("Cerraste sesión.", "info")
-    return redirect(url_for("main.index"))
-
-
-def _pkce_pair() -> tuple[str, str]:
-    verifier = secrets.token_urlsafe(48)
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    return verifier, challenge
-
-
-@bp.get("/oauth/<provider>")
-def oauth_start(provider: str):
-    if provider not in _public_config().get("oAuthProviders", []):
-        flash("Ese proveedor de acceso no está habilitado.", "error")
-        return redirect(url_for("auth.login"))
-    verifier, challenge = _pkce_pair()
-    session[_OAUTH_STATE] = {"verifier": verifier, "next": request.args.get("next")}
-    try:
-        auth_url = insforge_client().oauth_url(
-            provider, url_for("auth.oauth_callback", _external=True), challenge
-        )
-    except InsForgeError as error:
-        flash(error.user_message, "error")
-        return redirect(url_for("auth.login"))
-    return redirect(auth_url)
-
-
-@bp.get("/oauth/callback")
-def oauth_callback():
-    state = session.pop(_OAUTH_STATE, None)
-    code = request.args.get("insforge_code")
-    if request.args.get("insforge_status") == "error" or not code or not state:
-        flash(
-            request.args.get("insforge_error") or "No se pudo completar el acceso con el proveedor.",
-            "error",
-        )
-        return redirect(url_for("auth.login"))
-    try:
-        response = insforge_client().oauth_exchange(code, state["verifier"])
-    except InsForgeError as error:
-        flash(error.user_message, "error")
-        return redirect(url_for("auth.login"))
-    return _finish_sign_in(response, state.get("next"))
+        else:
+            user.password_hash = hash_password(password)
+            if not user.email_verified:  # the code proved the email too
+                user.email_verified_at = datetime.now(timezone.utc)
+            db.session.commit()
+            session.pop(_PENDING_RESET, None)
+            login_throttle.reset(f"email:{email}")
+            logger.info("Password reset for user %s", user.id)
+            flash("Contraseña actualizada. Inicia sesión con la nueva.", "success")
+            return redirect(url_for("auth.login"))
+    return render_template("auth/reset.html", email=email, password_rules=password_rules())

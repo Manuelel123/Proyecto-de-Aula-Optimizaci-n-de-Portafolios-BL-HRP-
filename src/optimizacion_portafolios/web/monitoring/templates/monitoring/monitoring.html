@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/learning.html" import educational_notice %}
 {% from "macros/forms.html" import universe_select, asset_selector, custom_tickers_input, help_tip, date_presets %}
 {% from "macros/charts.html" import plotly_chart, price_explorer %}
 {% block title %}Monitoreo de activos{% endblock %}
@@ -39,6 +40,7 @@
       <p class="lead">Explora precios, retornos, volatilidad y fundamentos de los activos que sigues.</p>
     </div>
   </header>
+  {{ educational_notice() }}
 
   <nav class="segmented" aria-label="Vistas de monitoreo">
     {% for key, label in (('portfolio', 'Portafolio'), ('options', 'Opciones financieras'), ('fundamental', 'Análisis fundamental')) %}

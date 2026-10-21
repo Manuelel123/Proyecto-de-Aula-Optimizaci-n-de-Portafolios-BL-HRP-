@@ -3,10 +3,11 @@
 import logging
 from datetime import date
 
-import requests
 from flask import jsonify, request
-from yfinance.exceptions import YFException, YFRateLimitError
+from yfinance.exceptions import YFRateLimitError
 
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS
+from optimizacion_portafolios.web.common.errors import RATE_LIMIT_MESSAGE
 from optimizacion_portafolios.web.history import bp
 from optimizacion_portafolios.web.history.services import (
     FULL_HISTORY_START,
@@ -28,12 +29,8 @@ def _download(build, ticker: str, failure: str, *args):
     try:
         return build(ticker, *args), None
     except YFRateLimitError:
-        return None, _error(
-            "Yahoo Finance limitó temporalmente las consultas. "
-            "Espera unos minutos y vuelve a intentar.",
-            503,
-        )
-    except (requests.RequestException, TimeoutError, YFException, ValueError):
+        return None, _error(RATE_LIMIT_MESSAGE, 503)
+    except (*DOWNLOAD_ERRORS, ValueError):
         logger.exception("Download failed for %s", ticker)
         return None, _error(failure, 502)
 

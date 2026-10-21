@@ -1,4 +1,4 @@
-"""Signed-in user area: HRP backtest history (InsForge)."""
+"""Signed-in user area: HRP backtest history (local database)."""
 
 from flask import Blueprint
 

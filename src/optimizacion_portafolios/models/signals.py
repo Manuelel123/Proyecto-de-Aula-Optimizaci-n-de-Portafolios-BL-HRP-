@@ -23,7 +23,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-TRADING_DAYS = 252
+from optimizacion_portafolios.analytics.statistics import TRADING_DAYS
+
 IN_POSITION, OUT_OF_POSITION = "Mantener", "Fuera"
 
 

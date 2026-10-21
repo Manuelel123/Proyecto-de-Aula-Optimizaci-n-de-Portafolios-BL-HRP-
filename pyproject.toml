@@ -1,13 +1,14 @@
 [project]
 name = "optimizacion-portafolios"
 version = "0.1.0"
-description = "Portfolio monitoring and optimization using Flask"
+description = "Educational Flask app for young beginners to learn portfolio construction with HRP and Black-Litterman, with risk profiling and role-based guided tools (not financial advice)"
 readme = "README.md"
 authors = [
     { name = "Manuelel123", email = "bedoyayonatan164@gmail.com" }
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "flask>=3.1.2",
     "flask-login>=0.6.3",
     "flask-migrate>=4.1.0",
@@ -17,6 +18,7 @@ dependencies = [
     "pandas>=2.0.0",
     "plotly>=7.1,<8",
     "python-dotenv>=1.0",
+    "pyyaml>=6.0.3",
     "quantstats>=0.0.77",
     "requests>=2.31",
     "scipy>=1.14.0,<1.17",
@@ -34,3 +36,11 @@ optimizacion-portafolios = "optimizacion_portafolios.web:run"
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -18,6 +18,9 @@ from dataclasses import dataclass, field
 import pandas as pd
 import quantstats as qs
 
+from optimizacion_portafolios.analytics.statistics import TRADING_DAYS
+from optimizacion_portafolios.analytics.statistics import finite_or_none as _number
+
 BPS = 10_000
 
 
@@ -153,7 +156,6 @@ def tracking_summary(values: pd.Series, benchmark: pd.Series, initial_capital: f
 # Tracking metrics (daily series on business days; rf as a yearly fraction)
 # =============================================================================
 
-TRADING_DAYS = 252
 ROLLING_VOL_WINDOWS = (21, 63)
 ROLLING_SHARPE_WINDOW = 126
 ROLLING_CORRELATION_WINDOW = 63
@@ -171,14 +173,6 @@ def daily_returns(values: pd.Series) -> pd.Series:
 
 def _enough(returns: pd.Series, minimum: int = 2) -> bool:
     return len(returns.dropna()) >= minimum
-
-
-def _number(value) -> float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if math.isfinite(number) else None
 
 
 # ----------------------------------------------------------------- returns

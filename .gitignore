@@ -228,3 +228,6 @@ __marimo__/
 .roo
 .trae
 .windsurf
+
+# Page load measurements (scripts/measure_pages.py output)
+scripts/measurements/

@@ -10,6 +10,7 @@ from optimizacion_portafolios.analytics.performance import (
     calculate_quantstats_metrics,
     generate_tearsheet,
 )
+from optimizacion_portafolios.analytics.returns import prepare_prices, returns_matrix_series
 from optimizacion_portafolios.data.market_data import (
     download_prices,
     fetch_market_cap_usd,
@@ -107,7 +108,8 @@ def display_date(value) -> str:
     return value.strftime("%d/%m/%Y")
 
 
-def _market_caps_usd(tickers) -> dict[str, float]:
+def market_caps_usd(tickers) -> dict[str, float]:
+    """Market cap in USD per ticker; ``ValueError`` naming every ticker without one."""
     capitalizations = {}
     missing = []
     for ticker in tickers:
@@ -218,11 +220,6 @@ def _allocation_csv(rows: list[dict]) -> str:
     return buffer.getvalue()
 
 
-def _daily_returns(prices: pd.Series) -> pd.Series:
-    """Daily simple returns of one asset over its own quotes (no ffill)."""
-    return prices.dropna().pct_change(fill_method=None).dropna()
-
-
 def _returns_matrix(
     portfolio_returns: pd.Series,
     weights: pd.Series,
@@ -237,14 +234,14 @@ def _returns_matrix(
     price history. An empty portfolio series is skipped; the matrix then
     shows the benchmark and the assets.
     """
-    series = {}
-    portfolio = portfolio_returns.dropna()
-    if not portfolio.empty:
-        series[PORTFOLIO_SERIES] = portfolio
-    if benchmark not in weights.index:
-        series[benchmark] = _daily_returns(benchmark_prices)
-    for ticker in weights.sort_values(ascending=False).index:
-        series[ticker] = _daily_returns(raw_prices[ticker])
+    series = returns_matrix_series(
+        raw_prices,
+        weights.sort_values(ascending=False).index,
+        portfolio=portfolio_returns.dropna(),
+        portfolio_key=PORTFOLIO_SERIES,
+        benchmark=benchmark,
+        benchmark_prices=benchmark_prices,
+    )
     return returns_matrix_chart(series, {PORTFOLIO_SERIES: _PORTFOLIO_LABEL, **names})
 
 
@@ -269,8 +266,7 @@ def run_black_litterman(
     today = date.today()
     raw_prices = download_prices(tuple(tickers), start_date, today)
     # Keep the unaligned prices for the price explorer (no ffill across assets).
-    raw_prices = raw_prices.dropna(axis="columns", how="all")
-    prices = raw_prices.ffill().dropna()
+    raw_prices, prices = prepare_prices(raw_prices)
     missing_prices = sorted(set(tickers) - set(prices.columns))
     if prices.shape[1] < 2:
         raise ValueError("Yahoo Finance devolvió datos para menos de dos activos.")
@@ -280,7 +276,7 @@ def run_black_litterman(
         raise ValueError(f"No se encontraron precios para el benchmark {benchmark}.")
     market_prices = benchmark_prices[benchmark]
 
-    capitalizations = _market_caps_usd(prices.columns)
+    capitalizations = market_caps_usd(prices.columns)
     active_views = {ticker: views[ticker] for ticker in prices.columns}
     confidences = {ticker: VIEW_CONFIDENCE for ticker in prices.columns}
     model = optimize_black_litterman(

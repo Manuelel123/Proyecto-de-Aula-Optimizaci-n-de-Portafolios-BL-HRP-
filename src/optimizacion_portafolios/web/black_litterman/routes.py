@@ -5,9 +5,9 @@ from datetime import date
 from io import BytesIO
 
 import numpy as np
-import requests
 from flask import flash, render_template, request, send_file
-from yfinance.exceptions import YFException, YFRateLimitError
+
+from optimizacion_portafolios.web.common.notice import with_notice_html
 
 from optimizacion_portafolios.analytics.statistics import date_years_ago
 from optimizacion_portafolios.data.catalogs import (
@@ -15,8 +15,13 @@ from optimizacion_portafolios.data.catalogs import (
     BENCHMARKS,
     UNIVERSOS_BLACK_LITTERMAN,
 )
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS
+from optimizacion_portafolios.web.common.errors import download_error_message
 from optimizacion_portafolios.web.portfolios.snapshots import black_litterman_snapshot, sign
+from optimizacion_portafolios.web.auth.permissions import can
 from optimizacion_portafolios.web.black_litterman import bp
+from optimizacion_portafolios.web.common import guided
+from optimizacion_portafolios.web.decisions import log as decision_log
 from optimizacion_portafolios.web.black_litterman.services import (
     CSV_FILENAME,
     CURRENT_PORTFOLIO,
@@ -61,8 +66,77 @@ def _valid_custom_tickers() -> tuple[list[str], list[str]]:
     return list(dict.fromkeys(valid)), invalid
 
 
+def yahoo_error(error: Exception) -> ValueError:
+    return ValueError(download_error_message(error))
+
+
+def _guided_black_litterman():
+    """Black-Litterman for novato / inversionista: neutral views, fixed inputs."""
+    universes = guided.GUIDED_UNIVERSES
+    universe_name, available, selected = guided.guided_selection(universes)
+    labels = guided.asset_labels(universes[universe_name])
+    result = None
+    if request.method == "POST" and request.form.get("action") != "refresh":
+        try:
+            if len(selected) < 2:
+                raise ValueError("Deja al menos dos activos para calcular el portafolio.")
+            try:
+                result = guided.run_neutral_black_litterman(selected, {**_CATALOG_LABELS, **labels})
+            except DOWNLOAD_ERRORS as error:
+                logger.exception("Yahoo Finance request failed during guided Black-Litterman")
+                raise yahoo_error(error) from error
+            result["explanation"] = guided.black_litterman_explanation(result)
+            decision_log.record(
+                "black_litterman",
+                decision_log.black_litterman_weights(result),
+                {
+                    "mode": "guiada",
+                    "universe": universe_name,
+                    "tickers": result["included_tickers"],
+                    "start_date": guided.guided_start().isoformat(),
+                    "benchmark": guided.GUIDED_BENCHMARK,
+                    "objective": guided.GUIDED_OBJECTIVE,
+                    "risk_free_rate": guided.GUIDED_RISK_FREE_PCT / 100,
+                    "views": result["neutral_views"],
+                },
+            )
+            if can("fix_portfolio"):
+                result["snapshot"] = sign(
+                    black_litterman_snapshot(
+                        result,
+                        universe=universe_name,
+                        objective=guided.GUIDED_OBJECTIVE,
+                        benchmark=guided.GUIDED_BENCHMARK,
+                        risk_free_rate=guided.GUIDED_RISK_FREE_PCT / 100,
+                    )
+                )
+        except (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError) as error:
+            result = None
+            flash(str(error), "error")
+    return render_template(
+        "black_litterman/guided.html",
+        universes=universes,
+        universe_names=list(universes),
+        universe_name=universe_name,
+        universe_descriptions=guided.UNIVERSE_DESCRIPTIONS,
+        universes_payload=universes_payload(universes),
+        available_tickers=available,
+        selected_tickers=selected,
+        asset_labels=labels,
+        start_date=guided.guided_start().isoformat(),
+        benchmark_name=guided.GUIDED_BENCHMARK_NAME,
+        objective_name=guided.GUIDED_OBJECTIVE,
+        risk_free_pct=guided.GUIDED_RISK_FREE_PCT,
+        glossary=guided.glossary(guided.GUIDED_TERMS + ("Equilibrio de mercado", "View", "Capitalización bursátil")),
+        loading_steps=list(LOADING_STEPS),
+        result=result,
+    )
+
+
 @bp.route("/black-litterman", methods=["GET", "POST"])
 def black_litterman():
+    if not can("advanced_params"):
+        return _guided_black_litterman()
     today = date.today()
     # The model always uses a fixed two-year window; a submitted start_date is ignored.
     window_start = date_years_ago(today, WINDOW_YEARS)
@@ -167,21 +241,14 @@ def black_litterman():
                     request.form.get("action") == "download_report",
                     benchmark_label=benchmark_name,
                 )
-            except (requests.RequestException, TimeoutError, YFException) as error:
+            except DOWNLOAD_ERRORS as error:
                 logger.exception(
                     "Yahoo Finance request failed during Black-Litterman optimization"
                 )
-                if isinstance(error, YFRateLimitError):
-                    message = (
-                        "Yahoo Finance limitó temporalmente las consultas. "
-                        "Espera unos minutos y vuelve a intentar."
-                    )
-                else:
-                    message = f"No se pudieron descargar los datos: {error}"
-                raise ValueError(message) from error
+                raise yahoo_error(error) from error
             if result.get("report"):
                 return send_file(
-                    BytesIO(result["report"]),
+                    BytesIO(with_notice_html(result["report"])),
                     mimetype="text/html",
                     as_attachment=True,
                     download_name=REPORT_FILENAME,
@@ -194,6 +261,20 @@ def black_litterman():
                     benchmark=BENCHMARKS[benchmark_name],
                     risk_free_rate=risk_free_rate_pct / 100,
                 )
+            )
+            decision_log.record(
+                "black_litterman",
+                decision_log.black_litterman_weights(result),
+                {
+                    "mode": "completa",
+                    "universe": universe_name,
+                    "tickers": result["included_tickers"],
+                    "start_date": window_start.isoformat(),
+                    "benchmark": BENCHMARKS[benchmark_name],
+                    "objective": objective_name,
+                    "risk_free_rate": risk_free_rate_pct / 100,
+                    "views": views,
+                },
             )
             history = result["history"]
             if history and not history["has_rolling_sharpe"]:

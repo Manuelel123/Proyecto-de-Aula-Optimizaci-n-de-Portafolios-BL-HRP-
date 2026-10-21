@@ -357,11 +357,13 @@ class HrpPageTests(WebTestCase):
         for column in ("CAGR", "Ratio de Sortino", "Máxima caída", "Rebalanceos", "Costos totales"):
             self.assertIn(column, html)
         self.assertIn('id="bt_drift" name="bt_drift" type="number" value="3"', html)
-        # Assets, benchmark and the longer history for the estimation window.
-        self.assertEqual(download.call_count, 3)
-        backtest_call = download.call_args_list[2].args
-        self.assertEqual(backtest_call[0], ("AAPL", "MSFT", "XLV"))
-        self.assertLess(backtest_call[1], date(2024, 1, 1))
+        # One download of the assets with the longer history for the estimation
+        # window (reused by the optimization), then the benchmark.
+        self.assertEqual(download.call_count, 2)
+        history_call = download.call_args_list[0].args
+        self.assertEqual(history_call[0], ("AAPL", "MSFT", "XLV"))
+        self.assertLess(history_call[1], date(2024, 1, 1))
+        self.assertEqual(download.call_args_list[1].args[0], ("SPY",))
 
         # Same inputs: the backtest comes from the cache.
         again = self._post_backtest(bt_drift="3", bt_fees="0.2", bt_vol_threshold="15")

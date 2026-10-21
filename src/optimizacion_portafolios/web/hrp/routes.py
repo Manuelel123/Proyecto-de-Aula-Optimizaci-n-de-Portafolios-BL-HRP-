@@ -5,17 +5,21 @@ from datetime import date
 from io import BytesIO
 
 import numpy as np
-import requests
 from flask import flash, render_template, request, send_file
-from yfinance.exceptions import YFException
+
+from optimizacion_portafolios.web.common.notice import with_notice_html
 
 from optimizacion_portafolios.analytics.statistics import date_years_ago
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS
 from optimizacion_portafolios.data.catalogs import (
     ACTIVOS_HRP,
     BENCHMARKS,
     UNIVERSOS_HRP,
 )
 from optimizacion_portafolios.web.account.hooks import record_backtest
+from optimizacion_portafolios.web.auth.permissions import can
+from optimizacion_portafolios.web.common import guided
+from optimizacion_portafolios.web.decisions import log as decision_log
 from optimizacion_portafolios.web.portfolios.snapshots import hrp_snapshot, sign
 from optimizacion_portafolios.web.common.forms import (
     custom_tickers,
@@ -154,8 +158,70 @@ def _backtest_config() -> BacktestConfig | None:
     )
 
 
+def _guided_hrp():
+    """HRP for novato / inversionista: predefined universe, fixed inputs."""
+    universes = guided.GUIDED_HRP_UNIVERSES
+    universe_name, available, selected = guided.guided_selection(universes)
+    start_date = guided.guided_start()
+    max_weight = guided.GUIDED_MAX_WEIGHT_PCT
+    result = None
+    if request.method == "POST" and request.form.get("action") != "refresh":
+        try:
+            max_weight = guided.guided_max_weight()
+            if len(selected) < 2:
+                raise ValueError("Deja al menos dos activos para calcular HRP.")
+            bounds = WeightBounds(max_weight=max_weight / 100)
+            try:
+                result = run_hrp(selected, guided.GUIDED_BENCHMARK, start_date, bounds, _ASSET_LABELS)
+            except DOWNLOAD_ERRORS as error:
+                logger.exception("Yahoo Finance request failed during guided HRP optimization")
+                raise ValueError(f"No se pudieron descargar los datos: {error}") from error
+            decision_log.record(
+                "hrp",
+                decision_log.hrp_weights(result),
+                {
+                    "mode": "guiada",
+                    "universe": universe_name,
+                    "tickers": result["selected_tickers"],
+                    "start_date": start_date.isoformat(),
+                    "benchmark": guided.GUIDED_BENCHMARK,
+                    "max_weight": max_weight / 100,
+                },
+            )
+            names = {row["ticker"]: row["name"] for row in result["allocation_rows"]}
+            result["explanation"] = guided.hrp_explanation(result)
+            for row in result["explanation"]["rows"]:
+                row["name"] = names.get(row["ticker"])
+            if can("fix_portfolio"):
+                result["snapshot"] = sign(
+                    hrp_snapshot(result, universe=universe_name, start_date=start_date.isoformat())
+                )
+        except (ValueError, KeyError, ArithmeticError, np.linalg.LinAlgError) as error:
+            result = None
+            flash(str(error), "error")
+    labels = guided.asset_labels(universes[universe_name])
+    return render_template(
+        "hrp/guided.html",
+        universes=universes,
+        universe_names=list(universes),
+        universe_name=universe_name,
+        universe_descriptions=guided.UNIVERSE_DESCRIPTIONS,
+        universes_payload=universes_payload(universes),
+        available_tickers=available,
+        selected_tickers=selected,
+        asset_labels=labels,
+        max_weight=f"{max_weight:g}",
+        start_date=start_date.isoformat(),
+        benchmark_name=guided.GUIDED_BENCHMARK_NAME,
+        glossary=guided.glossary(guided.GUIDED_TERMS),
+        result=result,
+    )
+
+
 @bp.route("/hrp", methods=["GET", "POST"])
 def hrp():
+    if not can("advanced_params"):
+        return _guided_hrp()
     today = date.today()
     default_start = date_years_ago(today)
     universe_names = list(UNIVERSOS_HRP)
@@ -220,7 +286,20 @@ def hrp():
                         )
                     )
                     record_backtest(result["backtest"])
-            except (requests.RequestException, TimeoutError, YFException) as error:
+                    decision_log.record(
+                        "hrp",
+                        decision_log.hrp_weights(result),
+                        {
+                            "mode": "completa",
+                            "universe": universe_name,
+                            "tickers": result["selected_tickers"],
+                            "start_date": start_date.isoformat(),
+                            "benchmark": benchmark_ticker,
+                            "bounds": result["summary"]["bounds"],
+                            "backtest": backtest is not None,
+                        },
+                    )
+            except DOWNLOAD_ERRORS as error:
                 logger.exception("Yahoo Finance request failed during HRP optimization")
                 raise ValueError(f"No se pudieron descargar los datos: {error}") from error
             if missing and download_requested:
@@ -230,7 +309,7 @@ def hrp():
                 )
             if download_requested:
                 return send_file(
-                    BytesIO(report),
+                    BytesIO(with_notice_html(report)),
                     mimetype="text/html",
                     as_attachment=True,
                     download_name=REPORT_FILENAME,

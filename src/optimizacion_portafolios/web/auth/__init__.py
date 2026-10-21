@@ -1,7 +1,9 @@
-"""User accounts with InsForge Auth: email/password, email code, OAuth."""
+"""Local user accounts: email + password (argon2) in SQLite, with Flask-Login."""
 
 from flask import Blueprint
 
-bp = Blueprint("auth", __name__, url_prefix="/auth", template_folder="templates")
+bp = Blueprint(
+    "auth", __name__, url_prefix="/auth", template_folder="templates", cli_group="users"
+)
 
-from optimizacion_portafolios.web.auth import routes
+from optimizacion_portafolios.web.auth import cli, routes

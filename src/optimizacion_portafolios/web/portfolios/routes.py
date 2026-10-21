@@ -7,6 +7,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 from optimizacion_portafolios.storage import repositories
 from optimizacion_portafolios.web.auth.session import current_user_id, login_required
 from optimizacion_portafolios.web.common.forms import normalize_ticker, parse_bounded_float
+from optimizacion_portafolios.web.decisions import log as decision_log
 from optimizacion_portafolios.web.portfolios import alerting, bp, management, services, signals_view
 from optimizacion_portafolios.web.portfolios.snapshots import unsign
 
@@ -70,6 +71,12 @@ def fix():
         except ValueError as error:
             flash(str(error), "error")
         else:
+            decision_log.record(
+                snapshot["model"],
+                snapshot["weights"],
+                {**(snapshot.get("params") or {}), "portfolio_id": portfolio.id, "name": portfolio.name},
+                source="fijar",
+            )
             flash(f"«{portfolio.name}» quedó fijado como portafolio óptimo. El seguimiento empieza el {portfolio.tracking_start.isoformat()}.", "success")
             return redirect(url_for("portfolios.detail", portfolio_id=portfolio.id))
     return render_template(

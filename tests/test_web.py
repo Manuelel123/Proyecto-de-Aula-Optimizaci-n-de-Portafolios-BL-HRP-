@@ -9,7 +9,7 @@ from support import WebTestCase
 class WebInterfaceTests(WebTestCase):
     def test_all_primary_pages_render(self) -> None:
         for path, title in (
-            ("/", "Construye portafolios"),
+            ("/", "Construye portafolios con"),  # the gestor's original home
             ("/monitoring", "Monitoreo de activos"),
             ("/hrp", "Optimización HRP"),
             ("/black-litterman", "Black-Litterman"),
@@ -40,13 +40,17 @@ class WebInterfaceTests(WebTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn("Página no encontrada".encode(), response.data)
 
-    def test_home_renders_three_modules_and_real_stats(self) -> None:
-        from optimizacion_portafolios.web.main.routes import catalog_asset_count
-
+    def test_gestor_home_is_the_original_one(self) -> None:
         html = self.client.get("/").get_data(as_text=True)
         modules = re.findall(r'<a class="module-card" href="([^"]+)"', html)
         self.assertEqual(modules, ["/monitoring", "/hrp", "/black-litterman"])
-        self.assertNotIn("01", re.findall(r'module-card__\w+">(\d\d)<', html))
+        self.assertNotIn("Tu perfil vigente", html)
+
+    def test_portada_shows_real_catalog_stats(self) -> None:
+        from optimizacion_portafolios.web.main.routes import catalog_asset_count
+
+        self.client.post("/auth/salir", data={"csrf_token": self.csrf_token})
+        html = self.client.get("/").get_data(as_text=True)
         self.assertIn(f"<dd>{catalog_asset_count()}</dd>", html)
         self.assertGreater(catalog_asset_count(), 30)
         self.assertIn("Hierarchical Risk Parity", html)

@@ -1,6 +1,9 @@
 # Atlas · Analítica de portafolios
 
-Aplicación web Flask para monitorear activos y analizar portafolios con Hierarchical Risk Parity (HRP) y Black-Litterman. Los precios históricos se descargan de Tiingo (con Yahoo Finance como respaldo) y los datos fundamentales, capitalizaciones y tipos de cambio se consultan en Yahoo Finance.
+Herramienta web **educativa** (Flask) para personas jóvenes e inexpertas que quieren aprender a construir portafolios: qué es diversificar, cómo se mide el riesgo y cómo reparten el dinero dos métodos profesionales, Hierarchical Risk Parity (HRP) y Black-Litterman. Cada usuario responde primero un perfil de riesgo y usa las herramientas según su rol (novato, inversionista o gestor). Los precios históricos se descargan de Tiingo (con Yahoo Finance como respaldo) y los datos fundamentales, capitalizaciones y tipos de cambio se consultan en Yahoo Finance.
+
+> **Información educativa. No es recomendación de inversión ni asesoría financiera.**
+> Este aviso aparece en la portada y en todas las pantallas con resultados (HRP, Black-Litterman, comparación, Mercado, Mis portafolios, backtests y Mi perfil). Lo genera la macro `educational_notice()` de `web/templates/macros/learning.html`.
 
 ## Requisitos
 
@@ -10,15 +13,69 @@ Aplicación web Flask para monitorear activos y analizar portafolios con Hierarc
 ## Instalación y ejecución local
 
 ```powershell
-uv sync
-uv run flask --app wsgi:app run --debug
+uv sync                                    # crea .venv e instala las dependencias de uv.lock
+Copy-Item .env.example .env                # y completa FLASK_SECRET_KEY y el correo (MAIL_*)
+uv run flask --app wsgi:app run --debug    # servidor de desarrollo
 ```
 
-Abre `http://127.0.0.1:5000`. Para iniciar el servidor local sin el CLI de Flask:
+Abre `http://127.0.0.1:5000`. Al arrancar se aplican las migraciones pendientes de la base local (`instance/atlas.db`). Para iniciar el servidor local sin el CLI de Flask:
 
 ```powershell
 uv run optimizacion-portafolios
 ```
+
+Con Waitress (servidor WSGI de producción, también en Windows):
+
+```powershell
+uv run waitress-serve --host 127.0.0.1 --port 8000 wsgi:app
+```
+
+### Quién es gestor
+
+El rol `gestor` (acceso total, con la app tal como era antes de la capa educativa) no se puede obtener desde la web ni por configuración: se otorga solo desde la línea de comandos del servidor, a **una sola** cuenta ya registrada:
+
+```powershell
+uv run flask --app wsgi:app users make-gestor tu-correo@example.com            # otorga el rol
+uv run flask --app wsgi:app users make-gestor otro@example.com --replace       # lo pasa a otra cuenta
+uv run flask --app wsgi:app users revoke-gestor tu-correo@example.com          # lo quita (vuelve a novato)
+uv run flask --app wsgi:app users list-gestor                                  # muestra quién es gestor
+```
+
+El cambio aplica en la siguiente petición, sin reiniciar el servidor.
+
+### Correo: verificación de la cuenta y recuperación de contraseña
+
+Al registrarse, cada cuenta recibe un código de 6 dígitos por correo y no puede entrar hasta escribirlo (`/auth/verificar`). «¿La olvidaste?» (`/auth/recuperar`) envía otro código para crear una contraseña nueva (`/auth/restablecer`). Los códigos vencen a los 15 minutos, sirven una sola vez, se invalidan tras 5 intentos fallidos y solo se guarda su hash (HMAC con `FLASK_SECRET_KEY`). Las respuestas no revelan si un correo tiene cuenta.
+
+Los correos salen por Gmail SMTP. Configura en `.env`:
+
+```dotenv
+MAIL_USERNAME=tu-cuenta@gmail.com
+MAIL_PASSWORD=xxxx xxxx xxxx xxxx     # contraseña de aplicación, no la normal
+# MAIL_FROM=Atlas <tu-cuenta@gmail.com>   (opcional)
+# MAIL_SMTP_HOST=smtp.gmail.com  MAIL_SMTP_PORT=465   (valores por defecto)
+```
+
+La contraseña de aplicación se crea en tu cuenta de Google → Seguridad → Verificación en dos pasos (debe estar activa) → Contraseñas de aplicaciones. Sin estas variables, el servidor de desarrollo (`--debug`) muestra el código en su consola en lugar de enviarlo; fuera de desarrollo el envío falla con un mensaje.
+
+## Uso: flujo de pantallas y roles
+
+1. **Sin sesión** solo se ve la portada (`/`): qué es Atlas, para quién es, el aviso educativo y los formularios de inicio de sesión y registro. No muestra herramientas ni resultados (los diagramas de la portada están rotulados como ilustrativos).
+2. **Tras iniciar sesión**, si falta el perfil de riesgo la app lleva al cuestionario y luego a confirmar el rol (ver «Perfil de riesgo obligatorio» más abajo).
+3. **Pantalla principal** (`/` con sesión): saludo, perfil vigente (perfil final y factor limitante, con enlace a Mi perfil), rol y las herramientas disponibles para ese rol. La barra de navegación muestra solo lo que el rol permite.
+
+| | Novato | Inversionista | Gestor |
+|---|---|---|---|
+| HRP y Black-Litterman | Vista guiada: solo elige un universo predefinido; explicación de cada peso y glosario | Vista guiada + excluir activos y peso máximo por activo (HRP) | Páginas completas: todos los parámetros, informe QuantStats, explorador de precios |
+| Comparar HRP vs Black-Litterman (`/comparar`) | — | Sí | Sí |
+| Mis portafolios | Solo lectura: panel, alertas y versiones | Fijar, editar alertas, gestionar (rebalancear, altas, bajas) y archivar | Todo, más señales |
+| Mercado (incluida Opciones), `/api/historial`, `/api/ohlc` | — | — | Sí |
+| Backtest de HRP e historial de backtests | — | — | Sí |
+| Glosario, Mi perfil, Mi historial de decisiones | Sí | Sí | Sí |
+
+- **Valores fijos de la vista guiada** (`web/common/guided.py`): últimos 2 años de precios (la misma ventana de Black-Litterman, para que los dos métodos sean comparables), benchmark S&P 500 (SPY), HRP sin límites (0 %–100 %; el inversionista puede fijar el peso máximo), Black-Litterman con objetivo «Máximo ratio de Sharpe», tasa libre de riesgo 2 % y **views neutrales**: iguales al retorno de equilibrio de cada activo (una primera ejecución del modelo da el equilibrio, que no depende de las views, y la segunda lo usa como view). El modelo Black-Litterman no admite límites de peso, así que el peso máximo solo se aplica a HRP. Universos: «Acciones y Bitcoin», «Sectores de EE. UU.», «Criptomonedas», «Portafolio actual» y, solo en HRP, «Criptomonedas y commodities» (los futuros no tienen capitalización bursátil).
+- **Explicación de los pesos:** HRP, a partir de la volatilidad anual de cada activo, su correlación promedio con el resto (de la matriz que usó HRP) y su aporte al riesgo; Black-Litterman, a partir del peso de mercado (capitalización), el retorno de equilibrio y la diferencia entre el peso final y el de mercado.
+- **Permisos:** una sola tabla endpoint → roles en `web/auth/permissions.py` (`ENDPOINT_ROLES`, `METHOD_ROLES` para un método concreto, `FEATURE_ROLES` para controles dentro de una página). El access check `require_role` se registra después del de perfil; si el rol no alcanza, redirige a la pantalla principal con «Tu rol (…) no incluye esta función.» (403 JSON en `/api/*`). Un endpoint que no está en la tabla solo lo abre el gestor. Las páginas guiadas leen del formulario solo el universo (y, desde inversionista, los activos marcados y el peso máximo): cualquier otro campo enviado se ignora.
 
 ## Configuración de la fuente de precios
 
@@ -38,17 +95,31 @@ Yahoo Finance se usa como respaldo:
 
 Las series de ambas fuentes se alinean por fecha (sin hora ni zona horaria). Los errores HTTP de Tiingo distintos de 404 (key inválida, límite de solicitudes, fallas del servidor) se informan como error de descarga y no activan el respaldo.
 
-## Cuentas y base de datos (InsForge)
+## Usuarios y acceso
 
-[InsForge](https://insforge.dev) aporta el login y una base de datos Postgres. Todo es opcional: sin configuración, la app funciona igual que antes, sin cuentas y sin caché persistente.
+Las cuentas son **locales**: viven en la tabla `users` de la base SQLite (ver la sección siguiente). El correo es el usuario (sin distinguir mayúsculas) y la contraseña se guarda solo como hash argon2id (`argon2-cffi`); nunca en texto plano ni en registros.
 
-- **Login:** registro con correo y contraseña verificado con un código de 6 dígitos, recuperación de contraseña con código y acceso con Google o GitHub (OAuth con PKCE). Rutas en `/auth/...`.
-- **Historial de backtests:** con la sesión iniciada, cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`).
-- **Caché de precios incremental:** los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando.
+- **Todo requiere sesión.** Sin iniciar sesión solo se ven la portada (`/`), `/auth/registro`, `/auth/ingresar` y los archivos estáticos. Las páginas redirigen al inicio de sesión (con `next`) y los endpoints JSON (`/api/...`) responden 401. La regla está en `web/auth/guard.py` (`PUBLIC_ENDPOINTS`, `register_access_check`).
+- **Registro e inicio de sesión:** contraseña de al menos 8 caracteres con letras y números. Tras 5 intentos fallidos en 15 minutos (por correo o por IP) el acceso se bloquea temporalmente. El mensaje de error no revela si el correo existe.
+- **Roles:** `novato` (por defecto), `inversionista` y `gestor`. `gestor` no se puede elegir: se otorga solo con `flask users make-gestor` (ver «Quién es gestor»). Qué ve cada rol: «Uso: flujo de pantallas y roles».
+- **Perfil de riesgo obligatorio:** tras el primer inicio de sesión cada usuario responde una sola vez el cuestionario de `config/cuestionario.yaml` (capital disponible en COP, horizonte, 5 preguntas de tolerancia, 3 de capacidad y 2 de conocimiento). Sin perfil vigente ninguna herramienta abre: el access check `require_current_profile` (`web/profile/access.py`) redirige al cuestionario (los `/api/...` responden 403); solo quedan libres la portada, el propio perfilado, cerrar sesión y los estáticos. El progreso se guarda en cada paso (`perfil_borradores`) y se retoma en el siguiente ingreso. En los ingresos siguientes el perfil guardado se carga en `session["perfil"]` (y en la variable de plantilla `current_profile`) y la app va directo al inicio.
+  - **Cálculo** (`src/optimizacion_portafolios/profiling/`, sin Flask): cada respuesta vale 1 a 4 según su orden; tolerancia y capacidad se promedian (menos de 2,0 adverso; de 2,0 a menos de 3,0 moderado; 3,0 o más arriesgado). El horizonte pone un tope (menos de 1 año: máximo adverso; 1 a 3 años: máximo moderado; más de 3: sin tope). Perfil final = el más bajo de los tres. Responder «Vendo todo» (pregunta 1) o «Menos de 1» mes de fondo de emergencia (pregunta 6) fuerza adverso. El **factor limitante** es el veto si lo hay; si no, el primero de `veto > horizonte > capacidad > tolerancia` cuyo nivel coincide con el final (el horizonte solo cuenta cuando impone tope). Las preguntas de conocimiento solo sugieren el rol: `inversionista` si la experiencia es «Fondos o acciones» o más y se acierta qué es diversificar; si no, `novato`. Umbrales, vetos, topes, desempate, regla del rol y explicaciones están en el YAML (con `version`), que se valida al arrancar.
+  - **Rol:** el usuario confirma (o cambia) el rol sugerido entre `novato` e `inversionista`; hasta confirmarlo las herramientas lo llevan a esa pantalla. A un `gestor` no se le pide confirmar ni se le cambia el rol.
+  - **Mi perfil** (`/perfil/`, en el menú de usuario): perfil final, factor limitante con su explicación, fecha e historial. Repetir el cuestionario agrega una fila nueva en `perfiles` y deja solo esa como vigente; las anteriores se conservan.
+- **Registro de decisiones** (`/historial`, «Mi historial» en el menú de usuario, todos los roles): cada vez que se genera un portafolio (HRP o Black-Litterman calculado con éxito, en su página o en la comparación, una fila por método) y cada vez que se fija uno, se inserta una fila en la tabla `registro_decisiones` con el usuario, la fecha, el perfil vigente (`perfil_id` y `perfil_final`), el rol, el método, el origen (`hrp`, `black_litterman`, `comparar` o `fijar`), los activos y pesos (JSON) y los parámetros de entrada (universo, fechas, benchmark, límites, objetivo, tasa, views). Es un historial verificable: la app solo inserta y lee (`storage/decisions.py`); el modelo rechaza cualquier actualización o borrado desde el ORM. Descargar el informe QuantStats no cuenta como decisión.
+- **Historial de backtests:** cada backtest HRP se guarda una vez por combinación de activos, periodo y parámetros (`/cuenta/backtests`, solo gestor), en la base local.
+- **Migrar portafolios de las antiguas cuentas de InsForge:** registra la cuenta local y ejecuta `flask --app wsgi:app users reassign-portfolios <id_insforge> <correo>`.
+- **Traer el historial de backtests guardado en InsForge:** `flask --app wsgi:app users import-insforge-backtests [--dry-run] [--fallback <correo>]`. Cada backtest va a la cuenta local con el mismo correo que su dueño en InsForge (necesita `INSFORGE_URL` e `INSFORGE_API_KEY`); los repetidos se omiten y `--fallback` asigna los que no tienen cuenta local.
 
-Configuración local: copia `.env.example` a `.env` y completa las variables. Los valores del proyecto vinculado están en `.insforge/project.json` y en `npx -y @insforge/cli secrets get ANON_KEY`. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor, para la caché de precios, y nunca debe subirse al repositorio.
+Configuración local: copia `.env.example` a `.env` y completa las variables. Define `FLASK_SECRET_KEY` (si falta, la app avisa en el log y las sesiones se pierden al reiniciar).
 
-El esquema está en `migrations/` y se aplica con `npx -y @insforge/cli db migrations up --all`. Las tablas de usuario tienen RLS (cada usuario solo ve sus filas) y las de precios solo son accesibles con la clave de administrador. La configuración de auth, incluidas las URLs de retorno de OAuth permitidas, está en `insforge.toml` (`npx -y @insforge/cli config apply`). Si sirves la app en otra URL, agrega su `/auth/oauth/callback` a `allowed_redirect_urls`.
+### Caché en memoria (equivalente a `st.cache_data`)
+
+Cada proceso guarda en memoria (`data/cache.py`) lo que ya descargó, con un tiempo de vida por entrada contado desde la descarga: precios y OHLCV por `(tickers, inicio, fin)` 15 minutos (64 entradas), perfiles de Yahoo 15 minutos, tipos de cambio (`fx.usd_rate` y el de las capitalizaciones) 15 minutos y la moneda de cada ticker 12 horas. Los resultados vacíos (ticker sin datos o fallo pasajero del proveedor) se guardan solo 60 segundos, y los errores nunca se guardan. Cada llamada devuelve una copia independiente. En HRP con backtest, los activos se descargan una sola vez desde el inicio de la ventana de estimación y la optimización reutiliza ese tramo; al agregar activos a un portafolio, la validación descarga ya todos los activos de la nueva versión.
+
+### Caché de precios (InsForge, opcional)
+
+[InsForge](https://insforge.dev) ya no gestiona cuentas: solo aporta, si se configuran `INSFORGE_URL` e `INSFORGE_API_KEY`, una caché persistente de precios en Postgres. Los cierres ajustados se guardan en `price_history` y se reutilizan; al optimizar solo se descargan los días que faltan desde el último guardado (más 7 días de solapamiento). Si el solapamiento no coincide con lo guardado (un dividendo o split reajustó la serie), o si la última descarga completa tiene más de 7 días (`ATLAS_PRICE_FULL_REFRESH_DAYS`), se vuelve a descargar el historial completo de ese activo. Un rango que llega a hoy se considera vigente durante 60 minutos (`ATLAS_PRICE_INTRADAY_TTL_MINUTES`), porque el precio del día puede seguir cambiando. `INSFORGE_API_KEY` es una clave de administrador: solo la usa el servidor y nunca debe subirse al repositorio. El esquema de esas tablas está en `migrations/` (`npx -y @insforge/cli db migrations up --all`).
 
 ## Portafolios en seguimiento (base de datos local)
 
@@ -113,19 +184,21 @@ Los portafolios fijados como óptimos, sus versiones, posiciones y operaciones s
   - **Versiones:** historial en `/portafolios/<id>/versiones`, con comparación de dos versiones (`?a=1&b=3`).
   - **Archivar:** el portafolio deja de monitorearse (sin snapshots ni alertas) y conserva todo su historial.
 - **Señales** (`/portafolios/<id>/senales`, `models/signals.py`): reglas por activo simuladas con vectorbt (`from_signals` con `group_by` y `cash_sharing`) sobre los pesos vigentes desde la fecha de fijación, frente a comprar y mantener. Un activo está «dentro» mientras se cumplen las reglas activas: media rápida sobre la lenta (50/200 días), volatilidad de 21 días como máximo 2× su mediana y drawdown del activo menor al 20 %. Aparte, un stop-loss del 10 % (dinámico por defecto) cierra la posición. Cada entrada compra peso objetivo × capital, porque el simulador de señales de vectorbt no admite tamaños de porcentaje objetivo. Son sugerencias: nunca modifican el portafolio; para actuar hay que usar Gestionar, que pide confirmación. La primera simulación tarda más mientras numba compila.
-- **Usuarios:** son las cuentas de InsForge. Flask-Login gestiona la sesión (`current_user`) y cada fila guarda el id de usuario de InsForge; un portafolio ajeno responde 404. Tras 5 intentos fallidos de inicio de sesión en 15 minutos (por correo o por IP), el acceso se bloquea temporalmente.
+- **Usuarios:** son las cuentas locales (`users`). Flask-Login gestiona la sesión (`current_user`) y cada fila guarda `str(users.id)` en `user_id`; un portafolio ajeno responde 404.
 
 ## Pruebas
 
 ```powershell
-uv run python -m unittest discover -s tests
+uv run pytest -q
 ```
+
+`uv run python -m unittest discover -s tests` ejecuta la misma suite sin pytest.
 
 Las pruebas no acceden a la red: las descargas de Tiingo y Yahoo Finance se simulan con `unittest.mock`.
 
 ## Despliegue WSGI
 
-Waitress está incluido para ejecutar Flask en Windows y otros sistemas:
+Waitress está incluido para ejecutar Flask en Windows y otros sistemas (así escucha en todas las interfaces de red):
 
 ```powershell
 uv run waitress-serve --host 0.0.0.0 --port 8000 wsgi:app
@@ -150,10 +223,11 @@ analytics  →  estadísticas, volatilidad y métricas de desempeño
 data       →  catálogos de activos y acceso a Tiingo/Yahoo Finance
 ```
 
-`data`, `analytics` y `models` no importan Flask: se pueden usar desde un notebook, un script o las pruebas sin levantar la aplicación.
+`data`, `analytics`, `models` y `profiling` no importan Flask: se pueden usar desde un notebook, un script o las pruebas sin levantar la aplicación.
 
 ```text
 wsgi.py                         punto de entrada WSGI (Flask CLI y Waitress)
+config/cuestionario.yaml        preguntas, opciones, umbrales, vetos y reglas del perfil de riesgo
 tests/
   support.py                    precios sintéticos y cliente Flask con CSRF
   test_market_data.py           capa data
@@ -161,10 +235,15 @@ tests/
   test_hrp_model.py             modelo HRP
   test_black_litterman_model.py modelo Black-Litterman
   test_web.py                   rutas HTTP de punta a punta
+  golden_cases.py, test_golden.py, golden/values.json
+                                red de seguridad numérica: salidas fijadas de modelos, analytics y servicios
+scripts/
+  measure_pages.py              tiempos de carga de las páginas principales (frío/caliente, datos reales)
 src/optimizacion_portafolios/
   data/
     catalogs.py                 universos, benchmarks y periodos de volatilidad
     market_data.py              precios (Tiingo + respaldo Yahoo) y perfiles con caché
+    cache.py                    cachés en memoria con tiempo de vida por entrada
     tiingo_prices.py            cliente Tiingo y enrutamiento de tickers por fuente
     fx.py                       moneda de cada ticker y conversión diaria a USD
   analytics/
@@ -183,18 +262,28 @@ src/optimizacion_portafolios/
     __init__.py                 create_app(), CSRF, manejo de errores, run()
     templates/  static/         plantilla base, error y CSS compartidos
     common/
-      charts.py                 gráficos Matplotlib/QuantStats como imágenes PNG
+      charts.py                 gráficos interactivos Plotly (JSON para el navegador)
       tables.py                 tablas HTML escapadas y formatos
       forms.py                  lectura y validación de formularios
-    main/                       panel de inicio
+      errors.py                 mensajes de fallos de descarga (límite de Yahoo incluido)
+      signing.py                tokens firmados (itsdangerous) de resultados y cambios
+    main/                       portada (sin sesión), pantalla principal por rol y glosario
+    compare/                    comparación HRP vs Black-Litterman (inversionista y gestor)
+    decisions/                  registro de decisiones: Mi historial y el enlace con las páginas de resultados
     monitoring/                 monitoreo y análisis fundamental
     hrp/                        optimización HRP
     black_litterman/            optimización Black-Litterman
-    auth/                       inicio de sesión con InsForge (Flask-Login, límite de intentos)
+    auth/                       cuentas locales: registro, sesión (Flask-Login), roles y permisos por rol, guardia global, límite de intentos
+    profile/                    perfil de riesgo: cuestionario por pasos, resultado, confirmación de rol, Mi perfil
+    account/                    historial de backtests HRP
     portfolios/                 Mis portafolios: seguimiento de portafolios óptimos
+  profiling/                    cuestionario de perfilado (carga y validación del YAML) y cálculo del perfil (sin Flask)
   storage/
-    models.py                   tablas SQLAlchemy (Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
+    decisions.py                registro de decisiones (solo inserciones y lecturas)
+    profiles.py                 perfiles de riesgo (una sola fila vigente por usuario) y borradores del cuestionario
+    models.py                   tablas SQLAlchemy (User, Profile, ProfileDraft, DecisionRecord, BacktestRun, BacktestResult, Portfolio, PortfolioVersion, Holding, Transaction, DailySnapshot, AlertRule, AlertEvent)
     repositories.py             lecturas y escrituras filtradas por usuario
+    users.py                    cuentas locales y reasignación de dueño
     migrations/                 revisiones de Flask-Migrate
 ```
 

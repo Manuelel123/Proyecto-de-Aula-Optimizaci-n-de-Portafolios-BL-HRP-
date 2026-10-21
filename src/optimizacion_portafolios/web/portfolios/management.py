@@ -12,11 +12,10 @@ from dataclasses import asdict
 from datetime import date, timedelta
 
 import pandas as pd
-from flask import current_app
-from itsdangerous import BadSignature, URLSafeTimedSerializer
+from itsdangerous import BadSignature
 
 from optimizacion_portafolios.analytics.tracking import business_days, last_prices
-from optimizacion_portafolios.data.market_data import download_prices, fetch_market_cap_usd
+from optimizacion_portafolios.data.market_data import download_prices
 from optimizacion_portafolios.models.black_litterman import optimize_black_litterman
 from optimizacion_portafolios.models.hrp import WeightBounds, optimize_hrp
 from optimizacion_portafolios.models.rebalancing import (
@@ -28,7 +27,8 @@ from optimizacion_portafolios.models.rebalancing import (
 from optimizacion_portafolios.storage import repositories
 from optimizacion_portafolios.storage.models import Portfolio
 from optimizacion_portafolios.storage.repositories import HoldingData, TransactionData
-from optimizacion_portafolios.web.black_litterman.services import OBJECTIVES, VIEW_CONFIDENCE, WINDOW_YEARS
+from optimizacion_portafolios.web.black_litterman.services import OBJECTIVES, VIEW_CONFIDENCE, WINDOW_YEARS, market_caps_usd
+from optimizacion_portafolios.web.common.signing import serializer
 from optimizacion_portafolios.web.portfolios.services import DOWNLOAD_ERRORS, FIX_PRICE_LOOKBACK_DAYS, usd_prices
 
 _SALT = "atlas-portfolio-change"
@@ -41,10 +41,6 @@ METHODS = {
     "add": ("manual", "reoptimize"),
 }
 ACTION_REASONS = {"rebalance": "rebalance", "remove": "remove", "add": "add"}
-
-
-def _serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(current_app.secret_key, salt=_SALT)
 
 
 def base_params(portfolio: Portfolio) -> dict:
@@ -70,16 +66,22 @@ def _bounded(weights: pd.Series, bounds: WeightBounds | None) -> pd.Series:
     return apply_bounds(weights, bounds)
 
 
-def closing_prices(tickers: tuple[str, ...], today: date) -> tuple[date, dict[str, float]]:
-    """Latest business-day closes in USD of ``tickers`` (raises ``ValueError``)."""
+def _recent_usd_prices(tickers: tuple[str, ...], today: date, required) -> pd.DataFrame:
+    """Recent USD closes of ``tickers``; ``ValueError`` if one of ``required`` has none."""
     start = today - timedelta(days=FIX_PRICE_LOOKBACK_DAYS)
     try:
         prices = usd_prices(tickers, start, today)
     except DOWNLOAD_ERRORS as error:
         raise ValueError(f"No se pudieron descargar los precios: {error}") from error
-    missing = [ticker for ticker in tickers if ticker not in prices.columns]
+    missing = [ticker for ticker in required if ticker not in prices.columns]
     if missing:
         raise ValueError("No hay precios recientes para: " + ", ".join(missing))
+    return prices
+
+
+def closing_prices(tickers: tuple[str, ...], today: date) -> tuple[date, dict[str, float]]:
+    """Latest business-day closes in USD of ``tickers`` (raises ``ValueError``)."""
+    prices = _recent_usd_prices(tickers, today, tickers)
     price_day, closes = last_prices(business_days(prices.sort_index().ffill()))
     return price_day.date(), closes
 
@@ -121,12 +123,7 @@ def _black_litterman_weights(
     market_prices = download_prices((market,), start, today)
     if prices.shape[1] < len(tickers) or market not in market_prices:
         raise ValueError("No hay precios suficientes para re-optimizar con Black-Litterman.")
-    caps = {}
-    for ticker in tickers:
-        amount = fetch_market_cap_usd(ticker)
-        if amount is None:
-            raise ValueError(f"Yahoo Finance no devolvió la capitalización de {ticker}.")
-        caps[ticker] = amount
+    caps = market_caps_usd(tickers)
     result = optimize_black_litterman(
         prices=prices.loc[:, tickers],
         views={t: float(views[t]) for t in tickers},
@@ -192,7 +189,10 @@ def build_change(portfolio: Portfolio, action: str, method: str, *, removed=(), 
         new = [t for t in added if t not in current]
         if not new:
             raise ValueError("Escribe al menos un activo nuevo que no esté en el portafolio.")
-        closing_prices(tuple(new), today)  # validates the tickers before anything else
+        # Validate the new tickers before anything else. The download covers
+        # every ticker the new version will hold, so the closing prices below
+        # come from the cache instead of a second download.
+        _recent_usd_prices(tuple(sorted(set(version.units) | set(current) | set(new))), today, new)
         tickers = list(current) + new
         target = (
             reoptimized_weights(portfolio, tickers, today, {t: views[t] for t in new if t in views})
@@ -225,13 +225,13 @@ def build_change(portfolio: Portfolio, action: str, method: str, *, removed=(), 
 
 
 def sign_change(change: dict) -> str:
-    return _serializer().dumps(change)
+    return serializer(_SALT).dumps(change)
 
 
 def load_change(token: str, portfolio: Portfolio) -> dict:
     """The signed preview, if still valid for the portfolio's current version."""
     try:
-        change = _serializer().loads(token, max_age=PLAN_MAX_AGE_SECONDS)
+        change = serializer(_SALT).loads(token, max_age=PLAN_MAX_AGE_SECONDS)
     except BadSignature as error:
         raise ValueError("La vista previa expiró o no es válida. Vuelve a prepararla.") from error
     if change.get("portfolio_id") != portfolio.id:

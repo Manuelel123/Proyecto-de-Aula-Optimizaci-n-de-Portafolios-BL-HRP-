@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "profile/_macros.html" import disclaimer as disclaimer_notice, limiting_factor, profile_summary %}
+{% block title %}Mi perfil{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Cuenta</p>
+      <h1>Mi perfil</h1>
+      <p class="lead">Tu perfil de riesgo vigente: <strong>{{ view.final_label }}</strong>, calculado el {{ view.profile.fecha|datetime_short }}. Rol: {{ role_label }}.</p>
+    </div>
+    <div class="page-header__actions">
+      <a class="button button-secondary" href="{{ url_for('decisions.history') }}">Mi historial de decisiones</a>
+      {% if not is_gestor %}<a class="button button-secondary" href="{{ url_for('profile.result') }}">Cambiar rol</a>{% endif %}
+    </div>
+  </header>
+  {{ disclaimer_notice(disclaimer) }}
+
+  <div class="manage-grid">
+    <section class="card" aria-labelledby="perfil-vigente">
+      <header class="card__header"><div><h2 class="card__title" id="perfil-vigente">Perfil vigente</h2><p class="card__subtitle">{{ view.final_description }}</p></div></header>
+      <div class="card__body form-stack">
+        {{ limiting_factor(view) }}
+      </div>
+      {{ profile_summary(view) }}
+    </section>
+
+    <section class="card" aria-labelledby="repetir-titulo">
+      <header class="card__header"><div><h2 class="card__title" id="repetir-titulo">Repetir el cuestionario</h2><p class="card__subtitle">Si cambió tu situación o tu forma de ver el riesgo</p></div></header>
+      <div class="card__body form-stack">
+        <p class="notice notice--info">Tu perfil actual queda guardado en el historial. El nuevo lo reemplaza como vigente solo cuando termines el cuestionario.</p>
+        {% if draft %}<p class="help-text">Tienes un cuestionario sin terminar. <a href="{{ url_for('profile.questionnaire') }}">Continuar donde lo dejaste</a>.</p>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('profile.repeat') }}" class="card__footer" data-confirm="¿Repetir el cuestionario? Tu perfil actual queda guardado.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="button button-primary" type="submit">Repetir cuestionario</button>
+      </form>
+    </section>
+  </div>
+
+  {% if history|length > 1 %}
+    <section class="card account-section" aria-labelledby="historial-perfil">
+      <header class="card__header"><div><h2 class="card__title" id="historial-perfil">Historial</h2><p class="card__subtitle">Todos tus perfiles guardados; solo uno está vigente</p></div></header>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th scope="col">Fecha</th><th scope="col">Perfil</th><th scope="col">Factor limitante</th><th scope="col">Versión</th><th scope="col">Estado</th></tr></thead>
+          <tbody>
+            {% for row in history %}
+              <tr>
+                <td>{{ row.fecha|datetime_short }}</td>
+                <td>{{ level_labels.get(row.perfil_final, row.perfil_final) }}</td>
+                <td>{{ factor_labels.get(row.factor_limitante, row.factor_limitante) }}</td>
+                <td class="num">{{ row.version_cuestionario }}</td>
+                <td>{% if row.vigente %}<span class="badge badge--success">Vigente</span>{% else %}<span class="badge badge--neutral">Anterior</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

@@ -12,7 +12,7 @@ from requests.exceptions import HTTPError
 from tiingo.restclient import RestClientError
 from yfinance.exceptions import YFRateLimitError
 
-from support import WebTestCase, make_prices
+from support import WebTestCase, create_test_user, login_session, make_prices
 
 from optimizacion_portafolios.data.market_data import (
     OHLCV_COLUMNS,
@@ -94,9 +94,14 @@ class DownloadOhlcvTests(unittest.TestCase):
         download.assert_called_once()
 
     @_without_tiingo_key()
+    @patch("optimizacion_portafolios.data.market_data.monotonic")
     @patch(_YF_DOWNLOAD, return_value=pd.DataFrame())
-    def test_empty_download_is_not_cached(self, download) -> None:
+    def test_empty_download_is_cached_only_briefly(self, download, clock) -> None:
+        clock.return_value = 500.0
         self.assertTrue(download_ohlcv("ZZZ", date(2025, 1, 1), date(2025, 1, 2)).empty)
+        self.assertTrue(download_ohlcv("ZZZ", date(2025, 1, 1), date(2025, 1, 2)).empty)
+        self.assertEqual(download.call_count, 1)
+        clock.return_value = 500.0 + 60
         self.assertTrue(download_ohlcv("ZZZ", date(2025, 1, 1), date(2025, 1, 2)).empty)
         self.assertEqual(download.call_count, 2)
 
@@ -271,7 +276,9 @@ class ExplorerControlsMarkupTests(unittest.TestCase):
         self.assertIn('data-ohlc-url="/custom/ohlc"', html)
 
     def test_pages_load_the_indicator_module(self) -> None:
-        html = self.app.test_client().get("/hrp").data.decode()
+        client = self.app.test_client()
+        login_session(client, create_test_user(self.app))
+        html = client.get("/hrp").data.decode()
         self.assertIn("js/indicators.js", html)
         self.assertLess(html.index("js/indicators.js"), html.index("js/charts.js"))
 

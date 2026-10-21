@@ -6,20 +6,21 @@ from math import isfinite
 
 import numpy as np
 import pandas as pd
-import requests
-from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.statistics import (
     calculate_expected_returns,
     calculate_statistics,
     date_years_ago,
+    finite_or_none as _number,
 )
+from optimizacion_portafolios.analytics.returns import prepare_prices, returns_matrix_series
 from optimizacion_portafolios.analytics.volatility import (
     calculate_historical_volatility,
     calculate_monthly_volatility,
 )
 from optimizacion_portafolios.data.catalogs import GRUPOS_ACTIVOS
 from optimizacion_portafolios.data.market_data import (
+    DOWNLOAD_ERRORS,
     download_prices,
     fetch_fundamental_information,
 )
@@ -72,14 +73,6 @@ def asset_names() -> dict[str, str]:
     return names
 
 
-def _number(value) -> float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if isfinite(number) else None
-
-
 def _format_fundamental_value(value, kind: str, currency: str) -> str:
     if value is None:
         return "N/D"
@@ -105,7 +98,7 @@ def _fundamental_prices(ticker: str, name: str):
     today = date.today()
     try:
         prices = download_prices((ticker,), date_years_ago(today), today)
-    except (requests.RequestException, TimeoutError, YFException, ValueError):
+    except (*DOWNLOAD_ERRORS, ValueError):
         logger.warning(
             "Could not download prices for %s fundamentals", ticker, exc_info=True
         )
@@ -191,13 +184,12 @@ def _returns_matrix(
     price history (no ffill across assets).
     """
     aligned = returns.dropna()
-    series = {}
-    if not aligned.empty:
-        series[PORTFOLIO_SERIES] = aligned.mean(axis="columns")
-    for ticker in returns.columns:
-        series[ticker] = (
-            raw_prices[ticker].dropna().pct_change(fill_method=None).dropna()
-        )
+    series = returns_matrix_series(
+        raw_prices,
+        returns.columns,
+        portfolio=aligned.mean(axis="columns") if not aligned.empty else None,
+        portfolio_key=PORTFOLIO_SERIES,
+    )
     return returns_matrix_chart(
         series, {**names, PORTFOLIO_SERIES: _EQUAL_WEIGHT_LABEL}
     )
@@ -225,8 +217,7 @@ def build_price_analysis(
     ``has_period_volatility``.
     """
     raw_prices = download_prices(tuple(tickers), start_date, date.today())
-    raw_prices = raw_prices.dropna(axis="columns", how="all")
-    prices = raw_prices.ffill().dropna()
+    raw_prices, prices = prepare_prices(raw_prices)
     if prices.empty or prices.shape[1] == 0:
         raise ValueError(
             "Yahoo Finance no devolvió precios para los activos y fechas seleccionados."

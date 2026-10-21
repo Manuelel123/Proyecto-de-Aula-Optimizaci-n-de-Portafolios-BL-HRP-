@@ -1,16 +1,14 @@
 {% extends "auth/_layout.html" %}
-{% from "auth/_macros.html" import oauth_buttons %}
 {% block title %}Iniciar sesión{% endblock %}
 {% block heading %}Inicia sesión{% endblock %}
-{% block intro %}<p class="auth-card__lead">Guarda tus portafolios y consulta el historial de tus backtests.</p>{% endblock %}
+{% block intro %}<p class="auth-card__lead">Ingresa con tu correo y contraseña para usar Atlas.</p>{% endblock %}
 {% block form %}
-  {{ oauth_buttons(oauth_providers, next_url) }}
   <form method="post" class="form-stack" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="next" value="{{ next_url }}">
     <div class="form-field">
       <label for="email">Correo electrónico</label>
-      <input id="email" name="email" type="email" autocomplete="email" required value="{{ email }}" autofocus>
+      <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" value="{{ email }}" autofocus>
     </div>
     <div class="form-field">
       <div class="auth-label-row">

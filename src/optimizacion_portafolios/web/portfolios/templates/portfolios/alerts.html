@@ -13,12 +13,28 @@
   {{ portfolio_tabs(portfolio.id, 'alerts') }}
   {{ disclaimer() }}
 
+  {% if can('edit_alerts') %}
   <form method="post" class="card account-section">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <header class="card__header"><div><h2 class="card__title">Umbrales</h2><p class="card__subtitle">Vacío = sin ese nivel · desmarca una regla para desactivarla</p></div></header>
     {{ alert_thresholds(rows) }}
     <div class="card__footer"><button class="button button-primary" type="submit">Guardar umbrales</button></div>
   </form>
+  {% else %}
+  <article class="card account-section">
+    <header class="card__header"><div><h2 class="card__title">Umbrales</h2><p class="card__subtitle">Solo lectura: con el rol inversionista puedes editarlos</p></div></header>
+    <div class="data-table-wrap">
+      <table class="data-table alert-thresholds">
+        <thead><tr><th scope="col">Regla</th><th scope="col">Activa</th><th scope="col" class="num">Amarillo si supera</th><th scope="col" class="num">Rojo si supera</th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+            <tr><th scope="row">{{ row.label }}<span class="help-text alert-thresholds__help">{{ row.description }}</span></th><td>{{ 'Sí' if row.enabled else 'No' }}</td><td class="num">{{ row.yellow ~ ' ' ~ row.suffix if row.yellow not in (none, '') else '—' }}</td><td class="num">{{ row.red ~ ' ' ~ row.suffix if row.red not in (none, '') else '—' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+  {% endif %}
 
   <article class="card account-section">
     <header class="card__header"><div><h2 class="card__title">Alertas activas</h2></div></header>

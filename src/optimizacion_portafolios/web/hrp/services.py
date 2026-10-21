@@ -7,17 +7,16 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 import pandas as pd
-import requests
 from skfolio.cluster import HierarchicalClustering
-from yfinance.exceptions import YFException
 
 from optimizacion_portafolios.analytics.performance import (
     calculate_quantstats_metrics,
     generate_tearsheet,
 )
+from optimizacion_portafolios.analytics.returns import prepare_prices, returns_matrix_series
 from optimizacion_portafolios.analytics.volatility import calculate_monthly_volatility
 from optimizacion_portafolios.data.catalogs import BENCHMARKS
-from optimizacion_portafolios.data.market_data import download_prices
+from optimizacion_portafolios.data.market_data import DOWNLOAD_ERRORS, download_prices
 from optimizacion_portafolios.models.hrp import (
     WeightBounds,
     calculate_hrp_contributions,
@@ -46,6 +45,7 @@ from optimizacion_portafolios.web.common.price_series import price_series_payloa
 from optimizacion_portafolios.web.common.tables import (
     dataframe_html,
     format_decimal,
+    format_money,
     format_percent,
     metrics_html,
 )
@@ -93,12 +93,21 @@ class HrpRun:
 
 
 def _optimize(
-    tickers: list[str], benchmark: str, start_date: date, bounds: WeightBounds
+    tickers: list[str],
+    benchmark: str,
+    start_date: date,
+    bounds: WeightBounds,
+    history: pd.DataFrame | None = None,
 ) -> HrpRun:
+    """``history`` (prices of ``tickers`` from an earlier date) avoids a download."""
     today = date.today()
-    raw_prices = download_prices(tuple(tickers), start_date, today)
-    raw_prices = raw_prices.dropna(axis="columns", how="all")
-    prices = raw_prices.ffill().dropna()
+    if history is not None:
+        # Same rows and values as a download from ``start_date``: each column is
+        # the provider's own series, so a later start only trims the window.
+        raw_prices = history.loc[history.index >= pd.Timestamp(start_date)]
+    else:
+        raw_prices = download_prices(tuple(tickers), start_date, today)
+    raw_prices, prices = prepare_prices(raw_prices)
     if prices.shape[1] < 2:
         raise ValueError(
             "Yahoo Finance devolvió datos para menos de dos activos seleccionados."
@@ -168,24 +177,24 @@ def asset_name(ticker: str, label: str | None) -> str:
     return name if name and name != ticker else "—"
 
 
-def _daily_returns(prices: pd.Series) -> pd.Series:
-    """Daily simple returns of one asset over its own quotes (no ffill)."""
-    return prices.dropna().pct_change(fill_method=None).dropna()
-
-
 def _returns_matrix(run: HrpRun, benchmark: str, chart_names: dict[str, str]):
     """Returns matrix: portfolio, benchmark (unless it is an asset), assets.
 
     Assets follow the allocation order (weight, descending) and use their own
     price history, so different start dates and crypto weekends are kept.
     """
-    series = {PORTFOLIO_SERIES: run.returns.dot(run.weights)}
+    assets = run.weights.sort_values(ascending=False).index
+    series = returns_matrix_series(
+        run.raw_prices,
+        assets,
+        portfolio=run.returns.dot(run.weights),
+        portfolio_key=PORTFOLIO_SERIES,
+        benchmark=benchmark,
+        benchmark_prices=run.benchmark_prices,
+    )
     names = {PORTFOLIO_SERIES: _PORTFOLIO_COLUMN, **chart_names}
     if benchmark not in run.weights.index:
-        series[benchmark] = _daily_returns(run.benchmark_prices)
         names[benchmark] = _BENCHMARK_LABELS.get(benchmark, benchmark)
-    for ticker in run.weights.sort_values(ascending=False).index:
-        series[ticker] = _daily_returns(run.raw_prices[ticker])
     return returns_matrix_chart(series, names)
 
 
@@ -220,15 +229,30 @@ def _allocation_rows(
     return rows
 
 
-def _backtest_prices(
-    assets: list[str], start_date: date, config: BacktestConfig
-) -> pd.DataFrame:
-    """Aligned prices from ``lookback`` trading days before ``start_date``."""
-    history_start = start_date - timedelta(
+def backtest_history_start(start_date: date, config: BacktestConfig) -> date:
+    """First day downloaded so ``lookback`` trading days precede ``start_date``."""
+    return start_date - timedelta(
         days=int(config.lookback * _CALENDAR_DAYS_PER_TRADING_DAY)
         + _HISTORY_MARGIN_DAYS
     )
-    raw = download_prices(tuple(assets), history_start, date.today())
+
+
+def _backtest_prices(
+    assets: list[str],
+    start_date: date,
+    config: BacktestConfig,
+    history: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Aligned prices from ``lookback`` trading days before ``start_date``.
+
+    ``history`` is an already downloaded frame of exactly ``assets`` from
+    ``backtest_history_start`` (reused instead of downloading it again).
+    """
+    if history is None:
+        history = download_prices(
+            tuple(assets), backtest_history_start(start_date, config), date.today()
+        )
+    raw = history
     available = [asset for asset in assets if asset in raw.columns]
     prices = raw.loc[:, available].dropna(axis="columns", how="all").ffill().dropna()
     missing = [asset for asset in assets if asset not in prices.columns]
@@ -237,10 +261,6 @@ def _backtest_prices(
             "No hay historia de precios para el backtest de: " + ", ".join(missing)
         )
     return prices
-
-
-def _money(value) -> str:
-    return "N/D" if pd.isna(value) else f"${value:,.2f}"
 
 
 def _backtest_metrics_table(metrics: pd.DataFrame) -> str:
@@ -253,7 +273,7 @@ def _backtest_metrics_table(metrics: pd.DataFrame) -> str:
         elif column in _BACKTEST_COUNT_COLUMNS:
             formatters[column] = lambda value: f"{int(value):d}"
         elif column in _BACKTEST_MONEY_COLUMNS:
-            formatters[column] = _money
+            formatters[column] = format_money
         else:
             formatters[column] = format_decimal
     return dataframe_html(metrics, formatters)
@@ -311,7 +331,7 @@ def _metric(row: pd.Series, column: str):
 
 
 def _backtest_record(result: BacktestResult, best: str | None) -> dict:
-    """JSON-ready summary of a backtest for the user's history (InsForge)."""
+    """JSON-ready summary of a backtest for the user's history (``web.account``)."""
     config = result.config
     strategies = []
     for label, row in result.metrics.iterrows():
@@ -350,20 +370,50 @@ def _backtest_record(result: BacktestResult, best: str | None) -> dict:
     }
 
 
+def _asset_stats(weights: pd.Series, contributions: pd.DataFrame, correlation: pd.DataFrame) -> list[dict]:
+    """Per-asset inputs of the plain-language explanation (presentation only).
+
+    Weight, annualized volatility and risk share come from
+    ``calculate_hrp_contributions``; the average correlation is the mean of the
+    asset's off-diagonal entries in the correlation matrix HRP used.
+    """
+
+    def number(value):
+        return None if value is None or pd.isna(value) else float(value)
+
+    others = len(correlation) - 1
+    rows = []
+    for ticker, weight in weights.sort_values(ascending=False).items():
+        average = None
+        if others > 0 and ticker in correlation.index:
+            average = number((correlation.loc[ticker].sum() - correlation.loc[ticker, ticker]) / others)
+        rows.append(
+            {
+                "ticker": str(ticker),
+                "weight": float(weight),
+                "volatility": number(contributions.loc[ticker, "Volatilidad anualizada"]),
+                "risk_share": number(contributions.loc[ticker, "Contribución al riesgo"]),
+                "avg_correlation": average,
+            }
+        )
+    return rows
+
+
 def run_backtest_section(
     assets: list[str],
     start_date: date,
     bounds: WeightBounds,
     config: BacktestConfig,
+    history: pd.DataFrame | None = None,
 ) -> dict:
     """Backtest view model, or ``{"error": message}`` without failing the page."""
     started = time.perf_counter()
     try:
-        prices = _backtest_prices(assets, start_date, config)
+        prices = _backtest_prices(assets, start_date, config, history)
         result, from_cache = cached_backtest(
             prices, config, bounds.restricted_to(list(prices.columns)), start_date
         )
-    except (requests.RequestException, TimeoutError, YFException) as error:
+    except DOWNLOAD_ERRORS as error:
         logger.exception("Price download failed during the HRP backtest")
         return {"error": f"No se pudieron descargar los datos del backtest: {error}"}
     except ValueError as error:
@@ -380,6 +430,24 @@ def _bounds_record(bounds: WeightBounds) -> dict:
         "asset_min_weights": dict(sorted(bounds.asset_min_weights.items())),
         "asset_max_weights": dict(sorted(bounds.asset_max_weights.items())),
     }
+
+
+def _backtest_history(
+    tickers: list[str], start_date: date, config: BacktestConfig
+) -> pd.DataFrame | None:
+    """One download of the assets covering both the optimization and the backtest.
+
+    ``None`` (each part downloads on its own, as without a backtest) when the
+    download fails or is empty, so a backtest problem never hides the result.
+    """
+    try:
+        history = download_prices(
+            tuple(tickers), backtest_history_start(start_date, config), date.today()
+        )
+    except DOWNLOAD_ERRORS:
+        logger.warning("Backtest history download failed; downloading separately", exc_info=True)
+        return None
+    return None if history.empty else history
 
 
 def run_hrp(
@@ -405,7 +473,8 @@ def run_hrp(
     """
     bounds = bounds or WeightBounds()
     labels = labels or {}
-    run = _optimize(tickers, benchmark, start_date, bounds)
+    history = _backtest_history(tickers, start_date, backtest) if backtest is not None else None
+    run = _optimize(tickers, benchmark, start_date, bounds, history)
     returns, weights = run.returns, run.weights
     assets = list(returns.columns)
     names = {ticker: asset_name(ticker, labels.get(ticker)) for ticker in assets}
@@ -463,6 +532,7 @@ def run_hrp(
             run.raw_prices, chart_names, run.benchmark_prices
         ),
         "allocation_rows": _allocation_rows(weights, names, limits),
+        "asset_stats": _asset_stats(weights, contributions, run.ordered_correlation),
         "has_limits": has_limits,
         "tables": {
             "contributions": dataframe_html(
@@ -511,7 +581,15 @@ def run_hrp(
             },
         },
         "backtest": (
-            run_backtest_section(assets, start_date, bounds, backtest)
+            run_backtest_section(
+                assets,
+                start_date,
+                bounds,
+                backtest,
+                # The optimization dropped no ticker: the frame is exactly the
+                # backtest's download (same tickers, same start).
+                history if history is not None and tuple(assets) == tuple(tickers) else None,
+            )
             if backtest is not None
             else None
         ),

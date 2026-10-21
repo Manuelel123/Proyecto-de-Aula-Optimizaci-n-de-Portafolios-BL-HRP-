@@ -1,19 +1,17 @@
 """Market data access: Tiingo prices with Yahoo Finance fallback and profiles."""
 
-from collections import OrderedDict
 from datetime import date, timedelta
-from functools import lru_cache
 import logging
 from math import isfinite
-from threading import Lock
 from time import monotonic, sleep
 
 import pandas as pd
 import requests
 import yfinance as yf
-from yfinance.exceptions import YFRateLimitError
+from yfinance.exceptions import YFException, YFRateLimitError
 
 from optimizacion_portafolios.data import price_store
+from optimizacion_portafolios.data.cache import TtlCache, ttl_cache
 from optimizacion_portafolios.data.tiingo_prices import (
     PriceSource,
     download_tiingo_crypto_ohlcv,
@@ -26,21 +24,39 @@ from optimizacion_portafolios.data.tiingo_prices import (
 )
 
 logger = logging.getLogger(__name__)
+# Provider failures of a download (network, timeout, Yahoo errors); callers
+# turn them into a Spanish message instead of a 500.
+DOWNLOAD_ERRORS = (requests.RequestException, TimeoutError, YFException)
 _INFO_CACHE_TTL_SECONDS = 15 * 60
 _INFO_CACHE_MAX_SIZE = 512
 _PRICE_CACHE_TTL_SECONDS = 15 * 60
 _PRICE_CACHE_MAX_SIZE = 64
+# Empty results (unknown ticker, provider hiccup) are reused this long only.
+_EMPTY_CACHE_TTL_SECONDS = 60
+_FX_CACHE_TTL_SECONDS = 15 * 60
 _RATE_LIMIT_RETRIES = 2
-_info_lock = Lock()
-_price_lock = Lock()
-_price_cache: "OrderedDict[tuple, pd.DataFrame]" = OrderedDict()
-_ohlcv_cache: "OrderedDict[tuple, pd.DataFrame]" = OrderedDict()
 OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
 _YAHOO_OHLCV_FIELDS = dict(zip(OHLCV_COLUMNS, ("Open", "High", "Low", "Close", "Volume")))
 
 
-@lru_cache(maxsize=_INFO_CACHE_MAX_SIZE)
-def _cached_ticker_info(ticker: str, cache_window: int) -> dict:
+def _now() -> float:
+    # Looked up on every call so tests can patch ``market_data.monotonic``.
+    return monotonic()
+
+
+_price_cache = TtlCache(_PRICE_CACHE_TTL_SECONDS, _PRICE_CACHE_MAX_SIZE, _now)
+_ohlcv_cache = TtlCache(_PRICE_CACHE_TTL_SECONDS, _PRICE_CACHE_MAX_SIZE, _now)
+
+
+@ttl_cache(
+    _INFO_CACHE_TTL_SECONDS,
+    _INFO_CACHE_MAX_SIZE,
+    negative_ttl=_EMPTY_CACHE_TTL_SECONDS,
+    is_negative=lambda info: not info,
+    copy=dict,
+    clock=_now,
+)
+def _cached_ticker_info(ticker: str) -> dict:
     # Use yfinance's own curl_cffi session (it applies its own timeouts). A plain
     # requests.Session disables browser impersonation and Yahoo then throttles or
     # stalls profile lookups.
@@ -61,9 +77,8 @@ def _cached_ticker_info(ticker: str, cache_window: int) -> dict:
 
 
 def _ticker_info(ticker: str) -> dict:
-    cache_window = int(monotonic() // _INFO_CACHE_TTL_SECONDS)
-    with _info_lock:
-        return dict(_cached_ticker_info(ticker, cache_window))
+    """Yahoo profile of ``ticker`` (cached 15 minutes; an independent copy)."""
+    return _cached_ticker_info(ticker)
 
 
 def _download_yfinance_prices(
@@ -133,44 +148,32 @@ def download_prices(
     the InsForge price store is configured, stored closes are reused and only
     the missing recent days are downloaded (``price_store.fetch``).
 
-    Results are cached for up to 15 minutes per ``(tickers, start, end)`` (same
-    ``cache_window`` scheme as the profile cache) and every call returns an
-    independent copy, so callers may mutate the frame freely. Empty results are
-    not cached, so a transient provider failure is retried on the next call.
+    Results are cached for 15 minutes per ``(tickers, start, end)`` from the
+    moment they were downloaded, and every call returns an independent copy,
+    so callers may mutate the frame freely. Empty results are kept only for
+    ``_EMPTY_CACHE_TTL_SECONDS``, so a transient provider failure is retried
+    soon without downloading a ticker that has no data on every request.
     """
     tickers = tuple(tickers)
     if not tickers:
         return pd.DataFrame()
-    cache_window = int(monotonic() // _PRICE_CACHE_TTL_SECONDS)
-    key = (tickers, start, end, cache_window)
-    with _price_lock:
-        cached = _price_cache.get(key)
-        if cached is not None:
-            _price_cache.move_to_end(key)
-            return cached.copy()
-    # Download outside the lock so slow requests do not serialize other users.
-    prices = _download_prices_persistent(tickers, start, end)
-    if not prices.empty:
-        with _price_lock:
-            _store(_price_cache, key, prices)
-    return prices
+    return _cached_download(_price_cache, (tickers, start, end), _download_prices_persistent)
+
+
+def _cached_download(cache: TtlCache, key: tuple, download) -> pd.DataFrame:
+    cached = cache.get(key)
+    if cached is not None:
+        return cached.copy()
+    # Download outside the cache lock so slow requests do not serialize other users.
+    frame = download(*key)
+    cache.put(key, frame.copy(), _EMPTY_CACHE_TTL_SECONDS if frame.empty else None)
+    return frame
 
 
 def clear_price_cache() -> None:
     """Drop every cached price download (used by tests)."""
-    with _price_lock:
-        _price_cache.clear()
-        _ohlcv_cache.clear()
-
-
-def _store(cache: "OrderedDict[tuple, pd.DataFrame]", key: tuple, frame: pd.DataFrame) -> None:
-    """Insert ``frame`` in ``cache`` dropping entries of older windows (lock held)."""
-    cache[key] = frame.copy()
-    cache.move_to_end(key)
-    for old_key in [k for k in cache if k[-1] != key[-1]]:
-        del cache[old_key]
-    while len(cache) > _PRICE_CACHE_MAX_SIZE:
-        cache.popitem(last=False)
+    _price_cache.clear()
+    _ohlcv_cache.clear()
 
 
 def _yahoo_field(downloaded: pd.DataFrame, field: str, ticker: str) -> pd.Series | None:
@@ -235,18 +238,7 @@ def download_ohlcv(ticker: str, start: date, end: date) -> pd.DataFrame:
     ``Fecha`` (tz-naive days, ascending, unique). Empty frame without data.
     Cached like ``download_prices``; every call returns an independent copy.
     """
-    cache_window = int(monotonic() // _PRICE_CACHE_TTL_SECONDS)
-    key = (ticker, start, end, cache_window)
-    with _price_lock:
-        cached = _ohlcv_cache.get(key)
-        if cached is not None:
-            _ohlcv_cache.move_to_end(key)
-            return cached.copy()
-    frame = _download_ohlcv_uncached(ticker, start, end)
-    if not frame.empty:
-        with _price_lock:
-            _store(_ohlcv_cache, key, frame)
-    return frame
+    return _cached_download(_ohlcv_cache, (ticker, start, end), _download_ohlcv_uncached)
 
 
 def _download_ohlcv_uncached(ticker: str, start: date, end: date) -> pd.DataFrame:
@@ -326,6 +318,12 @@ def _exchange_rate_to_usd(currency: str) -> float:
     currency = currency.upper()
     if currency == "USD":
         return 1.0
+    return _latest_exchange_rate(currency)
+
+
+@ttl_cache(_FX_CACHE_TTL_SECONDS, 64, clock=_now)
+def _latest_exchange_rate(currency: str) -> float:
+    """USD per unit of ``currency`` from Yahoo's last close (cached 15 minutes)."""
     last_error = None
     for symbol, invert in ((f"{currency}USD=X", False), (f"USD{currency}=X", True)):
         try:

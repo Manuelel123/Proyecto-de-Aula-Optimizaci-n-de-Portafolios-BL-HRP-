@@ -1,6 +1,6 @@
 """Owner-scoped access to tracked portfolios.
 
-Every read takes the InsForge ``user_id`` of the signed-in user, so a route
+Every read takes the ``user_id`` (``str(User.id)``) of the signed-in user, so a route
 can never load another user's portfolio: it simply gets ``None`` (a 404).
 """
 
@@ -166,10 +166,6 @@ def archive_portfolio(portfolio: Portfolio, when) -> None:
     portfolio.status = "archived"
     portfolio.archived_at = when
     db.session.commit()
-
-
-def snapshot_days(portfolio: Portfolio) -> set[date]:
-    return set(db.session.scalars(select(DailySnapshot.day).where(DailySnapshot.portfolio_id == portfolio.id)))
 
 
 def save_snapshots(portfolio: Portfolio, rows: list[dict], refresh_day: date | None = None) -> int:

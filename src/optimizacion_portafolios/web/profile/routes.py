@@ -1,0 +1,318 @@
+"""Questionnaire wizard, profile result, role confirmation and "Mi perfil".
+
+The wizard has one step for the prior data (capital and horizon) and one per
+block of the questionnaire. Every submitted step is stored in the user's
+draft (``perfil_borradores``), so an unfinished questionnaire resumes where it
+was left; completing the last step saves a new current profile.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from flask import flash, redirect, render_template, request, url_for
+from flask_login import current_user
+from sqlalchemy.exc import IntegrityError
+
+from optimizacion_portafolios.profiling import (
+    PRIOR_STEP,
+    VETO_FACTOR,
+    AnswerError,
+    Questionnaire,
+    clean_answers,
+    evaluate,
+    explain,
+    format_score,
+)
+from optimizacion_portafolios.storage import db
+from optimizacion_portafolios.storage.models import Profile
+from optimizacion_portafolios.storage.profiles import (
+    delete_draft,
+    get_current_profile,
+    get_draft,
+    list_profiles,
+    save_draft,
+    save_profile,
+)
+from optimizacion_portafolios.web.auth.roles import GESTOR_ROLE, SELECTABLE_ROLES, canonical_role
+from optimizacion_portafolios.web.profile import bp
+from optimizacion_portafolios.web.profile.access import get_questionnaire, refresh_profile_session
+
+logger = logging.getLogger(__name__)
+
+DISCLAIMER = "Información educativa. No es recomendación de inversión ni asesoría financiera."
+ROLE_DESCRIPTIONS = {
+    "novato": "HRP y Black-Litterman guiados, sin parámetros avanzados. Ideal para empezar.",
+    "inversionista": "Además: límites de peso, excluir activos, comparar HRP con Black-Litterman, fijar y rebalancear portafolios.",
+}
+ROLE_LABELS = {"novato": "Novato", "inversionista": "Inversionista", "gestor": "Gestor"}
+PRIOR_FIELDS = ("capital_rango", "horizonte")
+
+
+# Draft helpers -------------------------------------------------------------------
+def _load_draft(questionnaire: Questionnaire) -> tuple[dict, int]:
+    """``(data, reached step)`` of the user's draft; drafts of other versions are discarded."""
+    draft = get_draft(current_user.id)
+    if draft is not None and draft.version_cuestionario != questionnaire.version:
+        delete_draft(current_user.id)
+        draft = None
+    if draft is None:
+        return {"respuestas": {}}, 0
+    data = dict(draft.datos or {})
+    data["respuestas"] = clean_answers(questionnaire, data.get("respuestas") or {})
+    return data, max(0, min(draft.paso, len(questionnaire.steps) - 1))
+
+
+def _step_questions(questionnaire: Questionnaire, step: int):
+    step_id = questionnaire.steps[step]
+    return () if step_id == PRIOR_STEP else questionnaire.block(step_id).questions
+
+
+def _merge_step(questionnaire: Questionnaire, step: int, data: dict, form) -> list[str]:
+    """Copy the valid answers of ``step`` from ``form`` into ``data``; return missing fields."""
+    if questionnaire.steps[step] == PRIOR_STEP:
+        lookups = {"capital_rango": questionnaire.capital, "horizonte": questionnaire.horizon}
+        for name, lookup in lookups.items():
+            value = form.get(name, "")
+            try:
+                lookup(value)
+            except KeyError:
+                continue
+            data[name] = value
+        return [name for name in PRIOR_FIELDS if not data.get(name)]
+    questions = _step_questions(questionnaire, step)
+    submitted = {question.id: form.get(question.id) for question in questions if question.id in form}
+    data["respuestas"].update(clean_answers(questionnaire, submitted))
+    return [question.id for question in questions if question.id not in data["respuestas"]]
+
+
+def _first_incomplete_step(questionnaire: Questionnaire, data: dict) -> int | None:
+    for step in range(len(questionnaire.steps)):
+        if questionnaire.steps[step] == PRIOR_STEP:
+            if any(not data.get(name) for name in PRIOR_FIELDS):
+                return step
+        elif any(question.id not in data["respuestas"] for question in _step_questions(questionnaire, step)):
+            return step
+    return None
+
+
+def _render_step(questionnaire: Questionnaire, step: int, data: dict, reached: int, missing=(), status=200):
+    step_id = questionnaire.steps[step]
+    titles = ["Datos previos"] + [block.title for block in questionnaire.blocks]
+    if step_id == PRIOR_STEP:
+        intro = "Cuéntanos con cuánto capital cuentas y por cuánto tiempo piensas invertir."
+        fields = [
+            {
+                "name": "capital_rango",
+                "legend": questionnaire.capital_text,
+                "options": [(choice.id, choice.text) for choice in questionnaire.capital_options],
+                "selected": data.get("capital_rango"),
+                "help": "Montos en pesos colombianos (COP).",
+            },
+            {
+                "name": "horizonte",
+                "legend": questionnaire.horizon_text,
+                "options": [(choice.id, choice.text) for choice in questionnaire.horizon_options],
+                "selected": data.get("horizonte"),
+                "help": None,
+            },
+        ]
+    else:
+        block = questionnaire.block(step_id)
+        intro = block.description
+        # Questions are numbered across blocks (1 to 10 with the shipped file).
+        offset = sum(len(other.questions) for other in questionnaire.blocks[: step - 1])
+        fields = [
+            {
+                "name": question.id,
+                "legend": f"{number}. {question.text}",
+                "options": list(enumerate(question.options, start=1)),
+                "selected": data["respuestas"].get(question.id),
+                "help": None,
+            }
+            for number, question in enumerate(block.questions, start=offset + 1)
+        ]
+    return render_template(
+        "profile/questionnaire.html",
+        step=step,
+        intro=intro,
+        fields=fields,
+        titles=titles,
+        reached=reached,
+        data=data,
+        missing=set(missing),
+        repeating=get_current_profile(current_user.id) is not None,
+        is_last=step == len(questionnaire.steps) - 1,
+    ), status
+
+
+# Questionnaire -----------------------------------------------------------------
+@bp.get("/cuestionario")
+def questionnaire():
+    questionnaire = get_questionnaire()
+    data, reached = _load_draft(questionnaire)
+    step = request.args.get("paso", type=int)
+    if step is None or not 0 <= step <= reached:
+        step = reached
+    return _render_step(questionnaire, step, data, reached)
+
+
+@bp.post("/cuestionario")
+def save_step():
+    questionnaire = get_questionnaire()
+    data, reached = _load_draft(questionnaire)
+    step = request.form.get("paso", type=int)
+    if step is None or not 0 <= step <= reached:
+        return redirect(url_for("profile.questionnaire"))
+    missing = _merge_step(questionnaire, step, data, request.form)
+
+    if request.form.get("accion") == "anterior":
+        save_draft(current_user.id, questionnaire.version, reached, data)
+        return redirect(url_for("profile.questionnaire", paso=max(0, step - 1)))
+    if missing:
+        save_draft(current_user.id, questionnaire.version, reached, data)
+        flash("Responde todas las preguntas de este paso para continuar.", "error")
+        return _render_step(questionnaire, step, data, reached, missing, status=400)
+
+    last = len(questionnaire.steps) - 1
+    if step < last:
+        save_draft(current_user.id, questionnaire.version, max(reached, step + 1), data)
+        return redirect(url_for("profile.questionnaire", paso=step + 1))
+
+    pending = _first_incomplete_step(questionnaire, data)
+    if pending is not None:
+        save_draft(current_user.id, questionnaire.version, pending, data)
+        flash("Faltan respuestas en un paso anterior.", "error")
+        return redirect(url_for("profile.questionnaire", paso=pending))
+    try:
+        result = evaluate(questionnaire, data["capital_rango"], data["horizonte"], data["respuestas"])
+    except AnswerError as error:  # defensive: the steps were validated above
+        flash(str(error), "error")
+        return redirect(url_for("profile.questionnaire", paso=0))
+    try:
+        profile = save_profile(current_user.id, result)
+    except IntegrityError:
+        # Two submissions at once: the other one already stored the profile.
+        refresh_profile_session(current_user)
+        flash("Tu perfil ya se había guardado en otra pestaña o envío.", "info")
+        return redirect(url_for("profile.result"))
+    refresh_profile_session(current_user)
+    logger.info("Risk profile %s saved for user %s (%s)", profile.id, current_user.id, result.final_level)
+    flash("Tu perfil de riesgo quedó guardado.", "success")
+    return redirect(url_for("profile.result"))
+
+
+# Result, role and "Mi perfil" ------------------------------------------------------
+def _profile_view(questionnaire: Questionnaire, profile: Profile) -> dict:
+    """Labels and the plain-language explanation of a saved profile."""
+    explanation = None
+    if profile.version_cuestionario == questionnaire.version:
+        try:
+            result = evaluate(questionnaire, profile.capital_rango, profile.horizonte, profile.respuestas or {})
+            explanation = explain(questionnaire, result)
+        except (AnswerError, KeyError):
+            explanation = None
+
+    def label(level_id):
+        try:
+            return questionnaire.level(level_id).label
+        except KeyError:
+            return level_id
+
+    def choice_text(lookup, choice_id):
+        try:
+            return lookup(choice_id).text
+        except KeyError:
+            return choice_id
+
+    try:
+        description = questionnaire.level(profile.perfil_final).description
+    except KeyError:
+        description = ""
+    horizon_capped = profile.nivel_horizonte != questionnaire.levels[-1].id
+    return {
+        "profile": profile,
+        "final_label": label(profile.perfil_final),
+        "final_description": description,
+        "factor_label": questionnaire.factor_labels.get(profile.factor_limitante, profile.factor_limitante),
+        "is_veto": profile.factor_limitante == VETO_FACTOR,
+        "explanation": explanation
+        or f"Perfil calculado con la versión {profile.version_cuestionario} del cuestionario.",
+        "tolerance": (format_score(profile.puntaje_tolerancia), label(profile.nivel_tolerancia)),
+        "capacity": (format_score(profile.puntaje_capacidad), label(profile.nivel_capacidad)),
+        "horizon": (
+            choice_text(questionnaire.horizon, profile.horizonte),
+            f"Máximo {label(profile.nivel_horizonte).lower()}" if horizon_capped else "Sin tope",
+        ),
+        "capital": choice_text(questionnaire.capital, profile.capital_rango),
+        "suggested_role": canonical_role(profile.rol_sugerido),
+    }
+
+
+def _is_gestor() -> bool:
+    return current_user.role == GESTOR_ROLE
+
+
+@bp.get("/resultado")
+def result():
+    profile = get_current_profile(current_user.id)
+    if profile is None:
+        return redirect(url_for("profile.questionnaire"))
+    view = _profile_view(get_questionnaire(), profile)
+    selected = current_user.role if current_user.role_confirmed else canonical_role(profile.rol_sugerido)
+    return render_template(
+        "profile/result.html",
+        view=view,
+        disclaimer=DISCLAIMER,
+        is_gestor=_is_gestor(),
+        roles=[(role, ROLE_LABELS.get(role, role), ROLE_DESCRIPTIONS.get(role, "")) for role in SELECTABLE_ROLES],
+        role_labels=ROLE_LABELS,
+        selected_role=selected if selected in SELECTABLE_ROLES else SELECTABLE_ROLES[0],
+    )
+
+
+@bp.post("/rol")
+def confirm_role():
+    if _is_gestor():
+        flash("Tu rol de gestor lo asigna la administración; no necesitas confirmarlo.", "info")
+        return redirect(url_for("profile.result"))
+    if get_current_profile(current_user.id) is None:
+        return redirect(url_for("profile.questionnaire"))
+    role = request.form.get("rol", "")
+    if role not in SELECTABLE_ROLES:
+        flash("Elige novato o inversionista.", "error")
+        return redirect(url_for("profile.result"))
+    current_user.role = role
+    current_user.role_confirmed = True
+    db.session.commit()
+    flash(f"Listo: usarás Atlas como {ROLE_LABELS.get(role, role).lower()}.", "success")
+    return redirect(url_for("main.index"))
+
+
+@bp.get("/")
+def mine():
+    profile = get_current_profile(current_user.id)
+    if profile is None:
+        return redirect(url_for("profile.questionnaire"))
+    questionnaire = get_questionnaire()
+    history = list_profiles(current_user.id)
+    labels = {level.id: level.label for level in questionnaire.levels}
+    return render_template(
+        "profile/mine.html",
+        view=_profile_view(questionnaire, profile),
+        disclaimer=DISCLAIMER,
+        history=history,
+        level_labels=labels,
+        factor_labels=questionnaire.factor_labels,
+        draft=get_draft(current_user.id),
+        role_label=ROLE_LABELS.get(current_user.role, current_user.role),
+        is_gestor=_is_gestor(),
+    )
+
+
+@bp.post("/repetir")
+def repeat():
+    """Start the questionnaire again; the current profile stays until it is completed."""
+    delete_draft(current_user.id)
+    return redirect(url_for("profile.questionnaire"))
+

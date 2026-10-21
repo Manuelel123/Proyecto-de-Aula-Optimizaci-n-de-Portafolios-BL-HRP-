@@ -10,30 +10,47 @@ Exchange rates come from Yahoo's ``{CCY}USD=X`` series (or the inverse of
 from __future__ import annotations
 
 from datetime import date
-from functools import lru_cache
 
 import pandas as pd
 
+from optimizacion_portafolios.data.cache import TtlCache, ttl_cache
 from optimizacion_portafolios.data.market_data import download_prices, fetch_fundamental_information
 from optimizacion_portafolios.data.tiingo_prices import PriceSource, price_source
 
 BASE_CURRENCY = "USD"
 _SUBUNITS = {"GBp": ("GBP", 0.01), "GBX": ("GBP", 0.01), "ZAc": ("ZAR", 0.01), "ILA": ("ILS", 0.01)}
+# A listing's currency practically never changes; a profile without currency
+# (often a failed lookup that defaults to USD) is retried after a minute.
+_CURRENCY_TTL_SECONDS = 12 * 60 * 60
+_UNKNOWN_CURRENCY_TTL_SECONDS = 60
+_RATE_TTL_SECONDS = 15 * 60
+_currency_cache = TtlCache(_CURRENCY_TTL_SECONDS, 512)
 
 
-@lru_cache(maxsize=512)
 def ticker_currency(ticker: str) -> tuple[str, float]:
     """``(currency, factor)``: multiply prices by ``factor`` to get ``currency``."""
     if price_source(ticker) is not PriceSource.YFINANCE or ticker.upper().endswith("-USD"):
         return BASE_CURRENCY, 1.0
-    currency = str(fetch_fundamental_information(ticker).get("currency") or BASE_CURRENCY).strip()
-    if currency in _SUBUNITS:
-        return _SUBUNITS[currency]
-    return currency.upper(), 1.0
+    cached = _currency_cache.get(ticker)
+    if cached is not None:
+        return cached
+    reported = fetch_fundamental_information(ticker).get("currency")
+    currency = str(reported or BASE_CURRENCY).strip()
+    result = _SUBUNITS[currency] if currency in _SUBUNITS else (currency.upper(), 1.0)
+    _currency_cache.put(ticker, result, None if reported else _UNKNOWN_CURRENCY_TTL_SECONDS)
+    return result
 
 
+ticker_currency.cache_clear = _currency_cache.clear
+
+
+@ttl_cache(_RATE_TTL_SECONDS, 64, copy=pd.Series.copy)
 def usd_rate(currency: str, start: date, end: date) -> pd.Series:
-    """USD per unit of ``currency`` per day (raises ``ValueError`` without data)."""
+    """USD per unit of ``currency`` per day (raises ``ValueError`` without data).
+
+    Cached 15 minutes per ``(currency, start, end)``; failures are not cached
+    (the empty downloads behind them are, briefly, by ``download_prices``).
+    """
     direct = f"{currency}USD=X"
     prices = download_prices((direct,), start, end)
     if direct in prices and prices[direct].notna().any():

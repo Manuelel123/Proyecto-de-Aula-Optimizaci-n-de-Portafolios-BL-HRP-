@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/learning.html" import educational_notice %}
 {% block title %}Historial de backtests{% endblock %}
 {% block content %}
   <header class="page-header">
@@ -12,6 +13,7 @@
       <a class="button button-primary" href="{{ url_for('hrp.hrp') }}">Nuevo backtest</a>
     </div>
   </header>
+  {{ educational_notice() }}
 
   {% if runs %}
     <div class="data-table-wrap card">

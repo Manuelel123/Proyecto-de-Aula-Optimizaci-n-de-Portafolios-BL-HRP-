@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/learning.html" import educational_notice %}
 {% block title %}Backtest {{ run.start_date }} — {{ run.end_date }}{% endblock %}
 {% block content %}
   <header class="page-header">
@@ -8,6 +9,7 @@
       <p class="lead"><span class="mono">{{ run.tickers|join(', ') }}</span> · {{ run.start_date }} — {{ run.end_date }} · {{ run.trading_days }} días · calculado el {{ run.created_at|datetime_short }}</p>
     </div>
   </header>
+  {{ educational_notice() }}
 
   <dl class="account-metrics account-metrics--wide card">
     <div><dt>Ventana de estimación</dt><dd>{{ run.lookback }} días</dd></div>

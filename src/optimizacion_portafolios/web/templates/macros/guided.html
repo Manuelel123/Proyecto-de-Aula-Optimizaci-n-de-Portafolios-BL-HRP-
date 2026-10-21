@@ -1,0 +1,51 @@
+{# Form pieces of the guided pages (novato / inversionista). Import "with context" (reads can()). #}
+{% from "macros/forms.html" import universe_select, asset_selector, percent_input, help_tip %}
+
+{# Universe choice: radio cards for the novato; select + asset chips (exclusion) from inversionista. #}
+{% macro universe_fields(universes, names, selected_name, descriptions, payload, available, selected, labels) %}
+  {% if can('exclude_assets') %}
+    <div class="form-field">
+      <label for="universe">Universo</label>
+      {{ universe_select("universe", names, selected_name, payload) }}
+      {% if descriptions.get(selected_name) %}<p class="help-text">{{ descriptions[selected_name] }}</p>{% endif %}
+    </div>
+    <button class="button button-secondary button-sm js-hidden" type="submit" name="action" value="refresh">Actualizar lista de activos</button>
+    <div class="form-field">
+      <span class="field-label">Activos incluidos {{ help_tip("Desmarca un activo para excluirlo del cálculo. Se necesitan al menos dos.", "Ayuda sobre excluir activos") }}</span>
+      <div data-min-selected="2">{{ asset_selector(available, selected, labels=labels) }}</div>
+    </div>
+  {% else %}
+    <fieldset class="check-list guided-universes">
+      <legend class="field-label">Elige un grupo de activos</legend>
+      {% for name in names %}
+        <label class="guided-universe">
+          <input type="radio" name="universe" value="{{ name }}"{{ ' checked' if name == selected_name else '' }}>
+          <span class="guided-universe__body">
+            <span class="guided-universe__name">{{ name }}</span>
+            {% if descriptions.get(name) %}<span class="help-text">{{ descriptions[name] }}</span>{% endif %}
+            <span class="weight-chips" aria-label="Activos de {{ name }}">{% for ticker in universes[name].values()|unique %}{% if loop.index <= 8 %}<span class="mono">{{ ticker }}</span>{% endif %}{% endfor %}{% if (universes[name].values()|unique|list|length) > 8 %}<span class="weight-chips__more">+{{ (universes[name].values()|unique|list|length) - 8 }}</span>{% endif %}</span>
+          </span>
+        </label>
+      {% endfor %}
+    </fieldset>
+  {% endif %}
+{% endmacro %}
+
+{# Maximum weight per asset (inversionista); read-only line otherwise. #}
+{% macro max_weight_field(value) %}
+  {% if can('weight_limits') %}
+    <div class="form-field">
+      <label for="max_weight">Peso máximo por activo {{ help_tip("Ningún activo recibirá más de este porcentaje. Con N activos debe ser al menos 100/N %.", "Ayuda sobre el peso máximo") }}</label>
+      {{ percent_input("max_weight", value, min=1, max=100, required=True) }}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{# Note under the guided form: why there are no more parameters. #}
+{% macro guided_note() %}
+  {% if not can('weight_limits') %}
+    <p class="help-text">Vista guiada: el resto de parámetros está fijo con valores razonables. Con el rol inversionista puedes excluir activos y limitar el peso máximo.</p>
+  {% else %}
+    <p class="help-text">Vista guiada: periodo, benchmark y demás supuestos están fijos para que los resultados sean comparables.</p>
+  {% endif %}
+{% endmacro %}

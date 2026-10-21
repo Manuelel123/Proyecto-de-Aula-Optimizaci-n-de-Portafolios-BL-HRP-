@@ -1,7 +1,7 @@
 {% extends "auth/_layout.html" %}
 {% block title %}Nueva contraseña{% endblock %}
 {% block eyebrow %}Recuperación{% endblock %}
-{% block heading %}Crea una nueva contraseña{% endblock %}
+{% block heading %}Crea una contraseña nueva{% endblock %}
 {% block intro %}<p class="auth-card__lead">Escribe el código que enviamos a <strong>{{ email }}</strong> y tu nueva contraseña.</p>{% endblock %}
 {% block form %}
   <form method="post" class="form-stack" novalidate>
@@ -11,9 +11,9 @@
       <input id="code" name="code" class="auth-code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
     </div>
     <div class="form-field">
-      <label for="password">Nueva contraseña</label>
-      <input id="password" name="password" type="password" autocomplete="new-password" required{% if password_rules %} aria-describedby="password-help"{% endif %}>
-      {% if password_rules %}<p class="help-text" id="password-help">Debe tener {{ password_rules|join(', ') }}.</p>{% endif %}
+      <label for="password">Contraseña nueva</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128"{% if password_rules %} aria-describedby="password-help"{% endif %}>
+      {% if password_rules %}<p class="help-text" id="password-help">Debe tener {{ password_rules|join(' y ') }}.</p>{% endif %}
     </div>
     <div class="form-field">
       <label for="password_confirm">Confirma la contraseña</label>

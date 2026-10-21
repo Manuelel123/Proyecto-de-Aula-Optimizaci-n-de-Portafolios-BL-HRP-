@@ -11,16 +11,13 @@ from __future__ import annotations
 import math
 from datetime import date
 
-from flask import current_app
-from itsdangerous import BadSignature, URLSafeTimedSerializer
+from itsdangerous import BadSignature
+
+from optimizacion_portafolios.web.common.signing import serializer
 
 _SALT = "atlas-portfolio-snapshot"
 MAX_AGE_SECONDS = 24 * 60 * 60
 MODEL_LABELS = {"hrp": "HRP", "black_litterman": "Black-Litterman"}
-
-
-def _serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(current_app.secret_key, salt=_SALT)
 
 
 def _clean(value):
@@ -39,12 +36,12 @@ def _clean(value):
 
 
 def sign(snapshot: dict) -> str:
-    return _serializer().dumps(_clean(snapshot))
+    return serializer(_SALT).dumps(_clean(snapshot))
 
 
 def unsign(token: str) -> dict | None:
     try:
-        snapshot = _serializer().loads(token, max_age=MAX_AGE_SECONDS)
+        snapshot = serializer(_SALT).loads(token, max_age=MAX_AGE_SECONDS)
     except BadSignature:
         return None
     if not isinstance(snapshot, dict) or snapshot.get("model") not in MODEL_LABELS:
