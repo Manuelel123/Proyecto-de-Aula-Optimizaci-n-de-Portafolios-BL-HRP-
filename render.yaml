@@ -24,9 +24,11 @@ services:
       # Skip the vectorbt warm-up to stay under the free plan's 512 MB.
       - key: ATLAS_VECTORBT_WARMUP
         value: "0"
-      - key: MAIL_USERNAME
+      # Verification codes go through Brevo's API: the free plan blocks SMTP.
+      - key: BREVO_API_KEY
         sync: false
-      - key: MAIL_PASSWORD
+      # Sender verified in Brevo, e.g. "Atlas <you@gmail.com>".
+      - key: MAIL_FROM
         sync: false
       - key: INSFORGE_URL
         sync: false
