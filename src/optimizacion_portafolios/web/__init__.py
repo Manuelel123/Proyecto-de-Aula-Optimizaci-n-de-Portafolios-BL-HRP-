@@ -50,7 +50,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         REMEMBER_COOKIE_SECURE=secure_cookies,
         PERMANENT_SESSION_LIFETIME=timedelta(days=30),
         # Comma-separated emails that get the "gestor" role (web.auth.roles).
-        SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL")
+        SQLALCHEMY_DATABASE_URI=database_url(os.environ.get("DATABASE_URL"))
         or "sqlite:///" + os.path.join(app.instance_path, "atlas.db"),
     )
     if testing:
@@ -72,7 +72,36 @@ def create_app(test_config: dict | None = None) -> Flask:
     _register_csrf_protection(app)
     _register_error_handlers(app)
     _warm_up_backtest_engine(app)
+    _trust_reverse_proxy(app)
     return app
+
+
+def _trust_reverse_proxy(app: Flask) -> None:
+    """Read the client IP and scheme from ``ATLAS_PROXY_HOPS`` trusted proxies.
+
+    Behind a host's proxy (Render: 1) every request otherwise comes from the
+    proxy's address, so the sign-in throttle's per-IP key would lock out
+    everyone at once. Leave unset when the app is reached directly.
+    """
+    hops = int(os.environ.get("ATLAS_PROXY_HOPS") or 0)
+    if hops > 0:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops)
+
+
+def database_url(url: str | None) -> str | None:
+    """``DATABASE_URL`` with Postgres URLs routed to the psycopg 3 driver.
+
+    Hosts such as Render hand out ``postgres://`` or ``postgresql://`` URLs,
+    which SQLAlchemy would map to psycopg2 (not installed).
+    """
+    if not url:
+        return None
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
 
 
 def _warm_up_backtest_engine(app: Flask) -> None:
