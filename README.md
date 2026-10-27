@@ -58,6 +58,15 @@ MAIL_PASSWORD=xxxx xxxx xxxx xxxx     # contraseña de aplicación, no la normal
 
 La contraseña de aplicación se crea en tu cuenta de Google → Seguridad → Verificación en dos pasos (debe estar activa) → Contraseñas de aplicaciones. Sin estas variables, el servidor de desarrollo (`--debug`) muestra el código en su consola en lugar de enviarlo; fuera de desarrollo el envío falla con un mensaje.
 
+**Brevo (sin SMTP).** Donde el SMTP saliente está bloqueado (el plan gratis de Render), los correos salen por la API HTTPS de [Brevo](https://www.brevo.com) (gratis hasta 300 correos al día). Si `BREVO_API_KEY` está definida, se usa Brevo en lugar de SMTP:
+
+```dotenv
+BREVO_API_KEY=xkeysib-...                # Brevo → SMTP & API → API Keys
+MAIL_FROM=Atlas <tu-cuenta@gmail.com>    # obligatorio: remitente verificado en Brevo
+```
+
+En Brevo, registra y confirma ese correo en **Senders, Domains & Dedicated IPs → Senders** antes de enviar; si no, Brevo rechaza el envío (el motivo queda en el log del servidor). Con un remitente `@gmail.com` algunos mensajes pueden llegar a spam; un dominio propio autenticado en Brevo lo evita.
+
 ## Uso: flujo de pantallas y roles
 
 1. **Sin sesión** solo se ve la portada (`/`): qué es Atlas, para quién es, el aviso educativo y los formularios de inicio de sesión y registro. No muestra herramientas ni resultados (los diagramas de la portada están rotulados como ilustrativos).
@@ -205,6 +214,37 @@ uv run waitress-serve --host 0.0.0.0 --port 8000 wsgi:app
 ```
 
 Configura `FLASK_SECRET_KEY` con un valor aleatorio secreto al desplegar y habilita `FLASK_SESSION_COOKIE_SECURE=true` cuando la aplicación se sirva exclusivamente por HTTPS. El servidor Flask integrado es para desarrollo; Waitress es el servidor WSGI de producción.
+
+## Despliegue en Render (imagen Docker)
+
+El `Dockerfile` construye una imagen con Python 3.14, las dependencias de `uv.lock` y Waitress; al arrancar aplica las migraciones y escucha en `$PORT`. `render.yaml` es un Blueprint de Render que crea el servicio web (runtime Docker) y una base Postgres, y conecta las dos con `DATABASE_URL`.
+
+1. Sube la rama a GitHub. En Render: **New → Blueprint**, elige este repositorio y la rama.
+2. Render pide los valores marcados `sync: false`: `BREVO_API_KEY` y `MAIL_FROM` (correo con Brevo, ver «Correo»), `INSFORGE_URL`, `INSFORGE_API_KEY` y `TIINGO_API_KEY` (los que no uses quedan vacíos). `FLASK_SECRET_KEY` se genera solo.
+3. Al terminar el despliegue, la app queda en `https://atlas-xxxx.onrender.com`, accesible desde cualquier dispositivo. La base empieza vacía: cada persona se registra de nuevo.
+4. Para otorgar el rol gestor, abre la **Shell** del servicio en Render y ejecuta `flask --app wsgi:app users make-gestor tu-correo@example.com`.
+
+Variables propias del despliegue (ya definidas en `render.yaml`):
+
+- `DATABASE_URL`: Render entrega `postgres://…`; la app lo convierte para usar el driver `psycopg` (incluido en las dependencias).
+- `ATLAS_PROXY_HOPS=1`: número de proxies de confianza delante de la app. Con él, la IP del cliente (usada por el límite de intentos de inicio de sesión) y el esquema HTTPS se leen de `X-Forwarded-For`/`X-Forwarded-Proto`. No lo definas si la app recibe las peticiones directamente: cualquiera podría falsear su IP.
+- `FLASK_SESSION_COOKIE_SECURE=true`: cookies solo por HTTPS.
+- `ATLAS_VECTORBT_WARMUP=0`: no precompila vectorbt al arrancar, para quedar dentro de los 512 MB del plan gratis (la app usa unos 330 MB sin el precalentamiento y unos 420 MB con él). El primer backtest tarda unos segundos más.
+
+Limitaciones del plan gratis de Render:
+
+- **El servicio se duerme** tras 15 minutos sin visitas; la siguiente visita tarda cerca de un minuto en despertarlo.
+- **La base Postgres gratis vence a los 30 días**; para conservar los datos hay que pasarla a un plan pago antes.
+- **Render bloquea el SMTP saliente** (puertos 25, 465 y 587) en los servicios gratis; por eso `render.yaml` envía los códigos con Brevo (`BREVO_API_KEY`). Sin esa clave nadie puede terminar el registro.
+
+Para probar la imagen en local (requiere Docker):
+
+```powershell
+docker build -t atlas .
+docker run -p 8000:8000 --env-file .env atlas
+```
+
+El workflow `.github/workflows/docker-image.yml` construye la imagen y comprueba que la portada responda en cada pull request.
 
 ## Módulos
 

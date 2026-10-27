@@ -1,0 +1,45 @@
+# Render Blueprint: the Atlas web service (Docker image) and its Postgres.
+# Render dashboard > New > Blueprint > this repository. Values marked
+# "sync: false" are asked for when the Blueprint is created.
+services:
+  - type: web
+    name: atlas
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: virginia
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: atlas-db
+          property: connectionString
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: FLASK_SESSION_COOKIE_SECURE
+        value: "true"
+      # Render's proxy sits in front of the app (client IP for the sign-in throttle).
+      - key: ATLAS_PROXY_HOPS
+        value: "1"
+      # Skip the vectorbt warm-up to stay under the free plan's 512 MB.
+      - key: ATLAS_VECTORBT_WARMUP
+        value: "0"
+      # Verification codes go through Brevo's API: the free plan blocks SMTP.
+      - key: BREVO_API_KEY
+        sync: false
+      # Sender verified in Brevo, e.g. "Atlas <you@gmail.com>".
+      - key: MAIL_FROM
+        sync: false
+      - key: INSFORGE_URL
+        sync: false
+      - key: INSFORGE_API_KEY
+        sync: false
+      - key: TIINGO_API_KEY
+        sync: false
+
+databases:
+  - name: atlas-db
+    plan: free
+    region: virginia
+    databaseName: atlas
+    user: atlas

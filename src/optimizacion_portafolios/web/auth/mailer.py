@@ -1,12 +1,18 @@
-"""Outgoing email (verification and password-reset codes) over SMTP.
+"""Outgoing email (verification and password-reset codes) over SMTP or Brevo.
 
-Configured for Gmail by default: ``MAIL_USERNAME`` is the Gmail address and
-``MAIL_PASSWORD`` an *app password* (Google account → Security → 2-Step
-Verification → App passwords; the normal password does not work).
-``MAIL_SMTP_HOST``/``MAIL_SMTP_PORT`` (default smtp.gmail.com:465, SSL) and
-``MAIL_FROM`` (default the username) can be changed.
+With ``BREVO_API_KEY`` set, messages go through Brevo's HTTPS API (for hosts
+that block outgoing SMTP, such as Render's free plan). ``MAIL_FROM`` is then
+required and must be a sender verified in Brevo (``Atlas <you@gmail.com>`` or
+just the address).
 
-In tests the messages go to ``app.extensions["mail_outbox"]``. Without SMTP
+Otherwise they go over SMTP, configured for Gmail by default:
+``MAIL_USERNAME`` is the Gmail address and ``MAIL_PASSWORD`` an *app password*
+(Google account → Security → 2-Step Verification → App passwords; the normal
+password does not work). ``MAIL_SMTP_HOST``/``MAIL_SMTP_PORT`` (default
+smtp.gmail.com:465, SSL) and ``MAIL_FROM`` (default the username) can be
+changed.
+
+In tests the messages go to ``app.extensions["mail_outbox"]``. Without any
 settings the debug server prints the message to its console (development
 only); otherwise sending fails with ``MailError``.
 """
@@ -19,12 +25,15 @@ import smtplib
 import ssl
 import sys
 from email.message import EmailMessage
+from email.utils import parseaddr
 
+import requests
 from flask import current_app
 
 logger = logging.getLogger(__name__)
 
 OUTBOX_KEY = "mail_outbox"
+BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 
 
 class MailError(Exception):
@@ -37,6 +46,7 @@ def configure(app) -> None:
     app.config.setdefault("MAIL_USERNAME", os.environ.get("MAIL_USERNAME", ""))
     app.config.setdefault("MAIL_PASSWORD", os.environ.get("MAIL_PASSWORD", ""))
     app.config.setdefault("MAIL_FROM", os.environ.get("MAIL_FROM", ""))
+    app.config.setdefault("BREVO_API_KEY", os.environ.get("BREVO_API_KEY", ""))
     if app.testing:
         app.extensions[OUTBOX_KEY] = []
 
@@ -45,6 +55,9 @@ def send_mail(to: str, subject: str, body: str) -> None:
     app = current_app
     if app.testing:
         app.extensions[OUTBOX_KEY].append({"to": to, "subject": subject, "body": body})
+        return
+    if app.config["BREVO_API_KEY"]:
+        _send_with_brevo(app.config["BREVO_API_KEY"], app.config["MAIL_FROM"], to, subject, body)
         return
     username, password = app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"]
     if not username or not password:
@@ -71,6 +84,35 @@ def send_mail(to: str, subject: str, body: str) -> None:
     except (smtplib.SMTPException, OSError) as error:
         logger.error("Sending email to %s failed: %s", to, type(error).__name__)
         raise MailError("No se pudo enviar el correo. Intenta de nuevo en unos minutos.") from error
+
+
+def _send_with_brevo(api_key: str, sender: str, to: str, subject: str, body: str) -> None:
+    name, address = parseaddr(sender)
+    if not address:
+        logger.error("BREVO_API_KEY is set but MAIL_FROM is empty")
+        raise MailError("El envío de correos no está configurado en el servidor.")
+    payload = {
+        "sender": {"email": address, **({"name": name} if name else {})},
+        "to": [{"email": to}],
+        "subject": subject,
+        "textContent": body,
+    }
+    try:
+        response = requests.post(
+            BREVO_URL,
+            json=payload,
+            headers={"api-key": api_key, "accept": "application/json"},
+            timeout=20,
+        )
+    except requests.RequestException as error:
+        logger.error("Sending email to %s through Brevo failed: %s", to, type(error).__name__)
+        raise MailError("No se pudo enviar el correo. Intenta de nuevo en unos minutos.") from error
+    if response.status_code >= 400:
+        # Brevo explains rejections (unverified sender, bad key) in "message".
+        logger.error(
+            "Brevo rejected the email to %s (%s): %s", to, response.status_code, response.text[:300]
+        )
+        raise MailError("No se pudo enviar el correo. Intenta de nuevo en unos minutos.")
 
 
 def send_code(to: str, purpose: str, code: str) -> None:

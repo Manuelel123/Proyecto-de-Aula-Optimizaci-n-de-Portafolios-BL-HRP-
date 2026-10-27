@@ -17,6 +17,7 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas>=2.0.0",
     "plotly>=7.1,<8",
+    "psycopg[binary]>=3.2",
     "python-dotenv>=1.0",
     "pyyaml>=6.0.3",
     "quantstats>=0.0.77",
