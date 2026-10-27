@@ -73,6 +73,17 @@ class BrevoTests(unittest.TestCase):
             mailer.send_mail("ana@example.com", "S", "B")
         post.assert_not_called()
 
+    def test_pasted_whitespace_is_trimmed_from_the_environment(self, post, _smtp):
+        post.return_value = brevo_response(201)
+        app = Flask(__name__)
+        environ = {"BREVO_API_KEY": " xkeysib-1\n", "MAIL_FROM": "Atlas <atlas@gmail.com>\n"}
+        with patch.dict("os.environ", environ):
+            mailer.configure(app)
+        with app.app_context():
+            mailer.send_mail("ana@example.com", "S", "B")
+        self.assertEqual(post.call_args.kwargs["headers"]["api-key"], "xkeysib-1")
+        self.assertEqual(post.call_args.kwargs["json"]["sender"]["email"], "atlas@gmail.com")
+
     def test_without_api_key_smtp_is_used(self, post, smtp):
         app = make_app(MAIL_USERNAME="atlas@gmail.com", MAIL_PASSWORD="app-pass")
         with app.app_context():
