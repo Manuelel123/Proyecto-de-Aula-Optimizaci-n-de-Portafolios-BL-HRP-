@@ -45,7 +45,7 @@ def upgrade():
     sa.Column('perfil_final', sa.String(length=20), nullable=False),
     sa.Column('factor_limitante', sa.String(length=20), nullable=False),
     sa.Column('rol_sugerido', sa.String(length=20), nullable=False),
-    sa.Column('vigente', sa.Boolean(), server_default=sa.text('1'), nullable=False),
+    sa.Column('vigente', sa.Boolean(), server_default=sa.true(), nullable=False),
     sa.ForeignKeyConstraint(['usuario_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )

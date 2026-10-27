@@ -48,7 +48,7 @@ def upgrade():
     sa.Column('display_name', sa.String(length=80), nullable=True),
     sa.Column('password_hash', sa.String(length=255), nullable=False),
     sa.Column('role', sa.String(length=20), server_default='explorador', nullable=False),
-    sa.Column('role_confirmed', sa.Boolean(), server_default=sa.text('0'), nullable=False),
+    sa.Column('role_confirmed', sa.Boolean(), server_default=sa.false(), nullable=False),
     sa.Column('plan', sa.String(length=20), server_default='piloto', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
