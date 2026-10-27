@@ -1,0 +1,24 @@
+name: Docker image
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t atlas .
+      - name: Start it and wait for the home page
+        run: |
+          docker run -d --name atlas -p 8000:8000 \
+            -e FLASK_SECRET_KEY=ci -e ATLAS_VECTORBT_WARMUP=0 atlas
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8000/; then echo "up"; exit 0; fi
+            sleep 2
+          done
+          docker logs atlas
+          exit 1
