@@ -52,6 +52,9 @@ def create_app(test_config: dict | None = None) -> Flask:
         # Comma-separated emails that get the "gestor" role (web.auth.roles).
         SQLALCHEMY_DATABASE_URI=database_url(os.environ.get("DATABASE_URL"))
         or "sqlite:///" + os.path.join(app.instance_path, "atlas.db"),
+        # Test pooled connections before use: a hosted Postgres (Render) drops
+        # them on restarts and maintenance, and the next request would fail.
+        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},
     )
     if testing:
         # Tests get a private in-memory database unless they pass their own.
@@ -304,6 +307,19 @@ def _register_error_handlers(app: Flask) -> None:
             status=404,
             message="La dirección solicitada no existe.",
         ), 404
+
+    @app.errorhandler(500)
+    def server_error(_error):
+        # The failure may have left the session mid-transaction (e.g. a lost
+        # database connection); the page itself reads the signed-in user.
+        from optimizacion_portafolios.storage import db
+
+        db.session.rollback()
+        return render_template(
+            "error.html",
+            status=500,
+            message="Ocurrió un error inesperado. Intenta de nuevo en unos segundos.",
+        ), 500
 
 
 def run() -> None:

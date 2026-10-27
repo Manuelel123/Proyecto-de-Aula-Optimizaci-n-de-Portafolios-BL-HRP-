@@ -47,6 +47,24 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(self._client_addr(""), "10.0.0.1 http")
 
 
+class ResilienceTests(unittest.TestCase):
+    def test_pooled_connections_are_checked_before_use(self):
+        app = create_app({"TESTING": True, "SECRET_KEY": "x"})
+        with app.app_context():
+            self.assertTrue(db.engine.pool._pre_ping)
+
+    def test_unexpected_errors_get_the_app_error_page(self):
+        app = create_app({"TESTING": True, "SECRET_KEY": "x", "PROPAGATE_EXCEPTIONS": False})
+
+        def fail():
+            raise RuntimeError("boom")
+
+        app.before_request_funcs[None].insert(0, fail)
+        response = app.test_client().get("/")
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("Ocurrió un error inesperado".encode(), response.data)
+
+
 class MigrationLoggingTests(unittest.TestCase):
     def test_running_migrations_keeps_the_app_loggers_enabled(self):
         # Start-up runs the migrations after the app modules exist; their
