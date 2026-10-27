@@ -1,11 +1,15 @@
 """Settings for hosted deployments (Render): database URL and reverse proxy."""
 
+import logging
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from flask import request
+from flask_migrate import upgrade
 
+from optimizacion_portafolios.storage import MIGRATIONS_DIRECTORY, db
 from optimizacion_portafolios.web import create_app, database_url
 
 
@@ -41,6 +45,21 @@ class ProxyTests(unittest.TestCase):
 
     def test_forwarded_headers_are_ignored_without_trusted_proxies(self):
         self.assertEqual(self._client_addr(""), "10.0.0.1 http")
+
+
+class MigrationLoggingTests(unittest.TestCase):
+    def test_running_migrations_keeps_the_app_loggers_enabled(self):
+        # Start-up runs the migrations after the app modules exist; their
+        # errors (e.g. a rejected email) must still reach the server log.
+        mail_logger = logging.getLogger("optimizacion_portafolios.web.auth.mailer")
+        with tempfile.TemporaryDirectory() as folder:
+            uri = "sqlite:///" + os.path.join(folder, "atlas.db")
+            app = create_app({"TESTING": True, "SECRET_KEY": "x", "SQLALCHEMY_DATABASE_URI": uri})
+            with app.app_context():
+                db.drop_all()  # tests create the tables; the migrations need an empty database
+                upgrade(directory=MIGRATIONS_DIRECTORY)
+                db.engine.dispose()
+        self.assertFalse(mail_logger.disabled)
 
 
 if __name__ == "__main__":
