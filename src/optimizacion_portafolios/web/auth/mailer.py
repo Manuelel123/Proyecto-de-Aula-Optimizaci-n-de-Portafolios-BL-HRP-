@@ -43,10 +43,10 @@ class MailError(Exception):
 def configure(app) -> None:
     app.config.setdefault("MAIL_SMTP_HOST", os.environ.get("MAIL_SMTP_HOST", "smtp.gmail.com"))
     app.config.setdefault("MAIL_SMTP_PORT", int(os.environ.get("MAIL_SMTP_PORT", "465")))
-    app.config.setdefault("MAIL_USERNAME", os.environ.get("MAIL_USERNAME", ""))
-    app.config.setdefault("MAIL_PASSWORD", os.environ.get("MAIL_PASSWORD", ""))
-    app.config.setdefault("MAIL_FROM", os.environ.get("MAIL_FROM", ""))
-    app.config.setdefault("BREVO_API_KEY", os.environ.get("BREVO_API_KEY", ""))
+    # Values pasted into a host's dashboard often carry a stray space or newline,
+    # which requests refuses in a header (InvalidHeader) and SMTP rejects.
+    for key in ("MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM", "BREVO_API_KEY"):
+        app.config.setdefault(key, os.environ.get(key, "").strip())
     if app.testing:
         app.extensions[OUTBOX_KEY] = []
 
