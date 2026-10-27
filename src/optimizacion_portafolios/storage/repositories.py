@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from optimizacion_portafolios.storage import db
 from optimizacion_portafolios.storage.models import (
@@ -174,17 +175,32 @@ def save_snapshots(portfolio: Portfolio, rows: list[dict], refresh_day: date | N
     Older snapshots are history and never change, even if the provider later
     revises its prices. Returns the number of rows written.
     """
-    existing = {
+    portfolio_id = portfolio.id
+    try:
+        return _write_snapshots(portfolio_id, rows, refresh_day)
+    except IntegrityError:
+        # Another request (e.g. the same page opened twice) stored one of these
+        # days between our read and our commit: retry against what is there now.
+        db.session.rollback()
+        return _write_snapshots(portfolio_id, rows, refresh_day)
+
+
+def _stored_snapshots(portfolio_id: int) -> dict[date, DailySnapshot]:
+    return {
         snapshot.day: snapshot
         for snapshot in db.session.scalars(
-            select(DailySnapshot).where(DailySnapshot.portfolio_id == portfolio.id)
+            select(DailySnapshot).where(DailySnapshot.portfolio_id == portfolio_id)
         )
     }
+
+
+def _write_snapshots(portfolio_id: int, rows: list[dict], refresh_day: date | None) -> int:
+    existing = _stored_snapshots(portfolio_id)
     written = 0
     for row in rows:
         stored = existing.get(row["day"])
         if stored is None:
-            db.session.add(DailySnapshot(portfolio_id=portfolio.id, **row))
+            db.session.add(DailySnapshot(portfolio_id=portfolio_id, **row))
             written += 1
         elif row["day"] == refresh_day:
             for key, value in row.items():

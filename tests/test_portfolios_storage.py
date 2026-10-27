@@ -2,6 +2,7 @@
 
 import unittest
 from datetime import date
+from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from optimizacion_portafolios.storage import db, repositories
@@ -83,6 +84,19 @@ class RepositoryTests(unittest.TestCase):
         repositories.archive_portfolio(portfolio, None)
         self.assertEqual(repositories.active_portfolios(), [])
         self.assertEqual(len(repositories.list_portfolios("user-a")), 1)
+
+    def test_snapshot_stored_concurrently_is_refreshed_not_duplicated(self):
+        portfolio = create_sample("user-a")
+        day = date(2026, 1, 5)
+        row = {"day": day, "value": 100_000.0, "benchmark_value": None, "weights": {}, "metrics": None}
+        repositories.save_snapshots(portfolio, [row], refresh_day=day)
+        # The first read misses the row another request just committed.
+        stale = [{}, repositories._stored_snapshots(portfolio.id)]
+        with patch.object(repositories, "_stored_snapshots", side_effect=stale):
+            written = repositories.save_snapshots(portfolio, [{**row, "value": 101_000.0}], refresh_day=day)
+        self.assertEqual(written, 1)
+        snapshots = repositories.latest_snapshots(portfolio)
+        self.assertEqual([s.value for s in snapshots], [101_000.0])
 
 
 class PortfolioPagesTests(AccountTestCase):
